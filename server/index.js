@@ -6,6 +6,7 @@ import compression from 'compression';
 import { attachRealtime } from './realtime.js';
 import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
 import { connectLibrary } from './library.js';
+import { SESSION_COOKIE, SESSION_DAYS, connectAccounts } from './accounts.js';
 
 const PORT = Number(process.env.PORT) || 8080;
 const CANONICAL_HOST = process.env.CANONICAL_HOST || 'myprivateteacher.com';
@@ -20,7 +21,10 @@ const ALLOWED_ORIGINS = new Set([
 
 const SECURITY_HEADERS = {
   'Strict-Transport-Security': 'max-age=31536000',
-  'Content-Security-Policy': `default-src 'self'; connect-src 'self' wss://${CANONICAL_HOST}; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`,
+  // Google's sign-in button loads its own script, style and frame from accounts.google.com/gsi,
+  // and styles itself inline (hence 'unsafe-inline' for styles only; scripts stay locked to
+  // this site and Google sign-in). Profile pictures come from googleusercontent.com.
+  'Content-Security-Policy': `default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; connect-src 'self' wss://${CANONICAL_HOST} https://accounts.google.com/gsi/; img-src 'self' data: https://*.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`,
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=()', // camera and mic for video calls, this site only
@@ -46,7 +50,35 @@ export function imageType(buf) {
 }
 
 // `pictures` connects the picture routes to the live rooms (see start()).
-export function createApp({ pictures, library } = {}) {
+// A cookie's value from the request, or null.
+function cookieValue(req, name) {
+  for (const part of (req.headers.cookie || '').split(';')) {
+    const at = part.indexOf('=');
+    if (at > 0 && part.slice(0, at).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(at + 1).trim());
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+const isHttps = (req) => req.secure || req.get('x-forwarded-proto') === 'https';
+
+// A request made by this site's own pages (not a form or script on another website).
+function sameSite(req) {
+  const origin = req.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.get('host');
+  } catch {
+    return false;
+  }
+}
+
+export function createApp({ pictures, library, accounts } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
@@ -120,6 +152,39 @@ export function createApp({ pictures, library } = {}) {
     });
   }
 
+  // Tutor accounts (Sign in with Google). Which tutor this browser is signed in as, if any,
+  // and whether sign-in is available.
+  app.get('/api/me', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!accounts) return res.json({ tutor: null, signIn: null });
+    const tutor = await accounts.tutorFor(cookieValue(req, SESSION_COOKIE)).catch(() => null);
+    res.json({ tutor, signIn: { google: accounts.clientId } });
+  });
+  if (accounts) {
+    // The page hands over Google's credential; the server checks it with Google's keys, then
+    // signs the browser in with a cookie that scripts can't read.
+    app.post('/auth/google', express.json({ limit: '16kb' }), async (req, res) => {
+      if (!sameSite(req)) return res.sendStatus(403);
+      const credential = typeof req.body?.credential === 'string' ? req.body.credential : '';
+      try {
+        const profile = credential ? await accounts.verify(credential) : null;
+        if (!profile) return res.status(401).json({ error: 'That Google account could not be used.' });
+        const { token, tutor } = await accounts.signIn(profile, { userAgent: req.get('user-agent') || '' });
+        res.cookie(SESSION_COOKIE, token, { httpOnly: true, secure: isHttps(req), sameSite: 'lax', path: '/', maxAge: SESSION_DAYS * 86400000 });
+        res.set('Cache-Control', 'no-store').json({ tutor });
+      } catch (error) {
+        console.warn(`Google sign-in failed: ${error.message}`);
+        res.status(401).json({ error: 'Sign-in failed. Please try again.' });
+      }
+    });
+    app.post('/auth/logout', async (req, res) => {
+      if (!sameSite(req)) return res.sendStatus(403);
+      await accounts.signOut(cookieValue(req, SESSION_COOKIE)).catch(() => {});
+      res.clearCookie(SESSION_COOKIE, { path: '/', httpOnly: true, sameSite: 'lax', secure: isHttps(req) });
+      res.sendStatus(204);
+    });
+  }
+
   // Pages from the site's old version (a Create React App build) can still be saved in a
   // browser's cache. They ask for their old code under /static, which no longer exists: answer
   // with a script that refreshes the browser's copy of the page and reloads, so the visitor lands
@@ -160,8 +225,10 @@ export function start(port = PORT) {
     isTutor: (code, key) => realtime.pictures.isTutor(code, key),
   };
   const library = connectLibrary();
+  const accounts = connectAccounts();
+  if (accounts) console.log('Tutor sign-in connected');
   if (library) console.log('Picture library connected');
-  const server = http.createServer(createApp({ pictures, library }));
+  const server = http.createServer(createApp({ pictures, library, accounts }));
   realtime = attachRealtime(server, {
     allowedOrigins: ALLOWED_ORIGINS,
     turn: { host: process.env.TURN_HOST, secret: process.env.TURN_SECRET, tls: process.env.TURN_TLS === 'true' },
@@ -183,6 +250,7 @@ export function start(port = PORT) {
   const shutdown = () => {
     realtime.close();
     library?.close();
+    accounts?.close();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };

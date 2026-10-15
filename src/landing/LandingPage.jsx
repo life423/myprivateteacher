@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ArrowRight, BookOpen, Check, Gamepad2, Image as ImageIcon, LayoutGrid, Link2, Menu, MonitorPlay, PlayCircle, Users, Video, X } from 'lucide-react';
 import { Link } from '../router.jsx';
+import AccountMenu from '../account/AccountMenu.jsx';
+import { signOut, useAccount } from '../account/account.js';
 
 // The public home page: what My Private Teacher is, for the tutors who subscribe to it, with a
 // quick way in for students who already have a lesson code.
@@ -57,6 +59,7 @@ const SECTIONS = [
 
 export default function LandingPage() {
   const [menu, setMenu] = useState(false); // the phone menu
+  const { tutor } = useAccount();
   return (
     <div className='min-h-dvh bg-white text-slate-900'>
       <header className='sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur'>
@@ -73,6 +76,13 @@ export default function LandingPage() {
             <a href='#pricing' className='hover:text-violet-700'>Pricing</a>
           </div>
           <div className='ml-auto hidden items-center gap-3 md:flex'>
+            {tutor ? (
+              <AccountMenu tutor={tutor} />
+            ) : (
+              <Link to='/login' className='rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100'>
+                Sign in
+              </Link>
+            )}
             <Link to={JOIN} className='rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100'>
               Join a lesson
             </Link>
@@ -100,6 +110,22 @@ export default function LandingPage() {
               ))}
             </div>
             <div className='mt-3 grid gap-2'>
+              {tutor ? (
+                <button
+                  type='button'
+                  onClick={() => {
+                    setMenu(false);
+                    signOut();
+                  }}
+                  className='rounded-xl px-4 py-3 text-center font-semibold text-slate-700 hover:bg-slate-50'
+                >
+                  Log out ({tutor.name || tutor.email})
+                </button>
+              ) : (
+                <Link to='/login' className='rounded-xl px-4 py-3 text-center font-semibold text-slate-700 hover:bg-slate-50'>
+                  Sign in
+                </Link>
+              )}
               <Link to={JOIN} className='rounded-xl border border-slate-300 px-4 py-3 text-center font-semibold text-slate-700'>
                 Join a lesson
               </Link>
