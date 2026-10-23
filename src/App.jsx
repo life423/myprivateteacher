@@ -1,43 +1,51 @@
-import { useEffect } from 'react';
-import { useRoute } from './router.jsx';
-import ActivityChooser from './components/ActivityChooser.jsx';
+import { Suspense, useEffect } from 'react';
+import { setPreloader, useRoute } from './router.jsx';
 import LandingPage from './landing/LandingPage.jsx';
-import LoginPage from './account/LoginPage.jsx';
-import TrialPage from './account/TrialPage.jsx';
-import BillingDonePage from './account/BillingDonePage.jsx';
-import TeachGate from './account/TeachGate.jsx';
-import AdminPage from './admin/AdminPage.jsx';
-import TermsPage from './legal/TermsPage.jsx';
-import PrivacyPage from './legal/PrivacyPage.jsx';
-import ArticulationGallery from './dev/ArticulationGallery.jsx';
-import ArticulationCardsGallery, { ArticulationCardPage } from './dev/ArticulationCardsGallery.jsx';
-import PhonemeSeparationGame from './components/PhonemeSeparationGame.jsx';
-import WhiteboardLobby from './whiteboard/WhiteboardLobby.jsx';
-import TutorRoom from './whiteboard/TutorRoom.jsx';
-import StudentRoom from './whiteboard/StudentRoom.jsx';
+import { PageBoundary, PageLoading, lazyPage } from './lazyPage.jsx';
 import { isRoomCode } from './whiteboard/stage.js';
 
 const SITE = 'My Private Teacher';
 
+// Every page but the landing page downloads the first time it is opened, so a first visit
+// only loads what it shows.
+const ActivityChooser = lazyPage(() => import('./components/ActivityChooser.jsx'));
+const LoginPage = lazyPage(() => import('./account/LoginPage.jsx'));
+const TrialPage = lazyPage(() => import('./account/TrialPage.jsx'));
+const BillingDonePage = lazyPage(() => import('./account/BillingDonePage.jsx'));
+const TeachGate = lazyPage(() => import('./account/TeachGate.jsx'));
+const AdminPage = lazyPage(() => import('./admin/AdminPage.jsx'));
+const TermsPage = lazyPage(() => import('./legal/TermsPage.jsx'));
+const PrivacyPage = lazyPage(() => import('./legal/PrivacyPage.jsx'));
+const ArticulationGallery = lazyPage(() => import('./dev/ArticulationGallery.jsx'));
+const ArticulationCardsGallery = lazyPage(() => import('./dev/ArticulationCardsGallery.jsx'));
+const ArticulationCardPage = lazyPage(() =>
+  import('./dev/ArticulationCardsGallery.jsx').then((m) => ({ default: m.ArticulationCardPage })),
+);
+const PhonemeSeparationGame = lazyPage(() => import('./components/PhonemeSeparationGame.jsx'));
+const WhiteboardLobby = lazyPage(() => import('./whiteboard/WhiteboardLobby.jsx'));
+const TutorRoom = lazyPage(() => import('./whiteboard/TutorRoom.jsx'));
+const StudentRoom = lazyPage(() => import('./whiteboard/StudentRoom.jsx'));
+
+// The page for a path: its title, what to show, and the code it needs (fetched together, not one after another).
 function page(path) {
-  if (path.startsWith('/dev/articulation-cards/')) {
-    return { title: 'Articulation card', element: <ArticulationCardPage id={path.split('/').pop()} /> };
-  }
-  if (path === '/dev/articulation-cards') return { title: 'Articulation cards', element: <ArticulationCardsGallery /> };
-  if (path === '/dev/articulation') return { title: 'Articulation gallery', element: <ArticulationGallery /> };
-  if (path === '/login') return { title: 'Sign in', element: <LoginPage /> };
-  if (path === '/admin') return { title: 'Admin', element: <AdminPage /> };
-  if (path === '/terms') return { title: 'Terms of Service', element: <TermsPage /> };
-  if (path === '/privacy') return { title: 'Privacy Policy', element: <PrivacyPage /> };
-  if (path === '/account') return { title: 'Your account', element: <LoginPage /> };
-  if (path === '/trial') return { title: 'Start your free trial', element: <TrialPage /> };
-  if (path === '/billing/done') return { title: 'Welcome', element: <BillingDonePage /> };
-  if (path === '/activities') return { title: 'Activities', element: <ActivityChooser /> };
-  if (path === '/phoneme-pop') return { title: 'Phoneme Pop', element: <PhonemeSeparationGame /> };
-  if (path === '/whiteboard') return { title: 'Alphabet Whiteboard', element: <WhiteboardLobby /> };
+  const one = (title, Page, props = {}) => ({ title, needs: [Page], element: <Page {...props} /> });
+  if (path.startsWith('/dev/articulation-cards/')) return one('Articulation card', ArticulationCardPage, { id: path.split('/').pop() });
+  if (path === '/dev/articulation-cards') return one('Articulation cards', ArticulationCardsGallery);
+  if (path === '/dev/articulation') return one('Articulation gallery', ArticulationGallery);
+  if (path === '/login') return one('Sign in', LoginPage);
+  if (path === '/admin') return one('Admin', AdminPage);
+  if (path === '/terms') return one('Terms of Service', TermsPage);
+  if (path === '/privacy') return one('Privacy Policy', PrivacyPage);
+  if (path === '/account') return one('Your account', LoginPage);
+  if (path === '/trial') return one('Start your free trial', TrialPage);
+  if (path === '/billing/done') return one('Welcome', BillingDonePage);
+  if (path === '/activities') return one('Activities', ActivityChooser);
+  if (path === '/phoneme-pop') return one('Phoneme Pop', PhonemeSeparationGame);
+  if (path === '/whiteboard') return one('Alphabet Whiteboard', WhiteboardLobby);
   if (path === '/whiteboard/teach') {
     return {
       title: 'Alphabet Whiteboard',
+      needs: [TeachGate, TutorRoom],
       element: (
         <TeachGate>
           <TutorRoom />
@@ -46,14 +54,28 @@ function page(path) {
     };
   }
   const code = path.startsWith('/whiteboard/') ? path.slice('/whiteboard/'.length) : '';
-  if (isRoomCode(code)) return { title: 'Alphabet Whiteboard', element: <StudentRoom key={code} code={code} /> };
-  return { title: null, element: <LandingPage /> };
+  if (isRoomCode(code)) return { title: 'Alphabet Whiteboard', needs: [StudentRoom], element: <StudentRoom key={code} code={code} /> };
+  return { title: null, needs: [], element: <LandingPage /> };
 }
 
+// Links start fetching their page's code as soon as a pointer or finger is on them.
+setPreloader((to) => {
+  if (typeof to !== 'string' || !to.startsWith('/')) return; // only this site's pages
+  page(new URL(to, window.location.origin).pathname).needs.forEach((Page) => Page.preload());
+});
+
 export default function App() {
-  const { title, element } = page(useRoute());
+  const path = useRoute();
+  const { title, needs, element } = page(path);
+  needs.forEach((Page) => Page.preload()); // all of a page's code at once
   useEffect(() => {
     document.title = title ? `${title} · ${SITE}` : SITE;
   }, [title]);
-  return element;
+  // The Suspense boundary stays put across pages, so the current page stays on screen while the
+  // next one's code downloads; the error boundary starts fresh on each page.
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <PageBoundary key={path}>{element}</PageBoundary>
+    </Suspense>
+  );
 }
