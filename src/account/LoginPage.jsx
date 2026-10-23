@@ -92,7 +92,20 @@ export default function LoginPage() {
               {loading ? (
                 <p className='text-sm text-slate-500'>One moment…</p>
               ) : googleClientId ? (
-                <GoogleButton clientId={googleClientId} onSignedIn={() => navigate('/whiteboard')} />
+                <>
+                  <GoogleButton clientId={googleClientId} onSignedIn={() => navigate('/whiteboard')} />
+              <p className='mt-4 text-xs leading-5 text-slate-500'>
+                By continuing, you agree to our{' '}
+                <Link to='/terms' className='underline underline-offset-2 hover:text-slate-700'>
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link to='/privacy' className='underline underline-offset-2 hover:text-slate-700'>
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+                </>
               ) : (
                 <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800'>Sign-in isn’t switched on yet.</p>
               )}

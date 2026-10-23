@@ -113,6 +113,8 @@ export function attachRealtime(server, options = {}) {
     heartbeatMs = 25_000,
     turn = {}, // { host, secret, tls } for the TURN relay; without a secret, calls use STUN only
     maxPictureBytes = 200 * 1024 * 1024, // every room's pictures together, since they live in memory
+    // May this person start a new lesson? Given their cookie header; answers { ok, reason }.
+    canStartLesson = async () => ({ ok: true }),
   } = options;
 
   const rooms = new Map();
@@ -355,9 +357,25 @@ export function attachRealtime(server, options = {}) {
 
   const handlers = {
     // A tutor opens a room, or takes theirs back after a reconnect or a server restart.
-    create(ws, msg) {
+    create(ws, msg, cleared = false) {
       let room = isCode(msg.code) ? rooms.get(msg.code) : undefined;
       if (room && room.key !== msg.key) room = undefined;
+      // A new lesson needs the go-ahead (once billing is on: a signed-in tutor with a trial or
+      // plan). Rejoining your own lesson, with its key, never does, so nobody is cut off mid-lesson.
+      if (!room && !cleared) {
+        if (ws.checking) return;
+        ws.checking = true;
+        Promise.resolve()
+          .then(() => canStartLesson(ws.cookie))
+          .catch(() => ({ ok: false, reason: 'unavailable' }))
+          .then((verdict) => {
+            ws.checking = false;
+            if (ws.readyState !== 1) return;
+            if (verdict?.ok) handlers.create(ws, msg, true);
+            else send(ws, { t: 'error', reason: verdict?.reason || 'plan' });
+          });
+        return;
+      }
       let fresh = false;
       if (!room) {
         const reuse = isCode(msg.code) && isKey(msg.key) && !rooms.has(msg.code);
@@ -884,6 +902,7 @@ export function attachRealtime(server, options = {}) {
     ws.room = null;
     ws.openStroke = null;
     ws.budget = {};
+    ws.cookie = req.headers.cookie || '';
     ws.on('pong', () => {
       ws.isAlive = true;
     });

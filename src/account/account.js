@@ -35,6 +35,7 @@ export function useAccount() {
     tutor: state?.tutor || null,
     googleClientId: state?.signIn?.google || null,
     trialDays: state?.billing?.trialDays || null, // null when billing isn't switched on
+    lesson: state?.lesson || { ok: true }, // may this person start a lesson now? { ok, reason }
   };
 }
 

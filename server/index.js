@@ -52,9 +52,9 @@ export function imageType(buf) {
 }
 
 // `pictures` connects the picture routes to the live rooms (see start()).
-// A cookie's value from the request, or null.
-function cookieValue(req, name) {
-  for (const part of (req.headers.cookie || '').split(';')) {
+// A cookie's value from a Cookie header, or null.
+function cookieFrom(header, name) {
+  for (const part of (header || '').split(';')) {
     const at = part.indexOf('=');
     if (at > 0 && part.slice(0, at).trim() === name) {
       try {
@@ -67,7 +67,29 @@ function cookieValue(req, name) {
   return null;
 }
 
+const cookieValue = (req, name) => cookieFrom(req.headers.cookie, name);
+
 const isHttps = (req) => req.secure || req.get('x-forwarded-proto') === 'https';
+
+// Starting a lesson. With billing switched on: a signed-in tutor whose trial or plan is current
+// (past due still counts while Stripe retries the card), or one of the comped tutors in
+// COMPED_TUTORS (comma-separated emails). Without billing, anyone can, as before.
+const CURRENT_PLAN = new Set(['trialing', 'active', 'past_due']);
+export function lessonGate({ accounts, billing, comped = process.env.COMPED_TUTORS } = {}) {
+  if (!accounts || !billing) return async () => ({ ok: true });
+  const free = new Set(
+    String(comped || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return async (cookieHeader) => {
+    const tutor = await accounts.tutorFor(cookieFrom(cookieHeader, SESSION_COOKIE)).catch(() => null);
+    if (!tutor) return { ok: false, reason: 'sign-in' };
+    if (free.has(tutor.email) || CURRENT_PLAN.has(tutor.subscription?.status)) return { ok: true };
+    return { ok: false, reason: 'plan' };
+  };
+}
 
 // A request made by this site's own pages (not a form or script on another website).
 function sameSite(req) {
@@ -81,6 +103,7 @@ function sameSite(req) {
 }
 
 export function createApp({ pictures, library, accounts, billing } = {}) {
+  const gate = lessonGate({ accounts, billing });
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
@@ -161,7 +184,12 @@ export function createApp({ pictures, library, accounts, billing } = {}) {
     res.set('Cache-Control', 'no-store');
     if (!accounts) return res.json({ tutor: null, signIn: null });
     const tutor = await currentTutor(req);
-    res.json({ tutor: tutor ? publicTutor(tutor) : null, signIn: { google: accounts.clientId }, billing: billing ? { trialDays: TRIAL_DAYS } : null });
+    res.json({
+      tutor: tutor ? publicTutor(tutor) : null,
+      signIn: { google: accounts.clientId },
+      billing: billing ? { trialDays: TRIAL_DAYS } : null,
+      lesson: await gate(req.headers.cookie), // may this person start a lesson now?
+    });
   });
   if (accounts) {
     // The page hands over Google's credential; the server checks it with Google's keys, then
@@ -288,6 +316,7 @@ export function start(port = PORT) {
   realtime = attachRealtime(server, {
     allowedOrigins: ALLOWED_ORIGINS,
     turn: { host: process.env.TURN_HOST, secret: process.env.TURN_SECRET, tls: process.env.TURN_TLS === 'true' },
+    canStartLesson: lessonGate({ accounts, billing }),
   });
 
   server.listen(port, () => {

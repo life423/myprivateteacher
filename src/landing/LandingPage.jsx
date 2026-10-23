@@ -322,6 +322,10 @@ export default function LandingPage() {
           <Link to={JOIN} className='hover:text-violet-700'>Join a lesson</Link>
           <Link to='/phoneme-pop' className='hover:text-violet-700'>Phoneme Pop</Link>
           <Link to='/activities' className='hover:text-violet-700'>All activities</Link>
+          <span className='ml-auto flex gap-6'>
+            <Link to='/terms' className='hover:text-violet-700'>Terms</Link>
+            <Link to='/privacy' className='hover:text-violet-700'>Privacy</Link>
+          </span>
         </div>
       </footer>
     </div>

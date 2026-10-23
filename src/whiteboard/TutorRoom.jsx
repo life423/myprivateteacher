@@ -13,6 +13,7 @@ import { ClearButton, HandsSwitch, Switch, ToolButton, ToolRail } from './Toolba
 import TileBar from './TileBar.jsx';
 import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
 import { pictureUrl } from './pictures.js';
+import { LessonGate } from '../account/TeachGate.jsx';
 import { useVideoCall } from './useVideoCall.js';
 import { CopyButton, FocusButton, MessageScreen, StageNotice, StatusPill, TopBar } from './ui.jsx';
 
@@ -34,6 +35,7 @@ export default function TutorRoom() {
   const [studentTools, setStudentTools] = useState(false);
   const [tool, setTool] = useState('none');
   const [busy, setBusy] = useState(false);
+  const [gated, setGated] = useState(null); // why the server won't start a lesson ('sign-in', 'plan')
   const [tip, setTip] = useState(null);
   const [selectedTileId, setSelectedTileId] = useState(null); // clicked, ready to change
   const layout = useRef(null); // the shared layout: open a panel, focus mode
@@ -120,6 +122,10 @@ export default function TutorRoom() {
         );
       } else if (msg.t === 'error' && msg.reason === 'busy') {
         setBusy(true);
+      } else if (msg.t === 'error' && ['sign-in', 'plan', 'unavailable'].includes(msg.reason)) {
+        // The server won't start a new lesson for this tutor yet: say what's missing.
+        sessionStorage.removeItem(SAVED);
+        setGated(msg.reason);
       }
     },
   });
@@ -146,6 +152,7 @@ export default function TutorRoom() {
   if (status === 'replaced') {
     return <MessageScreen title='Open somewhere else'>This session is now running in another tab or window.</MessageScreen>;
   }
+  if (gated) return <LessonGate reason={gated} />;
   if (busy) {
     return <MessageScreen title='The whiteboard is busy'>Too many sessions are open right now. Try again in a minute.</MessageScreen>;
   }
