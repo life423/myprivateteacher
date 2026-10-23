@@ -1,3 +1,4 @@
+import Photo from './Photo.jsx';
 import { useState } from 'react';
 import { ArrowRight, BookOpen, Check, Gamepad2, Image as ImageIcon, LayoutGrid, Link2, Menu, MonitorPlay, PlayCircle, Users, Video, X } from 'lucide-react';
 import { Link } from '../router.jsx';
@@ -179,22 +180,14 @@ export default function LandingPage() {
               </p>
             </div>
             <div className='rounded-[1.75rem] bg-slate-900 p-2 shadow-2xl shadow-violet-900/20 ring-1 ring-slate-900/10 sm:p-2.5'>
-              {/* WebP sized for the screen; the JPG is the fallback for browsers without WebP. */}
-              <picture className='block'>
-                <source
-                  type='image/webp'
-                  srcSet='/landing/whiteboard-640.webp 640w, /landing/whiteboard-1200.webp 1200w'
-                  sizes='(min-width: 1024px) 560px, 100vw'
-                />
-                <img
-                  src='/landing/whiteboard.jpg'
-                  width='1600'
-                  height='1000'
-                  fetchpriority='high'
-                  alt='The My Private Teacher whiteboard: letter tiles c a t, sound boxes, a mouth picture and the alphabet strip'
-                  className='block h-auto w-full rounded-[1.3rem] bg-slate-100'
-                />
-              </picture>
+              <Photo
+                name='whiteboard'
+                width={1600}
+                height={1000}
+                first
+                alt='The My Private Teacher whiteboard: letter tiles c a t, sound boxes, a mouth picture and the alphabet strip'
+                className='block h-auto w-full rounded-[1.3rem] bg-slate-100'
+              />
             </div>
           </div>
         </section>
@@ -221,21 +214,13 @@ export default function LandingPage() {
 
         <section className='mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24'>
           <div className='order-2 overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950 to-violet-800 p-2.5 shadow-xl lg:order-1'>
-            <picture className='block'>
-              <source
-                type='image/webp'
-                srcSet='/landing/phoneme-pop-640.webp 640w, /landing/phoneme-pop-1200.webp 1200w'
-                sizes='(min-width: 1024px) 560px, 100vw'
-              />
-              <img
-                src='/landing/phoneme-pop.jpg'
-                width='1600'
-                height='1105'
-                loading='lazy'
-                alt='Phoneme Pop: a word to split into its sounds'
-                className='block h-auto w-full rounded-2xl'
-              />
-            </picture>
+            <Photo
+              name='phoneme-pop'
+              width={1600}
+              height={1105}
+              alt='Phoneme Pop: a word to split into its sounds'
+              className='block h-auto w-full rounded-2xl'
+            />
           </div>
           <div className='order-1 lg:order-2'>
             <Eyebrow>Interactive activities</Eyebrow>

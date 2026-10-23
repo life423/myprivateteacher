@@ -15,13 +15,9 @@ function reloadOnce() {
   return true;
 }
 
-// Vite reports a page's missing styles or shared code the same way.
-window.addEventListener('vite:preloadError', (event) => {
-  if (reloadOnce()) event.preventDefault();
-});
-
 // A page whose code downloads the first time it is opened. Page.preload() starts the download
-// early (a pointer over a link, say) without showing anything.
+// early (a pointer over a link, say) without showing anything: if that early try fails, nothing
+// happens, and only opening the page (below) reloads onto the new version.
 export function lazyPage(load) {
   let pending = null;
   const fetchPage = () => {

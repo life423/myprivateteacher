@@ -41,7 +41,8 @@ function page(path) {
   if (path === '/billing/done') return one('Welcome', BillingDonePage);
   if (path === '/activities') return one('Activities', ActivityChooser);
   if (path === '/phoneme-pop') return one('Phoneme Pop', PhonemeSeparationGame);
-  if (path === '/whiteboard') return one('Alphabet Whiteboard', WhiteboardLobby);
+  // A student on the join page needs the lesson next: fetch it while they type the code.
+  if (path === '/whiteboard') return { ...one('Alphabet Whiteboard', WhiteboardLobby), soon: [StudentRoom] };
   if (path === '/whiteboard/teach') {
     return {
       title: 'Alphabet Whiteboard',
@@ -66,11 +67,17 @@ setPreloader((to) => {
 
 export default function App() {
   const path = useRoute();
-  const { title, needs, element } = page(path);
+  const { title, needs, element, soon = [] } = page(path);
   needs.forEach((Page) => Page.preload()); // all of a page's code at once
   useEffect(() => {
     document.title = title ? `${title} · ${SITE}` : SITE;
   }, [title]);
+  // The page that usually comes next, fetched in the background once this one is up.
+  useEffect(() => {
+    if (!soon.length) return undefined;
+    const timer = setTimeout(() => soon.forEach((Page) => Page.preload()), 800);
+    return () => clearTimeout(timer);
+  }, [path]);
   // The Suspense boundary stays put across pages, so the current page stays on screen while the
   // next one's code downloads; the error boundary starts fresh on each page.
   return (
