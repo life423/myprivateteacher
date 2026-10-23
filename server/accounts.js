@@ -162,8 +162,10 @@ export function connectAccounts({
     },
 
     // For the owner's admin panel.
+    // Newest first. (Sorted by _id, which records when each was made: Cosmos DB only sorts by
+    // indexed fields, and _id always is.)
     async listTutors() {
-      const all = await tutors.find({}).sort({ createdAt: -1 }).limit(1000).toArray();
+      const all = await tutors.find({}).sort({ _id: -1 }).limit(1000).toArray();
       return all.map((t) => tutorRecord(t, billingMode));
     },
     async tutorById(id) {
@@ -192,7 +194,7 @@ export function connectAccounts({
       return { applied: false };
     },
     async listGrants() {
-      const all = await grants.find({}).sort({ at: -1 }).limit(500).toArray();
+      const all = (await grants.find({}).limit(500).toArray()).sort((a, b) => (b.at?.getTime?.() || 0) - (a.at?.getTime?.() || 0));
       return all.map((g) => ({ email: g._id, comp: g.comp ? { until: time(g.comp.until), note: g.comp.note || '' } : null, roles: g.roles || [], at: time(g.at) }));
     },
     async removeGrant(email) {
@@ -209,7 +211,7 @@ export function connectAccounts({
       await activity.insertOne({ ...entry, at: new Date() });
     },
     async listActivity(limit = 100) {
-      const all = await activity.find({}).sort({ at: -1 }).limit(limit).toArray();
+      const all = await activity.find({}).sort({ _id: -1 }).limit(limit).toArray();
       return all.map(({ _id, at, ...rest }) => ({ id: String(_id), at: time(at), ...rest }));
     },
     close: () => {}, // the shared connection closes with the server
