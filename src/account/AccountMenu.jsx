@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CreditCard, LogOut, PlayCircle } from 'lucide-react';
+import { CreditCard, LogOut, PlayCircle, Sparkles } from 'lucide-react';
 import { Link } from '../router.jsx';
 import { planActive, planLabel, signOut, useAccount } from './account.js';
 
@@ -57,6 +57,12 @@ export default function AccountMenu({ tutor }) {
               </p>
             )}
           </div>
+          {trialDays && !planActive(tutor.plan) && (
+            <Link to='/trial' role='menuitem' className='flex items-center gap-2 rounded-xl bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100'>
+              <Sparkles className='h-4 w-4' aria-hidden='true' />
+              {tutor.plan ? 'Subscribe to the Tutor plan' : `Start ${trialDays}-day free trial`}
+            </Link>
+          )}
           <Link to='/whiteboard/teach' role='menuitem' className='flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>
             <PlayCircle className='h-4 w-4 text-violet-600' aria-hidden='true' />
             Start teaching
