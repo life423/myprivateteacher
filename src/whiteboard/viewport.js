@@ -54,7 +54,10 @@ export const viewAt = (width, height, scale, x, y, px, py) => ({
 });
 
 // The board filling the box's height from `top` down, from its left edge.
-export function fillView(width, height, top = 0) {
+export function fillView(width, height, top = 0, centreX = null) {
   const scale = height / (STAGE.height - top);
-  return { scale, cx: width / 2 / scale, cy: top + (STAGE.height - top) / 2 };
+  // From the board's left edge, or centred on a point (the sound boxes) as far as the board allows.
+  const half = width / 2 / scale;
+  const cx = centreX == null ? half : Math.min(Math.max(centreX, half), STAGE.width - half);
+  return { scale, cx, cy: top + (STAGE.height - top) / 2 };
 }
