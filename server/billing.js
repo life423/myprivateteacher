@@ -6,6 +6,19 @@ import Stripe from 'stripe';
 // (webhooks) keep each tutor's status current. Off unless STRIPE_SECRET_KEY is set.
 export const PRICE_LOOKUP_KEY = 'tutor_monthly';
 export const TRIAL_DAYS = 14;
+export const PLAN_PRICE_CENTS = 1900; // the Tutor plan, per month (scripts create the Stripe price at this amount)
+
+// A payment as the admin panel shows it.
+const paymentOf = (c) => ({
+  id: c.id,
+  created: c.created * 1000,
+  amount: c.amount,
+  refunded: c.amount_refunded || 0,
+  currency: c.currency,
+  status: c.status, // succeeded, pending or failed
+  receipt: c.receipt_url || null,
+  description: c.description || '',
+});
 
 // The plan's status as the app sees it, from a Stripe subscription.
 export function subscriptionSummary(sub) {
@@ -92,6 +105,41 @@ export function connectBilling({ secretKey = process.env.STRIPE_SECRET_KEY, webh
         cancel_url: `${origin}/#pricing`,
       });
       return session.url;
+    },
+    // The admin panel: a tutor's payments (Stripe charges), newest first.
+    async payments(tutor) {
+      if (!tutor.stripeCustomerId) return [];
+      const charges = await stripe.charges.list({ customer: tutor.stripeCustomerId, limit: 24 });
+      return charges.data.map(paymentOf);
+    },
+    // Refunds a payment, all of what's left or part of it (in cents). Only the tutor's own
+    // payments; the same refund asked twice within a minute (a double click) happens once.
+    async refund(tutor, chargeId, amount) {
+      const charge = await stripe.charges.retrieve(chargeId);
+      if (!charge || charge.customer !== tutor.stripeCustomerId) throw Object.assign(new Error('not their payment'), { status: 404 });
+      const left = charge.amount - (charge.amount_refunded || 0);
+      const cents = amount == null ? left : amount;
+      if (!(Number.isInteger(cents) && cents > 0 && cents <= left)) throw Object.assign(new Error('amount'), { status: 400, left });
+      const minute = Math.floor(Date.now() / 60000);
+      await stripe.refunds.create(
+        { charge: chargeId, amount: cents, reason: 'requested_by_customer' },
+        { idempotencyKey: `refund-${chargeId}-${cents}-${minute}` },
+      );
+      return paymentOf(await stripe.charges.retrieve(chargeId));
+    },
+    // Cancels their plan, now or at the end of the period they've paid for; or undoes the latter.
+    async cancel(tutor, when) {
+      const sub = tutor.subscription;
+      if (!sub?.id) throw Object.assign(new Error('no plan'), { status: 409 });
+      if (when === 'now') await stripe.subscriptions.cancel(sub.id);
+      else await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+      return syncCustomer(tutor.stripeCustomerId);
+    },
+    async resume(tutor) {
+      const sub = tutor.subscription;
+      if (!sub?.id) throw Object.assign(new Error('no plan'), { status: 409 });
+      await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false });
+      return syncCustomer(tutor.stripeCustomerId);
     },
     // A free extension from the admin panel: the next charge moves back by that many days, as
     // extra trial time, which Stripe never bills for. Returns the new status.

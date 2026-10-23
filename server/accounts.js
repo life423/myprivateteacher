@@ -207,6 +207,19 @@ export function connectAccounts({
       const result = await sessions.deleteMany({ tutorId: query._id });
       return result.deletedCount || 0;
     },
+    // Deletes a tutor's account: the tutor, their sessions and any invite for their email.
+    // (Stripe keeps its own billing records, as the privacy policy says.)
+    async deleteTutor(id) {
+      const query = byId(id);
+      if (!query) return false;
+      const t = await tutors.findOne(query);
+      if (!t) return false;
+      recent.clear();
+      await sessions.deleteMany({ tutorId: t._id });
+      await grants.deleteOne({ _id: t.email });
+      await tutors.deleteOne({ _id: t._id });
+      return true;
+    },
     async record(entry) {
       await activity.insertOne({ ...entry, at: new Date() });
     },
