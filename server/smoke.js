@@ -1,5 +1,8 @@
-// Opens a tutor and a student connection against a running site and checks that
-// a pointer and a pen stroke make the trip. Usage: node server/smoke.js https://myprivateteacher.com
+// Opens a tutor and a student connection against a running site. Where anyone may start a
+// lesson (no billing), it checks that a pointer, a pen stroke and a tile drag make the trip.
+// Where starting one needs a signed-in tutor with a plan (the live site), it checks that an
+// unsigned lesson is refused and that joining answers, without ever entering a real lesson.
+// Usage: node server/smoke.js https://myprivateteacher.com
 import WebSocket from 'ws';
 
 const site = new URL(process.argv[2] || 'http://localhost:8080');
@@ -25,12 +28,29 @@ const next = (ws, type) =>
     ws.on('message', onMessage);
   });
 
+// The first of several message types.
+const nextOf = (ws, types) => Promise.race(types.map((type) => next(ws, type)));
+
 const say = (ws, msg) => ws.send(JSON.stringify(msg));
 
 const tutor = await open();
-const created = next(tutor, 'room');
+const created = nextOf(tutor, ['room', 'error']);
 say(tutor, { t: 'create' });
-const { code } = await created;
+const reply = await created;
+if (reply.t === 'error') {
+  if (!['sign-in', 'plan'].includes(reply.reason)) throw new Error(`starting a lesson failed: ${reply.reason}`);
+  // A malformed code can never match a real lesson, so this never joins anyone's.
+  const student = await open();
+  const answered = next(student, 'error');
+  say(student, { t: 'join', code: 'smoke' });
+  const answer = await answered;
+  if (answer.reason !== 'no-room') throw new Error(`joining answered ${JSON.stringify(answer)}`);
+  console.log(`Realtime OK over ${url}: a lesson without sign-in was refused (${answer.reason === 'no-room' ? reply.reason : ''}) and joining answers`);
+  tutor.close();
+  student.close();
+  process.exit(0);
+}
+const { code } = reply;
 
 const student = await open();
 const joined = next(student, 'room');
