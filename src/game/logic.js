@@ -28,12 +28,14 @@ export function shuffleTiles(tiles, rng = Math.random) {
 }
 
 // A level is finished once every word in it is solved; skipped words come back
-// around. Finishing a level moves straight into the next one, wrapping to 1.
-export function pickNextWord({ level, solved, currentWord }, rng = Math.random) {
-  const unsolved = wordLists[level].filter((w) => !solved.has(w.word));
+// around. Finishing a level moves straight into the next one, wrapping to the first.
+// lists: the words by level (the server's word bank, or the built-in words).
+export function pickNextWord({ level, solved, currentWord }, rng = Math.random, lists = wordLists) {
+  const levels = Object.keys(lists).map(Number).sort((a, b) => a - b);
+  const unsolved = (lists[level] || []).filter((w) => !solved.has(w.word));
   if (unsolved.length === 0) {
-    const nextLevel = LEVELS.includes(level + 1) ? level + 1 : LEVELS[0];
-    return { level: nextLevel, solved: new Set(), word: randomItem(wordLists[nextLevel], rng), levelUp: true };
+    const nextLevel = levels.find((l) => l > level) ?? levels[0]; // the next level up, whatever its number
+    return { level: nextLevel, solved: new Set(), word: randomItem(lists[nextLevel], rng), levelUp: true };
   }
   const fresh = unsolved.filter((w) => w.word !== currentWord?.word);
   return { level, solved, word: randomItem(fresh.length ? fresh : unsolved, rng), levelUp: false };

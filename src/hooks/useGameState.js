@@ -3,12 +3,11 @@ import { wordLists } from '../data/wordLists.js';
 import { LEVELS, POINTS_PER_WORD, randomItem } from '../game/logic.js';
 
 // phase: 'word' (whole word showing) -> 'tiles' (split into sounds) -> 'celebrating'
-function init() {
-  const level = LEVELS[0];
+function init({ level, lists }) {
   return {
     level,
     solved: new Set(),
-    word: randomItem(wordLists[level]),
+    word: randomItem(lists[level]),
     phase: 'word',
     tiles: [],
     selected: [],
@@ -50,6 +49,10 @@ function reducer(state, action) {
     case 'clearFeedback':
       return { ...state, feedback: null, selected: state.feedback === 'wrong-order' ? [] : state.selected };
 
+    // The player picked a level: start it fresh. Score and streak carry on.
+    case 'chooseLevel':
+      return { ...state, level: action.level, solved: new Set(), word: action.word, phase: 'word', tiles: [], selected: [], feedback: null };
+
     case 'next': {
       const { level, solved, word } = action.next;
       return { ...state, level, solved, word, phase: 'word', tiles: [], selected: [], feedback: null };
@@ -60,6 +63,6 @@ function reducer(state, action) {
   }
 }
 
-export function useGameState() {
-  return useReducer(reducer, undefined, init);
+export function useGameState(start = { level: LEVELS[0], lists: wordLists }) {
+  return useReducer(reducer, start, init);
 }

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useGameState } from '../hooks/useGameState.js';
-import { checkAnswer, makeTiles, pickNextWord, shuffleTiles } from '../game/logic.js';
+import { checkAnswer, makeTiles, pickNextWord, randomItem, shuffleTiles } from '../game/logic.js';
+import { BUILT_IN, rememberLevel, useWordBank, wantedLevel } from '../game/wordBank.js';
 import { speak } from '../utils/speechUtils.js';
 import GameHeader from './GameHeader.jsx';
 import InstructionsPanel from './InstructionsPanel.jsx';
@@ -18,12 +19,36 @@ const FEEDBACK_MS = 1600;
 const opensByDefault = () => window.matchMedia('(min-width: 768px)').matches;
 
 export default function PhonemeSeparationGame() {
-  const [state, dispatch] = useGameState();
+  const bank = useWordBank();
+  const [want] = useState(wantedLevel); // the level asked for (a link, or last time); may be only in the server's bank
+  const [state, dispatch] = useGameState({ level: BUILT_IN.words[want] ? want : 1, lists: BUILT_IN.words });
   const [showInstructions, setShowInstructions] = useState(opensByDefault);
   const { word, phase, tiles, selected, feedback, level, score, streak, solved } = state;
+  const settled = useRef(false); // the starting level is decided (or the player picked one)
+
+  const chooseLevel = (next) => {
+    const list = bank.words[next];
+    if (list?.length) dispatch({ type: 'chooseLevel', level: next, word: randomItem(list) });
+  };
+
+  // A level only the server's bank has (a link to level 4, say) starts as soon as the bank arrives.
+  useEffect(() => {
+    if (settled.current || !bank.words[want]?.length) return;
+    settled.current = true;
+    if (want !== level) chooseLevel(want);
+  }, [bank]);
+
+  // A ?level= link is used once; after that the device remembers the level being played.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('level')) return;
+    url.searchParams.delete('level');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, []);
+  useEffect(() => rememberLevel(level), [level]);
 
   const goToNextWord = () => {
-    const next = pickNextWord({ level, solved, currentWord: word });
+    const next = pickNextWord({ level, solved, currentWord: word }, Math.random, bank.words);
     if (next.levelUp) speak(`Level ${next.level}!`);
     dispatch({ type: 'next', next });
   };
@@ -63,6 +88,11 @@ export default function PhonemeSeparationGame() {
         showInstructions={showInstructions}
         onToggleInstructions={() => setShowInstructions((open) => !open)}
         level={level}
+        levels={bank.levels}
+        onChooseLevel={(next) => {
+          settled.current = true;
+          chooseLevel(next);
+        }}
         score={score}
         streak={streak}
       />
@@ -90,7 +120,7 @@ export default function PhonemeSeparationGame() {
 
       <footer className='bg-white border-t px-3 py-2 sm:px-4 sm:py-3'>
         <div className='max-w-7xl mx-auto flex items-center gap-4'>
-          <ProgressBar level={level} solvedCount={solved.size} />
+          <ProgressBar level={level} solvedCount={solved.size} total={bank.words[level]?.length ?? 0} />
           {phase !== 'word' && (
             <button
               type='button'

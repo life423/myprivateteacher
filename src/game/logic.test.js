@@ -68,3 +68,16 @@ describe('checkAnswer', () => {
     expect(checkAnswer(tiles.slice(0, 1), word)).toBe('incomplete');
   });
 });
+
+describe('a bigger word bank', () => {
+  const lists = {
+    1: [{ word: 'cat', phonemes: ['c', 'ă', 't'], display: 'căt' }],
+    4: [{ word: 'car', phonemes: ['c', 'ar'], display: 'c[ar]' }],
+  };
+  it('plays from the lists it is given and moves through their levels', () => {
+    const next = pickNextWord({ level: 1, solved: new Set(['cat']), currentWord: lists[1][0] }, Math.random, lists);
+    expect(next).toMatchObject({ level: 4, levelUp: true, word: lists[4][0] });
+    const wrap = pickNextWord({ level: 4, solved: new Set(['car']), currentWord: lists[4][0] }, Math.random, lists);
+    expect(wrap).toMatchObject({ level: 1, levelUp: true });
+  });
+});

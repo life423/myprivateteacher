@@ -12,6 +12,7 @@ export default function InstructionsPanel({ onClose }) {
           <li>Each sound has a picture to help you remember it.</li>
           <li>Tap 🔊 to hear the word again.</li>
           <li>Press Check word when you're done. Harder levels give more points!</li>
+          <li>Tap <strong>Level</strong> at the top to choose your level.</li>
         </ol>
         <div className='mt-3 hidden sm:flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg bg-white px-3 py-2 text-base text-gray-800'>
           <span className='font-semibold text-blue-900'>Reading helper marks:</span>
