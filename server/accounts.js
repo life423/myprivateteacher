@@ -9,14 +9,19 @@ import { OAuth2Client } from 'google-auth-library';
 export const SESSION_COOKIE = 'mpt_session';
 export const SESSION_DAYS = 30;
 const fingerprint = (token) => createHash('sha256').update(token).digest('hex');
-// What the server works with: the tutor plus their Stripe customer and subscription status.
-const tutorRecord = (t) => ({
+// Test and live Stripe are kept apart: each tutor has a billing slot per Stripe mode, and the
+// server uses the one matching its key (sk_live_ is live, anything else is test).
+export const stripeMode = (key) => (/^(sk|rk)_live_/.test(key || '') ? 'live' : 'test');
+
+// What the server works with: the tutor plus their Stripe customer and subscription status
+// (for this server's Stripe mode).
+const tutorRecord = (t, mode) => ({
   id: String(t._id),
   email: t.email,
   name: t.name || '',
   picture: t.picture || '',
-  stripeCustomerId: t.stripeCustomerId || null,
-  subscription: t.subscription || null,
+  stripeCustomerId: t.billing?.[mode]?.customerId || null,
+  subscription: t.billing?.[mode]?.subscription || null,
 });
 // What the tutor's own browser is told (no Stripe ids).
 export const publicTutor = (t) => ({
@@ -30,13 +35,21 @@ export const publicTutor = (t) => ({
   billingAccount: Boolean(t.stripeCustomerId),
 });
 
-export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = process.env.GOOGLE_CLIENT_ID } = {}) {
+export function connectAccounts({
+  uri = process.env.MONGODB_URI,
+  clientId = process.env.GOOGLE_CLIENT_ID,
+  billingMode = stripeMode(process.env.STRIPE_SECRET_KEY),
+} = {}) {
   if (!uri || !clientId) return null;
   const db = mongoClient(uri).db('myprivateteacher');
   const tutors = db.collection('tutors');
   const sessions = db.collection('sessions');
   tutors.createIndex({ googleSub: 1 }, { unique: true }).catch(() => {});
   const google = new OAuth2Client(clientId);
+  const slot = (fields) => ({
+    ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [`billing.${billingMode}.${k === 'stripeCustomerId' ? 'customerId' : k}`, v])),
+    [`billing.${billingMode}.updatedAt`]: new Date(),
+  });
 
   // Recent sign-in checks, remembered for 30 seconds so page loads don't each ask the database.
   // Signing out, or any billing change, forgets them at once.
@@ -76,7 +89,7 @@ export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = proc
         expiresAt: new Date(now.getTime() + SESSION_DAYS * 86400000),
         userAgent: String(userAgent).slice(0, 200),
       });
-      return { token, tutor: tutorRecord(tutor) };
+      return { token, tutor: tutorRecord(tutor, billingMode) };
     },
     // The signed-in tutor for a session token, or null.
     async tutorFor(token) {
@@ -93,18 +106,19 @@ export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = proc
       }
       const tutor = await tutors.findOne({ _id: session.tutorId });
       if (!tutor) return null;
-      const record = tutorRecord(tutor);
+      const record = tutorRecord(tutor, billingMode);
       remember(key, record, session.expiresAt);
       return record;
     },
-    // Billing details from Stripe: a tutor's customer id, or a customer's subscription status.
+    // Billing details from Stripe, kept in this mode's slot: a tutor's customer id, or a
+    // customer's subscription status.
     async setBilling(tutorId, fields) {
       recent.clear();
-      await tutors.updateOne({ _id: new ObjectId(tutorId) }, { $set: { ...fields, billingUpdatedAt: new Date() } });
+      await tutors.updateOne({ _id: new ObjectId(tutorId) }, { $set: slot(fields) });
     },
     async setBillingByCustomer(customerId, fields) {
       recent.clear();
-      await tutors.updateOne({ stripeCustomerId: customerId }, { $set: { ...fields, billingUpdatedAt: new Date() } });
+      await tutors.updateOne({ [`billing.${billingMode}.customerId`]: customerId }, { $set: slot(fields) });
     },
     async signOut(token) {
       if (!token) return;
