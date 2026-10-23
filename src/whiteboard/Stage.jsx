@@ -17,7 +17,11 @@ const GUIDE_LINES = [0.3, 0.55, 0.8].map((f) => BOARD.y + BOARD.height * f);
 const PALM_MS = 1500; // touches this soon after an Apple Pencil event count as a resting palm
 const CLICK_SLOP = 6; // a tile that moves less than this was clicked, not dragged
 
-const overHand = (p, hand) => p.x >= hand.x - 50 && p.x <= hand.x + 52 && p.y >= hand.y - 10 && p.y <= hand.y + 146;
+// The glove around its fingertip (the left hand is the right one mirrored).
+const overHand = (p, hand) => {
+  const dx = hand.side === 'l' ? hand.x - p.x : p.x - hand.x;
+  return dx >= -50 && dx <= 52 && p.y >= hand.y - 10 && p.y <= hand.y + 146;
+};
 const overTile = (p, t) => p.x >= t.x && p.x <= t.x + tileWidth(t.text) && p.y >= t.y && p.y <= t.y + TILE_HEIGHT;
 const overRemove = (p, t) => Math.hypot(p.x - (t.x + tileWidth(t.text)), p.y - t.y) <= 26;
 
@@ -51,26 +55,21 @@ function toolbarOf(piece, actions) {
 }
 
 // Letter highlights: violet under the student's hand, blue under the tutor's.
-function letterTone(letter, studentLetter, tutorLetter) {
-  const student = letter === studentLetter;
-  const tutor = letter === tutorLetter;
-  if (!student && !tutor) return { cell: 'fill-white stroke-slate-200', text: 'fill-slate-800', width: 3 };
-  return {
-    cell: `${student ? 'fill-violet-100' : 'fill-blue-100'} ${tutor ? 'stroke-blue-500' : 'stroke-violet-500'}`,
-    text: student ? 'fill-violet-800' : 'fill-blue-800',
-    width: 5,
-  };
+// A letter a hand points at lights up in the hands' blue. `pointed` is those letters as one string.
+function letterTone(letter, pointed) {
+  if (!pointed.includes(letter)) return { cell: 'fill-white stroke-slate-200', text: 'fill-slate-800', width: 3 };
+  return { cell: 'fill-blue-100 stroke-blue-500', text: 'fill-blue-800', width: 5 };
 }
 
 // The bottom layer: the alphabet strip (unless hidden), the board, its guide lines and the sound boxes.
-const Backdrop = memo(function Backdrop({ studentLetter, tutorLetter, strip, boxes, viewBox }) {
+const Backdrop = memo(function Backdrop({ pointed, strip, boxes, viewBox }) {
   const board = boardRect(strip);
   return (
     <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='absolute inset-0 h-full w-full' aria-hidden='true'>
       <rect width={STAGE.width} height={STAGE.height} rx='28' className='fill-slate-100' />
       {strip &&
         LETTERS.map((letter, i) => {
-          const tone = letterTone(letter, studentLetter, tutorLetter);
+          const tone = letterTone(letter, pointed);
           const x = STRIP.x + i * CELL_WIDTH;
           return (
             <g key={letter}>
@@ -118,8 +117,8 @@ const Backdrop = memo(function Backdrop({ studentLetter, tutorLetter, strip, box
   );
 });
 
-function Marker({ kind, x, y, by, smooth, glow }) {
-  if (kind === 'hand') return <Hand x={x} y={y} by={by} smooth={smooth} glow={glow} />;
+// Each person's pen or eraser where they are. (The hands are shared, and drawn separately.)
+function Marker({ kind, x, y, by, smooth }) {
   if (kind === 'pen') return <PenMarker x={x} y={y} color={INK[by]} smooth={smooth} />;
   if (kind === 'eraser') return <EraserMarker x={x} y={y} smooth={smooth} />;
   return null;
@@ -127,12 +126,12 @@ function Marker({ kind, x, y, by, smooth, glow }) {
 
 // The shared stage in layers: the letters and board, the tutor's ink, the student's
 // ink, then tiles and pointers on top. `tool` decides what this viewer's pointer does.
-// Tiles, and the student's hand on the tutor's screen (`grabbable`), can be dragged
+// Tiles can be dragged whatever the tool; the two shared hands with the pointer tools
 // whatever the tool. Everything is in the fixed 1600 x 1000 stage space.
 export default function Stage({
   board,
   me = 'student',
-  letters = {},
+  letters = [], // the letters the hands point at
   strip = true,
   boxes = 0,
   tiles = [],
@@ -152,8 +151,9 @@ export default function Stage({
   focus = null, // { x, y, w, h, n }: show this part of the board (the tutor asked)
   tool = 'none',
   markers = [],
-  grabbable = null,
-  onGrab,
+  hands = [], // the two shared hands that are out: { side, x, y, letter, by }
+  handActions = null, // { grab(side), move(side, point), drop(side) }
+  canHoldHands = false,
   onPoint,
   onLeave,
   onStroke,
@@ -161,12 +161,12 @@ export default function Stage({
   const wrapRef = useRef(null);
   const svgRef = useRef(null);
   const drawing = useRef(null);
-  const dragging = useRef(null); // the student's hand, being moved by the tutor
+  const holding = useRef(new Map()); // pointer id -> { side, dx, dy }: the hands this screen is moving
   const tileDrag = useRef(null);
   const pieceDrag = useRef(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
-  live.current = { onPoint, onLeave, onStroke, onGrab, grabbable, tiles, tileActions, canManageTiles, strip };
+  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, tiles, tileActions, canManageTiles, strip };
   // The board's frame on screen: all of it fitted (view is null), or zoomed and panned by this
   // person alone. The board's own coordinates never change, so the other screen never notices.
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -344,8 +344,30 @@ export default function Stage({
     return pickPiece(p) ? 'grab' : null;
   };
 
+  // The hand under a point that this person may hold (the right one wins where they overlap):
+  // the tutor can take either, even from the student; the student only one the tutor isn't holding.
+  const handUnder = (raw, skip) => {
+    const { hands: all, handActions: actions, canHoldHands: can } = live.current;
+    if (!can || !actions || !all?.length) return null;
+    return [...all].reverse().find((h) => !skip?.has(h.side) && overHand(raw, h) && (!h.by || h.by === me || me === 'tutor')) || null;
+  };
+
+  // Pressing on a hand holds it until let go. Each finger can hold one, so two fingers can hold
+  // both; a finger holding a hand never counts towards a pinch.
+  const grabHand = (event) => {
+    const raw = toStage(event.clientX, event.clientY);
+    if (!raw) return false;
+    const hand = handUnder(raw, new Set([...holding.current.values()].map((h) => h.side)));
+    if (!hand || !live.current.handActions.grab(hand.side)) return false;
+    capture(event);
+    holding.current.set(event.pointerId, { side: hand.side, dx: hand.x - raw.x, dy: hand.y - raw.y });
+    setGrip('grabbing');
+    return true;
+  };
+
   const onPointerDown = (event) => {
     if (isPalm(event)) return;
+    if (grabHand(event)) return;
     if (event.pointerType === 'touch') {
       const g = gesture.current;
       g.touches.set(event.pointerId, local(event.clientX, event.clientY));
@@ -361,16 +383,9 @@ export default function Stage({
       }
       if (g.touches.size > 2) return;
     }
-    const { onPoint: point, onStroke: stroke, onGrab: grab, grabbable: hand, tileActions: tileOps } = live.current;
+    const { onPoint: point, onStroke: stroke, tileActions: tileOps } = live.current;
     const raw = toStage(event.clientX, event.clientY);
     if (!raw) return;
-    if (hand && grab && overHand(raw, hand)) {
-      capture(event);
-      dragging.current = { pointerId: event.pointerId, dx: hand.x - raw.x, dy: hand.y - raw.y };
-      setGrip('grabbing');
-      grab.start?.();
-      return;
-    }
     const control = pieceActions ? pieceControl(raw) : null;
     if (control) {
       const { piece } = control;
@@ -459,6 +474,20 @@ export default function Stage({
   };
 
   const onPointerMove = (event) => {
+    const held = holding.current.get(event.pointerId);
+    if (held) {
+      const raw = toStage(event.clientX, event.clientY);
+      if (!raw) return;
+      const hand = live.current.hands.find((h) => h.side === held.side);
+      if (!hand || (hand.by && hand.by !== me)) {
+        // Switched off, or the tutor took it: it stops following this pointer.
+        holding.current.delete(event.pointerId);
+        setGrip(null);
+        return;
+      }
+      live.current.handActions.move(held.side, withLetter({ x: clamp(raw.x + held.dx, 0, STAGE.width), y: clamp(raw.y + held.dy, 0, STAGE.height) }));
+      return;
+    }
     const g = gesture.current;
     if (event.pointerType === 'touch' && g.touches.has(event.pointerId)) {
       g.touches.set(event.pointerId, local(event.clientX, event.clientY));
@@ -477,16 +506,7 @@ export default function Stage({
       return;
     }
     if (isPalm(event)) return;
-    const { onPoint: point, onStroke: stroke, onGrab: grab, grabbable: hand, tileActions: tileOps } = live.current;
-    const drag = dragging.current;
-    if (drag && drag.pointerId === event.pointerId) {
-      const raw = toStage(event.clientX, event.clientY);
-      if (!raw) return;
-      grab?.move(withLetter({ x: clamp(raw.x + drag.dx, 0, STAGE.width), y: clamp(raw.y + drag.dy, 0, STAGE.height) }));
-      if (tool === 'hand') point?.(withLetter(raw));
-      else if (tool !== 'none') point?.({ ...raw, letter: null });
-      return;
-    }
+    const { onPoint: point, onStroke: stroke, tileActions: tileOps } = live.current;
     const pd = pieceDrag.current;
     if (pd && pd.pointerId === event.pointerId) {
       const raw = toStage(event.clientX, event.clientY);
@@ -534,7 +554,7 @@ export default function Stage({
     if (!raw) return;
     if (event.pointerType === 'mouse') {
       let next = null;
-      if (hand && grab && overHand(raw, hand)) next = 'grab';
+      if (handUnder(raw)) next = 'grab';
       else {
         const picked = tileOps ? pickTile(raw) : null;
         if (picked) next = picked.remove ? 'remove' : 'grab';
@@ -554,10 +574,11 @@ export default function Stage({
 
   // Ends what a pointer was doing (a stroke, a drag). Also used when a second finger arrives.
   const endAction = (event) => {
-    if (dragging.current?.pointerId === event.pointerId) {
-      dragging.current = null;
+    const held = holding.current.get(event.pointerId);
+    if (held) {
+      holding.current.delete(event.pointerId);
       setGrip(null);
-      live.current.onGrab?.end?.();
+      live.current.handActions?.drop(held.side);
       return;
     }
     const pd = pieceDrag.current;
@@ -583,6 +604,7 @@ export default function Stage({
   };
 
   const onRelease = (event) => {
+    if (holding.current.has(event.pointerId)) return endAction(event);
     const g = gesture.current;
     if (g.touches.delete(event.pointerId) && g.touches.size === 0) g.pinch = null;
     if (g.pinch) return;
@@ -594,12 +616,12 @@ export default function Stage({
   };
 
   const onPointerLeave = (event) => {
-    if (event.pointerType !== 'mouse' || dragging.current || tileDrag.current || pieceDrag.current) return;
+    if (event.pointerType !== 'mouse' || holding.current.size || tileDrag.current || pieceDrag.current) return;
     setGrip(null);
     if (tool === 'pen' || tool === 'eraser') live.current.onLeave?.();
   };
 
-  let cursor = tool === 'none' ? '' : 'cursor-none';
+  let cursor = tool === 'none' || tool === 'hand' ? '' : 'cursor-none';
   if (grip === 'grab') cursor = 'cursor-grab';
   if (grip === 'grabbing') cursor = 'cursor-grabbing';
   if (grip === 'remove') cursor = 'cursor-pointer';
@@ -640,7 +662,7 @@ export default function Stage({
           {view ? <Shrink className='h-4 w-4' aria-hidden='true' /> : <Expand className='h-4 w-4' aria-hidden='true' />}
         </button>
       )}
-      <Backdrop studentLetter={letters.student ?? null} tutorLetter={letters.tutor ?? null} strip={strip} boxes={boxes} viewBox={viewBox} />
+      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} viewBox={viewBox} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} />
@@ -655,7 +677,7 @@ export default function Stage({
         className={`absolute inset-0 h-full w-full ${cursor} touch-none`}
         style={{ WebkitTouchCallout: 'none' }}
         role='img'
-        aria-label={letters.student ? `Alphabet strip, pointing at ${letters.student}` : 'Alphabet strip and whiteboard'}
+        aria-label={letters.length ? `Alphabet strip, pointing at ${letters.join(' and ')}` : 'Alphabet strip and whiteboard'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onRelease}
@@ -730,14 +752,15 @@ export default function Stage({
             of the board on screen shows in the bar, on its letter, rather than peeking out under it.
             Scrolled up to the board's own strip, the hand shows there as usual. */}
         {markers
-          .filter((m) => !(fillTop && seen && m.y < seen.y))
+          .filter((m) => m.kind !== 'hand' && !(fillTop && seen && m.y < seen.y))
           .map(({ key, ...marker }) => (
-          <Marker
-            key={key}
-            {...marker}
-            glow={Boolean(grip) && Boolean(grabbable) && marker.by === 'student' && marker.kind === 'hand'}
-          />
-        ))}
+            <Marker key={key} {...marker} />
+          ))}
+        {hands
+          .filter((h) => !(fillTop && seen && h.y < seen.y))
+          .map((h) => (
+            <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} />
+          ))}
       </svg>
     </div>
   );

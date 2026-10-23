@@ -171,7 +171,6 @@ export function useWhiteboard(role, send) {
   }, []);
 
   const sendPointer = useCallback((message) => sendThrottled('p', message), [sendThrottled]);
-  const sendMove = useCallback((message) => sendThrottled('move', message), [sendThrottled]);
 
   // Tiles. Dragging is shown here straight away; the server confirms the final spot on drop.
   const tileActions = useMemo(
@@ -480,7 +479,7 @@ export function useWhiteboard(role, send) {
     undo,
     canUndo: board.lastBy(role) !== null,
     sendPointer,
-    sendMove,
+    sendThrottled,
     restore,
     tiles: [...tiles.current.values()],
     tileActions,
