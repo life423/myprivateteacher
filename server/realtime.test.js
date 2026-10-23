@@ -3,6 +3,7 @@ import http from 'node:http';
 import WebSocket from 'ws';
 import { createHmac } from 'node:crypto';
 import { attachRealtime } from './realtime.js';
+import { TILE_HEIGHT, soundBoxes, tileWidth } from '../shared/tiles.js';
 
 const ORIGIN = 'http://localhost:8080';
 let server;
@@ -362,13 +363,16 @@ describe('letter tiles', () => {
     expect((await tutor.take('boxes:set')).count).toBe(3);
     const [sh, i] = await addTiles(tutor, ['sh', 'i']);
 
+    const [first] = soundBoxes(3);
     tutor.send({ t: 'tile:grab', id: sh.id });
-    tutor.send({ t: 'tile:drop', id: sh.id, x: 500, y: 240 });
-    expect((await tutor.take('tile:drop')).tile).toMatchObject({ x: 514, y: 225 });
+    tutor.send({ t: 'tile:drop', id: sh.id, x: first.x + 10, y: first.y + 15 });
+    const dropped = (await tutor.take('tile:drop')).tile; // centred in the box
+    expect(dropped.x + tileWidth('sh') / 2).toBe(first.x + first.width / 2);
+    expect(dropped.y + TILE_HEIGHT / 2).toBe(first.y + first.height / 2);
 
     tutor.send({ t: 'tile:grab', id: i.id });
-    tutor.send({ t: 'tile:drop', id: i.id, x: 520, y: 230 }); // same box, already taken
-    expect((await tutor.take('tile:drop')).tile).toMatchObject({ x: 520, y: 230 });
+    tutor.send({ t: 'tile:drop', id: i.id, x: first.x + 30, y: first.y + 5 }); // same box, already taken
+    expect((await tutor.take('tile:drop')).tile).toMatchObject({ x: first.x + 30, y: first.y + 5 });
   });
 
   it('keeps tile management and board settings with the tutor', async () => {
