@@ -294,7 +294,7 @@ export default function StudentRoom({ code }) {
           label: 'Pictures',
           icon: ImageIcon,
           content: (
-            <PicturesPanel {...pictureProps} notice={guidePic && !browsing ? { text: 'Your tutor picked a picture for you.', tone: 'sky', action: { label: 'Open picture library', onClick: () => setBrowsing(true) } } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
+            <PicturesPanel {...pictureProps} notice={guidePic && !browsing ? { text: 'Your tutor picked a picture for you.', tone: 'sky' } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
           ),
         },
       ]}

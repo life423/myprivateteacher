@@ -564,9 +564,10 @@ export default function PicturesPanel({
           }`}
         >
           <span className={`h-2 w-2 shrink-0 rounded-full ${notice.tone === 'sky' ? 'bg-sky-500' : 'bg-violet-500'}`} aria-hidden='true' />
-          <span className='min-w-0 flex-1'>{notice.text}</span>
+          {/* The text keeps room to read; in a narrow column the button wraps onto its own line. */}
+          <span className='min-w-0 flex-1 basis-40'>{notice.text}</span>
           {notice.action && (
-            <button type='button' onClick={notice.action.onClick} className='rounded-full bg-white px-2.5 py-0.5 text-xs font-bold shadow-sm ring-1 ring-current/20 hover:bg-slate-50'>
+            <button type='button' onClick={notice.action.onClick} className='shrink-0 rounded-full bg-white px-2.5 py-0.5 text-xs font-bold shadow-sm ring-1 ring-current/20 hover:bg-slate-50'>
               {notice.action.label}
             </button>
           )}
@@ -590,7 +591,8 @@ export default function PicturesPanel({
           {shown.map((p, i) => (
             <li
               key={p.id}
-              className={`relative flex flex-col overflow-hidden rounded-xl border-2 bg-white hover:border-violet-400 ${
+              // shrink-0: in the scrolling column a card keeps its height; without it, many pictures squash flat.
+              className={`relative flex shrink-0 flex-col overflow-hidden rounded-xl border-2 bg-white hover:border-violet-400 ${
                 p.id === guidePic
                   ? 'border-sky-400'
                   : p.id === peerPic
