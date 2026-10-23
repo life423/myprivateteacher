@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 
 // A tiny history-based router: a handful of pages doesn't need a library.
 const listeners = new Set();
@@ -9,10 +9,17 @@ export function navigate(to, { replace = false } = {}) {
   window.scrollTo(0, 0);
 }
 
+// Starts fetching a page's code before it is opened (set by App).
+let preload = () => {};
+export function setPreloader(fn) {
+  preload = fn;
+}
+
 export function useRoute() {
   const [path, setPath] = useState(() => window.location.pathname);
   useEffect(() => {
-    const update = () => setPath(window.location.pathname);
+    // A transition: the current page stays on screen while the next one's code downloads.
+    const update = () => startTransition(() => setPath(window.location.pathname));
     listeners.add(update);
     window.addEventListener('popstate', update);
     return () => {
@@ -24,9 +31,13 @@ export function useRoute() {
 }
 
 export function Link({ to, onClick, ...props }) {
+  const warm = () => preload(to);
   return (
     <a
       href={to}
+      onPointerEnter={warm}
+      onFocus={warm}
+      onTouchStart={warm}
       onClick={(event) => {
         onClick?.(event);
         if (event.defaultPrevented || event.button !== 0) return;

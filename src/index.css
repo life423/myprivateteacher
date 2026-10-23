@@ -30,3 +30,18 @@ html {
     scroll-behavior: auto;
   }
 }
+
+/* The page loading spinner fades in only after a moment, so a quick page load shows nothing. */
+.page-loading {
+  animation:
+    spin 1s linear infinite,
+    page-loading-in 0.2s ease 0.35s both;
+}
+@keyframes page-loading-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
