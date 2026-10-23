@@ -5,10 +5,11 @@ import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
 import Stage from './Stage.jsx';
 import { INK } from './board.js';
-import { PARKED_HAND, STAGE, letterAt } from './stage.js';
+import { STAGE, letterAt } from './stage.js';
+import { useHands } from './useHands.js';
 import WhiteboardLayout from './WhiteboardLayout.jsx';
 import AlphabetBar from './AlphabetBar.jsx';
-import { ClearButton, Switch, ToolButton, ToolRail } from './Toolbar.jsx';
+import { ClearButton, HandsSwitch, Switch, ToolButton, ToolRail } from './Toolbar.jsx';
 import TileBar from './TileBar.jsx';
 import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
 import { pictureUrl } from './pictures.js';
@@ -18,7 +19,6 @@ import { CopyButton, FocusButton, MessageScreen, StageNotice, StatusPill, TopBar
 const SAVED = 'wb-tutor';
 const round4 = (n) => Math.round(n * 10000) / 10000;
 const ACTIVITY = { pen: 'Writing ✏️', eraser: 'Erasing 🧽' };
-const PARKED_STUDENT = { kind: 'hand', by: 'student', x: PARKED_HAND.x, y: PARKED_HAND.y, letter: null, smooth: true };
 
 function loadSaved() {
   try {
@@ -71,12 +71,12 @@ export default function TutorRoom() {
   const studentToolsRef = useRef(studentTools);
   const sendRef = useRef(() => {});
   const lastPoint = useRef(null);
-  const dragging = useRef(false); // true while you're moving the student's hand
   const tipShown = useRef(false);
   roomRef.current = room;
   studentToolsRef.current = studentTools;
 
   const wb = useWhiteboard('tutor', (msg) => sendRef.current(msg));
+  const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
 
   const { status, send } = useRealtime({
@@ -85,6 +85,7 @@ export default function TutorRoom() {
     onMessage: (msg) => {
       if (call.handle(msg)) return;
       if (msg.t === 'board') setStudentTools(Boolean(msg.tools));
+      if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
       if (msg.t === 'browse') return setStudentBrowse({ open: msg.open === true, pic: msg.pic || null });
       if (msg.t === 'view') return setStudentView({ x: msg.x, y: msg.y, w: msg.w, h: msg.h });
@@ -93,15 +94,17 @@ export default function TutorRoom() {
         sessionStorage.setItem(SAVED, JSON.stringify(saved));
         setRoom(saved);
         // The server restarted and forgot this room: hand it our copy of the board.
-        if (msg.fresh) wb.restore(studentToolsRef.current, saved);
+        if (msg.fresh) {
+          wb.restore(studentToolsRef.current, saved);
+          hands.restore();
+        }
       } else if (msg.t === 'tools') {
         setStudentTools(Boolean(msg.on));
       } else if (msg.t === 'presence') {
         if (msg.student && !studentHere) {
-          setStudentMarker(PARKED_STUDENT);
           if (!tipShown.current) {
             tipShown.current = true;
-            setTip('Tip: drag your student’s hand to guide it');
+            setTip('Tip: drag a hand to point at a letter');
           }
         }
         if (!msg.student) {
@@ -110,7 +113,6 @@ export default function TutorRoom() {
         }
         setStudentHere(msg.student);
       } else if (msg.t === 'p') {
-        if (dragging.current) return; // you have the student's hand right now
         setStudentMarker(
           msg.m === 'none'
             ? null
@@ -157,6 +159,7 @@ export default function TutorRoom() {
   // Shows your pointer here and on the student's screen.
   const share = (p, mode) => {
     lastPoint.current = p;
+    if (mode === 'hand') return; // the two hands are shared and held, not worn
     const letter = mode === 'hand' ? p.letter : null;
     setMyMarker({ kind: mode, by: 'tutor', x: p.x, y: p.y, letter });
     wb.sendPointer({ t: 'p', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), l: letter, m: mode });
@@ -164,7 +167,7 @@ export default function TutorRoom() {
 
   const chooseTool = (next) => {
     setTool(next);
-    if (next === 'none') {
+    if (next === 'none' || next === 'hand') {
       setMyMarker(null);
       wb.sendPointer({ t: 'p', m: 'none' });
       return;
@@ -175,20 +178,6 @@ export default function TutorRoom() {
 
   const onPoint = (p) => share(p, tool);
 
-  // Dragging the student's hand: it moves here right away and glides on their screen.
-  const grab = {
-    start: () => {
-      dragging.current = true;
-    },
-    move: (p) => {
-      setStudentMarker({ kind: 'hand', by: 'student', x: p.x, y: p.y, letter: p.letter, smooth: false });
-      wb.sendMove({ t: 'move', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), l: p.letter });
-    },
-    end: () => {
-      dragging.current = false;
-    },
-  };
-
   const onLeave = () => {
     setMyMarker(null);
     wb.sendPointer({ t: 'p', m: 'none' });
@@ -198,7 +187,7 @@ export default function TutorRoom() {
   if (status !== 'open') pill = <StatusPill tone='bad'>Reconnecting…</StatusPill>;
   else if (studentHere) pill = <StatusPill tone='good'>Student connected</StatusPill>;
 
-  const pointing = studentMarker?.kind === 'hand' ? studentMarker.letter : null;
+  const pointing = hands.letters.join(' ') || null; // the letters under the two hands
   const activity = studentMarker && ACTIVITY[studentMarker.kind];
   const markers = [studentMarker && { key: 'student', ...studentMarker }, myMarker && { key: 'me', ...myMarker }].filter(Boolean);
 
@@ -243,7 +232,7 @@ export default function TutorRoom() {
               <p className='text-base text-slate-700'>
                 {activity || (
                   <>
-                    Pointing at <strong className='inline-block w-8 text-center text-2xl text-violet-700'>{pointing || '–'}</strong>
+                    Pointing at <strong className='inline-block min-w-8 text-center text-2xl text-blue-700'>{pointing || '–'}</strong>
                   </>
                 )}
               </p>
@@ -302,6 +291,7 @@ export default function TutorRoom() {
             pressed={tool === 'hand'}
             onClick={() => chooseTool(tool === 'hand' ? 'none' : 'hand')}
           />
+          <HandsSwitch hands={hands.hands} onToggle={hands.show} />
           <ToolButton
             icon={Pencil}
             label='Pen'
@@ -342,11 +332,12 @@ export default function TutorRoom() {
             }}
             peerView={showStudentView && studentHere ? studentView : null}
             stageApi={stageApi}
-            letters={{ student: pointing, tutor: myMarker?.kind === 'hand' ? myMarker.letter : null }}
+            letters={hands.letters}
             tool={tool}
             markers={markers}
-            grabbable={studentMarker?.kind === 'hand' ? studentMarker : null}
-            onGrab={grab}
+            hands={hands.visible}
+            handActions={hands}
+            canHoldHands={tool === 'none' || tool === 'hand'}
             onPoint={onPoint}
             onLeave={onLeave}
             onStroke={{ start: (p) => wb.stroke.start(tool, p), move: wb.stroke.move, end: wb.stroke.end }}
@@ -359,7 +350,7 @@ export default function TutorRoom() {
       }
       call={call}
       peerName='your student'
-      alphabet={wb.strip ? <AlphabetBar letters={{ student: pointing, tutor: myMarker?.kind === 'hand' ? myMarker.letter : null }} onPoint={(p) => share(p, 'hand')} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold={tool === 'none' || tool === 'hand'} handActions={hands} /> : null}
       controls={layout}
       panels={[
         {

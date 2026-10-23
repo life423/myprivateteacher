@@ -5,17 +5,17 @@ import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
 import Stage from './Stage.jsx';
 import { INK } from './board.js';
-import { PARKED_HAND, STAGE, letterAt } from './stage.js';
+import { STAGE, letterAt } from './stage.js';
+import { useHands } from './useHands.js';
 import WhiteboardLayout from './WhiteboardLayout.jsx';
 import AlphabetBar from './AlphabetBar.jsx';
-import { ToolButton, ToolRail } from './Toolbar.jsx';
+import { HandsSwitch, ToolButton, ToolRail } from './Toolbar.jsx';
 import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
 import { pictureUrl } from './pictures.js';
 import { useVideoCall } from './useVideoCall.js';
 import { FocusButton, MessageScreen, StageNotice, StatusPill, TopBar } from './ui.jsx';
 
 const round4 = (n) => Math.round(n * 10000) / 10000;
-const PARKED = { kind: 'hand', by: 'student', x: PARKED_HAND.x, y: PARKED_HAND.y, letter: null };
 
 const ENDINGS = {
   'no-room': ['We can’t find that room', 'Check the 4-digit code with your tutor and try again.'],
@@ -61,6 +61,7 @@ export default function StudentRoom({ code }) {
   const sendRef = useRef(() => {});
 
   const wb = useWhiteboard('student', (msg) => sendRef.current(msg));
+  const hands = useHands({ me: 'student', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
   const call = useVideoCall('student', (msg) => sendRef.current(msg));
   const joinMessage = () => ({ t: 'join', code, key: keyRef.current || undefined });
 
@@ -76,6 +77,7 @@ export default function StudentRoom({ code }) {
     onMessage: (msg) => {
       if (call.handle(msg)) return;
       if (msg.t === 'board') applyTools(Boolean(msg.tools), false);
+      if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
       if (msg.t === 'guide') {
         setGuidePic(msg.pic || null);
@@ -91,17 +93,6 @@ export default function StudentRoom({ code }) {
         joined.current = true;
         retries.current = 0;
         setPhase('in');
-        // Your hand starts parked at the bottom of the board, the same spot your tutor sees.
-        if (!lastPoint.current) {
-          lastPoint.current = { x: PARKED.x, y: PARKED.y, letter: null };
-          setMyMarker(PARKED);
-        }
-      } else if (msg.t === 'moved') {
-        // Your tutor is guiding your hand.
-        if (tool !== 'hand') return;
-        const p = { x: msg.x * STAGE.width, y: msg.y * STAGE.height, letter: msg.l };
-        lastPoint.current = p;
-        setMyMarker({ kind: 'hand', by: 'student', ...p, smooth: true });
       } else if (msg.t === 'presence') {
         setTutorHere(msg.tutor);
         if (!msg.tutor) {
@@ -166,6 +157,7 @@ export default function StudentRoom({ code }) {
   // Shows this pointer locally and shares it with the tutor.
   const share = (p, mode) => {
     lastPoint.current = p;
+    if (mode === 'hand') return; // the two hands are shared and held, not worn
     if (!touched) setTouched(true);
     const letter = mode === 'hand' ? p.letter : null;
     setMyMarker({ kind: mode, by: 'student', x: p.x, y: p.y, letter });
@@ -174,6 +166,10 @@ export default function StudentRoom({ code }) {
 
   const chooseTool = (next) => {
     setTool(next);
+    if (next === 'hand') {
+      setMyMarker(null);
+      wb.sendPointer({ t: 'p', m: 'none' });
+    }
     const p = lastPoint.current;
     if (p) share({ ...p, letter: letterAt(p.x, p.y, wb.strip) }, next);
   };
@@ -197,6 +193,15 @@ export default function StudentRoom({ code }) {
   }
 
   const markers = [tutorMarker && { key: 'tutor', ...tutorMarker }, myMarker && { key: 'me', ...myMarker }].filter(Boolean);
+  // Holding a hand for the first time puts away the hint.
+  const holdActions = {
+    ...hands,
+    grab: (side) => {
+      const held = hands.grab(side);
+      if (held) setTouched(true);
+      return held;
+    },
+  };
 
   // The Pictures panel's settings, shared by the side column (or sheet) and the slide-out.
   const pictureProps = {
@@ -234,6 +239,7 @@ export default function StudentRoom({ code }) {
         toolsOn && (
           <ToolRail label='Your tools'>
             <ToolButton icon={HandIcon} label='Hand' pressed={tool === 'hand'} onClick={() => chooseTool('hand')} />
+            <HandsSwitch hands={hands.hands} onToggle={hands.show} />
             <ToolButton icon={Pencil} label='Pen' swatch={INK.student} pressed={tool === 'pen'} onClick={() => chooseTool('pen')} />
             <ToolButton icon={Eraser} label='Eraser' pressed={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
             <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
@@ -257,10 +263,10 @@ export default function StudentRoom({ code }) {
             onView={sendView}
             focus={follow}
             stageApi={stageApi}
-            letters={{
-              student: myMarker?.kind === 'hand' ? myMarker.letter : null,
-              tutor: tutorMarker?.kind === 'hand' ? tutorMarker.letter : null,
-            }}
+            letters={hands.letters}
+            hands={hands.visible}
+            handActions={holdActions}
+            canHoldHands={toolsOn && tool === 'hand'}
             tool={tool}
             markers={markers}
             onPoint={(p) => share(p, tool)}
@@ -272,14 +278,14 @@ export default function StudentRoom({ code }) {
           />
           {phase === 'in' && notice && <StageNotice>{notice}</StageNotice>}
           {phase === 'in' && !notice && !tutorHere && <StageNotice>Waiting for your tutor…</StageNotice>}
-          {phase === 'in' && !notice && tutorHere && !touched && !toolsOn && (
-            <StageNotice>Move the hand to a letter ✋</StageNotice>
+          {phase === 'in' && !notice && tutorHere && !touched && toolsOn && tool === 'hand' && hands.visible.length > 0 && (
+            <StageNotice>Drag a hand to a letter ✋</StageNotice>
           )}
         </>
       }
       call={call}
       peerName='your tutor'
-      alphabet={wb.strip ? <AlphabetBar letters={{ student: myMarker?.kind === 'hand' ? myMarker.letter : null, tutor: tutorMarker?.kind === 'hand' ? tutorMarker.letter : null }} onPoint={(p) => share(p, 'hand')} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn && tool === 'hand'} handActions={holdActions} /> : null}
       controls={layout}
       panels={[
         {

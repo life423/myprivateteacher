@@ -31,6 +31,24 @@ const isStrokeId = (value) =>
   value.length <= 40 &&
   [...value].every((c) => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c === '-');
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
+
+// The two shared hands, right (r) and left (l): one pair in the lesson, which either person can
+// move by holding it. They wait just under the letters, right on the right, left on the left;
+// the right one is out to start. A held hand lets go if its holder goes quiet (while holding,
+// the screen says so every 2 seconds), disconnects, or (the student) loses their tools.
+const HAND_SIDES = ['r', 'l'];
+const HAND_HOLD_MS = 6000;
+const HAND_HOME = { r: { x: 0.6, y: 0.19 }, l: { x: 0.4, y: 0.19 } };
+const freshHands = () => ({
+  r: { on: true, ...HAND_HOME.r, letter: null, by: null, timer: null },
+  l: { on: false, ...HAND_HOME.l, letter: null, by: null, timer: null },
+});
+const publicHand = (h) => ({ on: h.on, x: h.x, y: h.y, letter: h.letter, by: h.by });
+const letGo = (h) => {
+  h.by = null;
+  clearTimeout(h.timer);
+  h.timer = null;
+};
 const cleanLetter = (l) => (typeof l === 'string' && l.length === 1 && LETTERS.includes(l) ? l : null);
 const clampTo = (n, max) => Math.round(Math.min(max, Math.max(0, n)) * 10) / 10;
 
@@ -131,6 +149,7 @@ export function attachRealtime(server, options = {}) {
   const boardMessage = (room) => ({
     t: 'board',
     tools: room.tools,
+    hands: publicHands(room),
     strip: room.strip,
     boxes: room.boxes,
     strokes: room.strokes.map(({ id, by, tool, pts, seq }) => ({ id, by, tool, pts, seq })),
@@ -143,6 +162,27 @@ export function attachRealtime(server, options = {}) {
   const broadcast = (room, msg) => {
     send(room.tutor, msg);
     send(room.student, msg);
+  };
+
+  const publicHands = (room) => ({ r: publicHand(room.hands.r), l: publicHand(room.hands.l) });
+  const sendHand = (room, side) => broadcast(room, { t: 'hand', side, ...publicHand(room.hands[side]) });
+  // Lets go of whatever this person holds.
+  const releaseHands = (room, role) => {
+    for (const side of HAND_SIDES) {
+      if (room.hands[side].by !== role) continue;
+      letGo(room.hands[side]);
+      sendHand(room, side);
+    }
+  };
+  const keepHolding = (room, side) => {
+    const hand = room.hands[side];
+    clearTimeout(hand.timer);
+    hand.timer = setTimeout(() => {
+      if (!hand.by) return;
+      letGo(hand);
+      sendHand(room, side);
+    }, HAND_HOLD_MS);
+    hand.timer.unref?.();
   };
 
   const isTutor = (ws) => Boolean(ws.room && ws.room.tutor === ws);
@@ -212,11 +252,13 @@ export function attachRealtime(server, options = {}) {
     if (room.tutor === ws) {
       room.tutor = null;
       delete room.pointers.tutor;
+      releaseHands(room, 'tutor');
       clearTimeout(room.closeTimer);
       room.closeTimer = setTimeout(() => closeRoom(room, 'tutor-left'), tutorGraceMs);
     } else if (room.student === ws) {
       room.student = null;
       delete room.pointers.student;
+      releaseHands(room, 'student');
     }
     sendPresence(room);
   };
@@ -336,6 +378,7 @@ export function attachRealtime(server, options = {}) {
           strokeById: new Map(),
           seq: 0,
           pointers: {}, // last known pointer of each person, for whoever (re)joins
+          hands: freshHands(),
           tiles: new Map(),
           pictures: new Map(), // id -> { id, w, h, type, bytes }, for this session only
           pieces: new Map(),
@@ -406,13 +449,57 @@ export function attachRealtime(server, options = {}) {
     },
 
     // Tutor only: guide the student's hand. There is no way to move the tutor's.
-    move(ws, msg) {
+    // The two shared hands. Either person switches them on and off (the student only while
+    // their tools are on); after a server restart the tutor also hands back where they were.
+    hands(ws, msg) {
+      const role = roleOf(ws);
       const room = ws.room;
-      if (!room || room.tutor !== ws || !allow(ws, 'move', POINTER_PER_SECOND)) return;
-      if (!Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return;
-      const pointer = { x: clamp01(msg.x), y: clamp01(msg.y), l: cleanLetter(msg.l), m: 'hand' };
-      room.pointers.student = pointer;
-      send(room.student, { t: 'moved', x: pointer.x, y: pointer.y, l: pointer.l });
+      if (!role || (role === 'student' && !room.tools) || !allow(ws, 'hands', 10)) return;
+      for (const side of HAND_SIDES) {
+        const hand = room.hands[side];
+        if (typeof msg[side] === 'boolean') {
+          hand.on = msg[side];
+          if (!hand.on) letGo(hand);
+        }
+        const at = role === 'tutor' ? msg.at?.[side] : null;
+        if (at && !hand.by && Number.isFinite(at.x) && Number.isFinite(at.y)) {
+          hand.x = clamp01(at.x);
+          hand.y = clamp01(at.y);
+          hand.letter = cleanLetter(at.letter);
+        }
+      }
+      broadcast(room, { t: 'hands', hands: publicHands(room) });
+    },
+
+    // Holding one: grab, move, drop. Whoever holds a hand is the only one moving it, except
+    // that the tutor can always take it, even from the student mid-drag. The student can't
+    // take one the tutor holds (they're told who has it).
+    hand(ws, msg) {
+      const role = roleOf(ws);
+      const room = ws.room;
+      if (!role || !HAND_SIDES.includes(msg.side) || (role === 'student' && !room.tools)) return;
+      const hand = room.hands[msg.side];
+      if (!hand.on) return;
+      if (msg.a === 'grab') {
+        if (!allow(ws, 'grab', 30)) return;
+        if (hand.by && hand.by !== role && role !== 'tutor') return send(ws, { t: 'hand', side: msg.side, ...publicHand(hand) });
+        const taken = hand.by !== role;
+        hand.by = role;
+        keepHolding(room, msg.side);
+        if (taken) sendHand(room, msg.side);
+        return;
+      }
+      if (hand.by !== role) return;
+      if (msg.a === 'drop') {
+        letGo(hand);
+        return sendHand(room, msg.side);
+      }
+      if (!allow(ws, 'hand', POINTER_PER_SECOND * 2) || !Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return;
+      hand.x = clamp01(msg.x);
+      hand.y = clamp01(msg.y);
+      hand.letter = cleanLetter(msg.letter);
+      keepHolding(room, msg.side);
+      send(otherSide(room, role), { t: 'hand', side: msg.side, ...publicHand(hand) });
     },
 
     // Stroke start. The student may only draw while the tutor has their tools on.
@@ -486,6 +573,7 @@ export function attachRealtime(server, options = {}) {
       if (!room || room.tutor !== ws) return;
       room.tools = Boolean(msg.on);
       if (!room.tools && room.student) finishStroke(room.student, room);
+      if (!room.tools) releaseHands(room, 'student');
       send(room.tutor, { t: 'tools', on: room.tools });
       send(room.student, { t: 'tools', on: room.tools });
     },

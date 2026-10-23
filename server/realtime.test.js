@@ -255,15 +255,49 @@ describe('drawing', () => {
 });
 
 describe('pointers', () => {
-  it('lets the tutor move the student’s hand, but never the other way round', async () => {
+  it('shares two hands: the right one out to start, both on the board for whoever joins', async () => {
+    const { code } = await openRoom();
+    const { board } = await joinRoom(code);
+    expect(board.hands.r).toMatchObject({ on: true, by: null });
+    expect(board.hands.l).toMatchObject({ on: false, by: null });
+  });
+
+  it('lets whoever holds a hand move it, and the tutor take one back from the student', async () => {
     const { tutor, code } = await openRoom();
     const { student } = await joinRoom(code);
-    tutor.send({ t: 'move', x: 0.25, y: 0.1, l: 'G' });
-    expect(await student.take('moved')).toEqual({ t: 'moved', x: 0.25, y: 0.1, l: 'G' });
+    student.send({ t: 'hand', side: 'r', a: 'grab' }); // no tools yet: nothing
+    await nothing(tutor, 'hand');
+    tutor.send({ t: 'tools', on: true });
+    await student.take('tools');
+    student.send({ t: 'hands', l: true });
+    expect((await tutor.take('hands')).hands.l.on).toBe(true);
+    student.send({ t: 'hand', side: 'l', a: 'grab' });
+    expect(await tutor.take('hand')).toMatchObject({ side: 'l', by: 'student' });
+    expect(await student.take('hand')).toMatchObject({ side: 'l', by: 'student' }); // both screens hear who holds it
+    student.send({ t: 'hand', side: 'l', a: 'move', x: 0.3, y: 0.05, letter: 'B' });
+    expect(await tutor.take('hand')).toMatchObject({ side: 'l', x: 0.3, y: 0.05, letter: 'B', by: 'student' });
+    tutor.send({ t: 'hand', side: 'l', a: 'grab' }); // the tutor takes it mid-drag
+    expect(await student.take('hand')).toMatchObject({ side: 'l', by: 'tutor' });
+    expect(await tutor.take('hand')).toMatchObject({ side: 'l', by: 'tutor' });
+    student.send({ t: 'hand', side: 'l', a: 'move', x: 0.9, y: 0.9 }); // no longer theirs
+    await nothing(tutor, 'hand');
+    student.send({ t: 'hand', side: 'l', a: 'grab' }); // and they can't take it back
+    expect(await student.take('hand')).toMatchObject({ side: 'l', by: 'tutor' });
+    tutor.send({ t: 'hand', side: 'l', a: 'drop' });
+    expect(await student.take('hand')).toMatchObject({ side: 'l', by: null, x: 0.3, letter: 'B' });
+  });
 
-    student.send({ t: 'move', x: 0.9, y: 0.9 });
-    await nothing(tutor, 'moved');
-    await nothing(tutor, 'p');
+  it('lets go of the student’s hand when their tools go off or they leave', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    tutor.send({ t: 'tools', on: true });
+    await student.take('tools');
+    student.send({ t: 'hand', side: 'r', a: 'grab' });
+    expect(await tutor.take('hand')).toMatchObject({ side: 'r', by: 'student' });
+    tutor.send({ t: 'tools', on: false });
+    expect(await tutor.take('hand')).toMatchObject({ side: 'r', by: null });
+    student.send({ t: 'hands', r: false }); // tools off: they can't switch hands either
+    await nothing(tutor, 'hands');
   });
 
   it('shows a returning tutor where the student is pointing', async () => {

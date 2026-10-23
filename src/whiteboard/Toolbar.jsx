@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GloveIcon } from './Hand.jsx';
 
 export function ToolRail({ label, children }) {
   return (
@@ -35,6 +36,35 @@ export function ToolButton({ icon: Icon, label, pressed, disabled = false, dange
       </span>
       <span className='max-sm:sr-only'>{label}</span>
     </button>
+  );
+}
+
+// The two shared hands, switched on and off: the left glove on the left, the right on the right.
+// Either person can use it (the student while their tools are on); both screens follow.
+export function HandsSwitch({ hands, onToggle }) {
+  return (
+    <div role='group' aria-label='Hands' className='flex w-11 flex-col items-center gap-1 rounded-xl px-0.5 py-1.5 sm:w-14 lg:w-16'>
+      <div className='flex w-full justify-center gap-0.5'>
+        {['l', 'r'].map((side) => {
+          const on = hands[side].on;
+          const name = side === 'l' ? 'Left hand' : 'Right hand';
+          return (
+            <button
+              key={side}
+              type='button'
+              aria-pressed={on}
+              aria-label={name}
+              title={`${name}: ${on ? 'showing' : 'hidden'}`}
+              onClick={() => onToggle(side, !on)}
+              className={`flex h-9 min-w-0 flex-1 items-center justify-center rounded-lg transition-colors ${on ? 'bg-violet-100 ring-2 ring-inset ring-violet-400' : 'hover:bg-violet-50'}`}
+            >
+              <GloveIcon side={side} className={`h-6 w-auto ${on ? '' : 'opacity-40 grayscale'}`} />
+            </button>
+          );
+        })}
+      </div>
+      <span className='text-xs font-bold text-slate-700 max-sm:sr-only'>Hands</span>
+    </div>
   );
 }
 

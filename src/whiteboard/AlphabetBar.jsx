@@ -1,35 +1,32 @@
 import { useRef } from 'react';
-import Hand from './Hand.jsx';
+import Hand, { GLOVE_BOX } from './Hand.jsx';
 import { CELL_WIDTH, LETTERS, STRIP } from './stage.js';
 
 // The alphabet on phones: two rows of 13, pinned above the zoomable board and sized to the
 // screen, so every letter is always in view. The board's own one-row strip is still there
-// (the tutor's screen shows it); pointing at a letter here puts the hand on that letter
-// there, and the other person's pointing lights up here. The same glove as on the board sits on
-// each pointed-at letter, at the same size next to the letters, so the hand moves up into the bar.
+// (the tutor's screen shows it). The two shared hands show here on the letters they point at,
+// the same gloves as on the board at the same size next to the letters; holding a hand here
+// and sliding along the letters moves it from letter to letter on both screens.
 const ROWS = [LETTERS.slice(0, 13), LETTERS.slice(13)];
 
-// The glove drawn over a letter, fingertip on the letter's centre. Its picture runs from x -50
-// to 56 and y 0 to 152 (with its shadow); on the board a letter is CELL_WIDTH wide, so here the
-// glove is that many letter-widths wide.
-const GLOVE = { left: -50, width: 106, height: 152 };
-const gloveWidth = (GLOVE.width / CELL_WIDTH) * 100;
-const GLOVE_STYLE = {
-  width: `${gloveWidth}%`,
-  left: `${50 - (-GLOVE.left / GLOVE.width) * gloveWidth}%`,
-  top: '50%',
-  aspectRatio: `${GLOVE.width} / ${GLOVE.height}`,
-};
+// A glove drawn over a letter, fingertip on the letter's centre. On the board a letter is
+// CELL_WIDTH wide, so here the glove is that many letter-widths wide.
+function gloveStyle(side) {
+  const box = GLOVE_BOX[side];
+  const width = (box.width / CELL_WIDTH) * 100;
+  return { width: `${width}%`, left: `${50 - (-box.left / box.width) * width}%`, top: '50%', aspectRatio: `${box.width} / ${box.height}` };
+}
 
-function Glove({ by }) {
+function Glove({ side, holder }) {
+  const box = GLOVE_BOX[side];
   return (
     <svg
-      viewBox={`${GLOVE.left} 0 ${GLOVE.width} ${GLOVE.height}`}
-      className={`hand-${by} pointer-events-none absolute z-10 overflow-visible`}
-      style={GLOVE_STYLE}
+      viewBox={`${box.left} 0 ${box.width} ${box.height}`}
+      className={`hand-${side} pointer-events-none absolute z-10 overflow-visible`}
+      style={gloveStyle(side)}
       aria-hidden='true'
     >
-      <Hand x={0} y={0} by={by} />
+      <Hand x={0} y={0} side={side} holder={holder} />
     </svg>
   );
 }
@@ -40,58 +37,73 @@ export const letterPoint = (letter) => {
   return { x: STRIP.x + (i + 0.5) * CELL_WIDTH, y: STRIP.y + STRIP.height / 2, letter };
 };
 
-// The same colours as the board: the student's letter violet, the tutor's blue.
-function tone(letter, letters) {
-  const student = letter === letters.student;
-  const tutor = letter === letters.tutor;
-  if (!student && !tutor) return 'border-slate-200 bg-white text-slate-800';
-  return `${student ? 'bg-violet-100 text-violet-800' : 'bg-blue-100 text-blue-800'} ${tutor ? 'border-blue-500' : 'border-violet-500'} border-2`;
-}
+// A letter a hand points at lights up in the hands' blue, as on the board.
+const tone = (pointed) =>
+  pointed ? 'border-2 border-blue-500 bg-blue-100 text-blue-800' : 'border-slate-200 bg-white text-slate-800';
 
-export default function AlphabetBar({ letters = {}, onPoint }) {
-  const pressing = useRef(null);
-  const point = (event) => {
-    const letter = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('[data-letter]')?.dataset.letter;
-    if (letter) onPoint?.(letterPoint(letter));
+const letterUnder = (event) => document.elementFromPoint(event.clientX, event.clientY)?.closest?.('[data-letter]')?.dataset.letter;
+
+export default function AlphabetBar({ hands = [], canHold = false, handActions = null, me = 'student' }) {
+  const held = useRef(new Map()); // pointer id -> the side of the hand it holds
+  const holdable = (h) => !h.by || h.by === me || me === 'tutor';
+
+  const release = (event) => {
+    const side = held.current.get(event.pointerId);
+    if (!side) return;
+    held.current.delete(event.pointerId);
+    handActions?.drop(side);
   };
+
   return (
     <div
       role='group'
       aria-label='Alphabet'
       className='grid shrink-0 touch-none select-none gap-1 rounded-2xl bg-white p-1.5 shadow'
       onPointerDown={(event) => {
-        if (!onPoint) return;
-        pressing.current = event.pointerId;
+        if (!canHold || !handActions) return;
+        const letter = letterUnder(event);
+        const taken = new Set(held.current.values());
+        const hand = [...hands].reverse().find((h) => h.letter === letter && !taken.has(h.side) && holdable(h));
+        if (!hand || !handActions.grab(hand.side)) return;
+        held.current.set(event.pointerId, hand.side);
         try {
           event.currentTarget.setPointerCapture(event.pointerId);
         } catch {
           // works without capture too
         }
-        point(event);
       }}
       onPointerMove={(event) => {
-        if (pressing.current === event.pointerId) point(event);
+        const side = held.current.get(event.pointerId);
+        if (!side) return;
+        const hand = hands.find((h) => h.side === side);
+        if (!hand || (hand.by && hand.by !== me)) {
+          held.current.delete(event.pointerId); // switched off, or the tutor took it
+          return;
+        }
+        const letter = letterUnder(event);
+        if (letter && letter !== hand.letter) handActions.move(side, letterPoint(letter));
       }}
-      onPointerUp={() => {
-        pressing.current = null;
-      }}
-      onPointerCancel={() => {
-        pressing.current = null;
-      }}
+      onPointerUp={release}
+      onPointerCancel={release}
     >
       {ROWS.map((row, r) => (
         <div key={r} className='grid gap-1' style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
-          {row.map((letter) => (
-            <span
-              key={letter}
-              data-letter={letter}
-              className={`relative flex h-9 items-center justify-center rounded-lg border text-lg font-extrabold sm:h-12 sm:rounded-xl sm:text-2xl ${tone(letter, letters)}`}
-            >
-              {letter}
-              {letter === letters.tutor && <Glove by='tutor' />}
-              {letter === letters.student && <Glove by='student' />}
-            </span>
-          ))}
+          {row.map((letter) => {
+            const here = hands.filter((h) => h.letter === letter);
+            const grabbable = canHold && here.some(holdable);
+            return (
+              <span
+                key={letter}
+                data-letter={letter}
+                className={`relative flex h-9 items-center justify-center rounded-lg border text-lg font-extrabold sm:h-12 sm:rounded-xl sm:text-2xl ${tone(here.length > 0)} ${grabbable ? 'cursor-grab' : ''}`}
+              >
+                {letter}
+                {here.map((h) => (
+                  <Glove key={h.side} side={h.side} holder={h.by} />
+                ))}
+              </span>
+            );
+          })}
         </div>
       ))}
     </div>
