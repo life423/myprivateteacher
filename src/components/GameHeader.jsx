@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, Home, Link2 as LinkIcon, Trophy } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, HelpCircle, Home, Link2 as LinkIcon, Trophy } from 'lucide-react';
 import { Link } from '../router.jsx';
 
 function Stat({ label, value, tone, children }) {
   return (
     <div className='text-center'>
-      <div className='text-xs sm:text-sm text-gray-600'>{label}</div>
-      <div className={`flex items-center justify-center gap-1 text-lg sm:text-xl md:text-2xl font-bold ${tone}`}>
+      <div className='text-[11px] min-[400px]:text-xs sm:text-sm text-gray-600'>{label}</div>
+      <div className={`flex items-center justify-center gap-1 text-lg sm:text-xl md:text-2xl font-bold leading-tight ${tone}`}>
         {value}
         {children}
       </div>
@@ -14,7 +14,7 @@ function Stat({ label, value, tone, children }) {
   );
 }
 
-// The level number, which opens a list of every level to choose from.
+// The Level 1 pill, which opens a short list of every level (its skill on a second line).
 function LevelPicker({ level, levels, onChoose }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -47,28 +47,28 @@ function LevelPicker({ level, levels, onChoose }) {
   };
 
   return (
-    <div ref={box}>
+    <div ref={box} className='relative'>
       <button
         type='button'
         onClick={() => setOpen((was) => !was)}
         aria-haspopup='menu'
         aria-expanded={open}
         aria-label={`Level ${level}. Choose a level`}
-        className='rounded-xl px-1 sm:px-2 py-0.5 text-center transition-colors hover:bg-purple-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-500'
+        className={`flex items-center gap-1 rounded-xl border-2 px-2.5 py-1 text-sm font-bold text-purple-700 transition-colors sm:gap-1.5 sm:px-3.5 sm:py-1.5 sm:text-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500 ${
+          open ? 'border-purple-500 bg-purple-100' : 'border-purple-300 bg-purple-50 hover:border-purple-400 hover:bg-purple-100'
+        }`}
       >
-        <span className='flex items-center justify-center gap-0.5 text-xs sm:text-sm text-gray-600'>
-          Level
-          <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden='true' />
-        </span>
-        <span className='block text-lg sm:text-xl md:text-2xl font-bold text-purple-700'>{level}</span>
+        <span className='whitespace-nowrap'>Level {level}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden='true' />
       </button>
       {open && (
         <div
           role='menu'
           aria-label='Choose a level'
-          className='absolute right-0 top-full z-30 mt-2 w-[min(21rem,calc(100vw_-_1.5rem))] rounded-2xl border border-gray-200 bg-white p-2 text-left shadow-xl'
+          className='absolute left-1/2 top-full z-30 mt-3 w-60 -translate-x-1/2 rounded-2xl border border-gray-200 bg-white p-1.5 text-left shadow-xl'
         >
-          <p className='px-3 pb-1 pt-1.5 text-sm font-bold text-gray-900'>Choose a level</p>
+          {/* The little pointer up to the pill. */}
+          <span aria-hidden='true' className='absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-gray-200 bg-white' />
           {levels.map((l) => {
             const on = l.level === level;
             return (
@@ -81,31 +81,24 @@ function LevelPicker({ level, levels, onChoose }) {
                   setOpen(false);
                   if (!on) onChoose(l.level);
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${on ? 'bg-purple-50' : 'hover:bg-gray-50'}`}
+                className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${on ? 'bg-purple-100' : 'hover:bg-gray-50'}`}
               >
-                <span
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-bold ${on ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'}`}
-                >
-                  {l.level}
-                </span>
                 <span className='min-w-0 flex-1'>
-                  <span className='block text-sm font-semibold text-gray-900'>{l.title}</span>
-                  <span className='block truncate text-xs text-gray-600'>
-                    {l.examples.join(', ')} · {l.count} words
-                  </span>
+                  <span className={`block text-base font-bold ${on ? 'text-purple-700' : 'text-slate-800'}`}>Level {l.level}</span>
+                  <span className='block truncate text-xs text-gray-500'>{l.title}</span>
                 </span>
-                {on && <Check className='h-4 w-4 shrink-0 text-purple-600' aria-hidden='true' />}
+                {on && <Check className='h-5 w-5 shrink-0 text-purple-600' strokeWidth={3} aria-hidden='true' />}
               </button>
             );
           })}
-          <div className='mt-1 border-t border-gray-100 px-1 pt-1'>
+          <div className='mt-1 border-t border-gray-100 pt-1'>
             <button
               type='button'
               role='menuitem'
               onClick={copyLink}
-              className='flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50'
+              className='flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50'
             >
-              <LinkIcon className='h-3.5 w-3.5' aria-hidden='true' />
+              <LinkIcon className='h-3.5 w-3.5 shrink-0' aria-hidden='true' />
               {copied ? 'Link copied' : `Copy a link to Level ${level}`}
             </button>
           </div>
@@ -118,30 +111,31 @@ function LevelPicker({ level, levels, onChoose }) {
 export default function GameHeader({ showInstructions, onToggleInstructions, level, levels, onChooseLevel, score, streak }) {
   const Chevron = showInstructions ? ChevronUp : ChevronDown;
   return (
-    <header className='bg-white shadow-md px-3 py-2 sm:px-4 sm:py-3'>
-      <div className='max-w-7xl mx-auto flex items-center justify-between gap-3'>
-        <div className='flex items-center gap-1 sm:gap-3'>
-          <Link to='/' aria-label='All activities' className='rounded-full p-2 text-purple-700 hover:bg-purple-100'>
+    <header className='bg-white shadow-md px-2 py-2 min-[400px]:px-3 sm:px-4 sm:py-3'>
+      <div className='max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3'>
+        <div className='flex min-w-0 items-center gap-0.5 sm:gap-3'>
+          <Link to='/' aria-label='All activities' className='shrink-0 rounded-full p-2 text-purple-700 hover:bg-purple-100'>
             <Home className='w-5 h-5' aria-hidden='true' />
           </Link>
-          <h1 className='whitespace-nowrap text-lg sm:text-xl md:text-2xl font-bold text-purple-700'>Phoneme Pop!</h1>
+          <h1 className='whitespace-nowrap text-base min-[400px]:text-lg sm:text-xl md:text-2xl font-bold text-purple-700'>Phoneme Pop!</h1>
           <button
             type='button'
             onClick={onToggleInstructions}
             aria-expanded={showInstructions}
             aria-controls='how-to-play'
             aria-label='How to play'
-            className='flex items-center gap-1 rounded-full px-2 sm:px-3 py-1.5 text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors'
+            className='flex shrink-0 items-center gap-1 rounded-full p-1.5 sm:px-3 sm:py-1.5 text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors'
           >
+            <HelpCircle className='h-5 w-5 sm:hidden' aria-hidden='true' />
             <span className='hidden sm:inline'>How to play</span>
-            <Chevron className='w-4 h-4' aria-hidden='true' />
+            <Chevron className='hidden h-4 w-4 sm:block' aria-hidden='true' />
           </button>
         </div>
-        <div className='relative flex items-center gap-2.5 sm:gap-6'>
+        <div className='flex shrink-0 items-center gap-2 min-[400px]:gap-3 sm:gap-6'>
           <LevelPicker level={level} levels={levels} onChoose={onChooseLevel} />
           <Stat label='Score' value={score} tone='text-green-700' />
           <Stat label='Streak' value={streak} tone='text-orange-600'>
-            {streak >= 3 && <Trophy className='w-4 h-4 sm:w-5 sm:h-5 text-orange-500' aria-label='On a roll!' />}
+            {streak >= 3 && <Trophy className='hidden w-4 h-4 sm:w-5 sm:h-5 text-orange-500 min-[400px]:block' aria-label='On a roll!' />}
           </Stat>
         </div>
       </div>
