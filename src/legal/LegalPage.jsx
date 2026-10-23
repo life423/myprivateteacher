@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BookOpen } from 'lucide-react';
 import { Link } from '../router.jsx';
 import { LEGAL } from './facts.js';
+import SiteFooter from '../landing/SiteFooter.jsx';
 
 // The shared page for the Terms of Service and Privacy Policy: plain, readable, printable.
 export function H2({ id, children }) {
@@ -47,6 +48,7 @@ export default function LegalPage({ title, summary, children }) {
         {summary && <div className='mt-6 rounded-2xl bg-violet-50 p-5 leading-7 text-slate-800'>{summary}</div>}
         {children}
       </main>
+      <SiteFooter />
     </div>
   );
 }
