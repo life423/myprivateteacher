@@ -1,6 +1,6 @@
 import { useReducer } from 'react';
 import { wordLists } from '../data/wordLists.js';
-import { LEVELS, POINTS_PER_WORD, randomItem } from '../game/logic.js';
+import { LEVELS, POINTS_PER_WORD, randomItem } from './logic.js';
 
 // phase: 'word' (whole word showing) -> 'tiles' (split into sounds) -> 'celebrating'
 function init({ level, lists }) {

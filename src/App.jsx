@@ -8,7 +8,7 @@ const SITE = 'My Private Teacher';
 
 // Every page but the landing page downloads the first time it is opened, so a first visit
 // only loads what it shows.
-const ActivityChooser = lazyPage(() => import('./components/ActivityChooser.jsx'));
+const ActivityChooser = lazyPage(() => import('./landing/ActivityChooser.jsx'));
 const LoginPage = lazyPage(() => import('./account/LoginPage.jsx'));
 const TrialPage = lazyPage(() => import('./account/TrialPage.jsx'));
 const BillingDonePage = lazyPage(() => import('./account/BillingDonePage.jsx'));
@@ -21,7 +21,7 @@ const ArticulationCardsGallery = lazyPage(() => import('./dev/ArticulationCardsG
 const ArticulationCardPage = lazyPage(() =>
   import('./dev/ArticulationCardsGallery.jsx').then((m) => ({ default: m.ArticulationCardPage })),
 );
-const PhonemeSeparationGame = lazyPage(() => import('./components/PhonemeSeparationGame.jsx'));
+const PhonemeSeparationGame = lazyPage(() => import('./phoneme-pop/components/PhonemeSeparationGame.jsx'));
 const WhiteboardLobby = lazyPage(() => import('./whiteboard/WhiteboardLobby.jsx'));
 const TutorRoom = lazyPage(() => import('./whiteboard/TutorRoom.jsx'));
 const StudentRoom = lazyPage(() => import('./whiteboard/StudentRoom.jsx'));

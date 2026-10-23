@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { phonemeSymbols } from '../src/data/phonemeSymbols.js';
-import { wordLists } from '../src/data/wordLists.js';
+import { phonemeSymbols } from '../src/phoneme-pop/data/phonemeSymbols.js';
+import { wordLists } from '../src/phoneme-pop/data/wordLists.js';
 import { WORD_BANK, WORD_LEVELS } from './wordBank.js';
 
 // The display without its reading marks: no brackets, breves or macrons.

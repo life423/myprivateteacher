@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { useGameState } from '../hooks/useGameState.js';
+import { useGameState } from '../game/useGameState.js';
 import { checkAnswer, makeTiles, pickNextWord, randomItem, shuffleTiles } from '../game/logic.js';
 import { BUILT_IN, rememberLevel, useWordBank, wantedLevel } from '../game/wordBank.js';
-import { speak } from '../utils/speechUtils.js';
+import { speak } from '../speechUtils.js';
 import GameHeader from './GameHeader.jsx';
 import InstructionsPanel from './InstructionsPanel.jsx';
 import WordBubble from './WordBubble.jsx';

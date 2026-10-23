@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, HelpCircle, Home, Link2 as LinkIcon, Trophy } from 'lucide-react';
-import { Link } from '../router.jsx';
+import { Link } from '../../router.jsx';
 
 function Stat({ label, value, tone, children }) {
   return (
