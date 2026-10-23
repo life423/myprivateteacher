@@ -58,9 +58,9 @@ say(student, { t: 'join', code });
 await joined;
 
 const pointed = next(tutor, 'p');
-say(student, { t: 'p', x: 0.5, y: 0.1, l: 'M', m: 'hand' });
+say(student, { t: 'p', x: 0.5, y: 0.1, m: 'pen' });
 const pointer = await pointed;
-if (pointer.l !== 'M' || pointer.x !== 0.5) throw new Error(`pointer arrived as ${JSON.stringify(pointer)}`);
+if (pointer.m !== 'pen' || pointer.x !== 0.5) throw new Error(`pointer arrived as ${JSON.stringify(pointer)}`);
 
 const toolsOn = next(student, 'tools');
 say(tutor, { t: 'tools', on: true });

@@ -11,7 +11,7 @@ import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cle
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const STAGE = { width: 1600, height: 1000 };
 const REPLACED = 4000; // close code: the same person connected again somewhere else
-const MODES = new Set(['hand', 'pen', 'eraser', 'none']);
+const MODES = new Set(['pen', 'eraser', 'none']); // what a shared pointer shows
 const TOOLS = new Set(['pen', 'eraser']);
 const MAX_STROKES = 2000;
 const MAX_STROKE_NUMBERS = 8000; // 4,000 points
@@ -456,13 +456,13 @@ export function attachRealtime(server, options = {}) {
       if (!role || !allow(ws, 'pointer', POINTER_PER_SECOND)) return;
       const room = ws.room;
       const to = otherSide(room, role);
-      const mode = MODES.has(msg.m) ? msg.m : 'hand';
+      const mode = MODES.has(msg.m) ? msg.m : 'none';
       if (mode === 'none') {
         delete room.pointers[role];
         return send(to, { t: 'p', m: 'none' });
       }
       if (!Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return;
-      const pointer = { x: clamp01(msg.x), y: clamp01(msg.y), l: mode === 'hand' ? cleanLetter(msg.l) : null, m: mode };
+      const pointer = { x: clamp01(msg.x), y: clamp01(msg.y), m: mode };
       room.pointers[role] = pointer;
       send(to, { t: 'p', ...pointer });
     },

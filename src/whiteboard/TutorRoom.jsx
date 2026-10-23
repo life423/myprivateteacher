@@ -5,7 +5,7 @@ import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
 import Stage from './Stage.jsx';
 import { INK } from './board.js';
-import { STAGE, letterAt } from './stage.js';
+import { STAGE } from './stage.js';
 import { useHands } from './useHands.js';
 import WhiteboardLayout from './WhiteboardLayout.jsx';
 import AlphabetBar from './AlphabetBar.jsx';
@@ -119,7 +119,7 @@ export default function TutorRoom() {
         setStudentMarker(
           msg.m === 'none'
             ? null
-            : { kind: msg.m || 'hand', by: 'student', x: msg.x * STAGE.width, y: msg.y * STAGE.height, letter: msg.l, smooth: true },
+            : { kind: msg.m, by: 'student', x: msg.x * STAGE.width, y: msg.y * STAGE.height, smooth: true },
         );
       } else if (msg.t === 'error' && msg.reason === 'busy') {
         setBusy(true);
@@ -167,21 +167,19 @@ export default function TutorRoom() {
   // Shows your pointer here and on the student's screen.
   const share = (p, mode) => {
     lastPoint.current = p;
-    if (mode === 'hand') return; // the two hands are shared and held, not worn
-    const letter = mode === 'hand' ? p.letter : null;
-    setMyMarker({ kind: mode, by: 'tutor', x: p.x, y: p.y, letter });
-    wb.sendPointer({ t: 'p', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), l: letter, m: mode });
+    setMyMarker({ kind: mode, by: 'tutor', x: p.x, y: p.y });
+    wb.sendPointer({ t: 'p', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), m: mode });
   };
 
   const chooseTool = (next) => {
     setTool(next);
-    if (next === 'none' || next === 'hand') {
+    if (next === 'none') {
       setMyMarker(null);
       wb.sendPointer({ t: 'p', m: 'none' });
       return;
     }
     const p = lastPoint.current;
-    if (p) share({ ...p, letter: letterAt(p.x, p.y, wb.strip) }, next);
+    if (p) share(p, next);
   };
 
   const onPoint = (p) => share(p, tool);

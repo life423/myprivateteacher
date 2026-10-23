@@ -5,7 +5,7 @@ import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
 import Stage from './Stage.jsx';
 import { INK } from './board.js';
-import { STAGE, letterAt } from './stage.js';
+import { STAGE } from './stage.js';
 import { useHands } from './useHands.js';
 import WhiteboardLayout from './WhiteboardLayout.jsx';
 import AlphabetBar from './AlphabetBar.jsx';
@@ -104,7 +104,7 @@ export default function StudentRoom({ code }) {
         setTutorMarker(
           msg.m === 'none'
             ? null
-            : { kind: msg.m, by: 'tutor', x: msg.x * STAGE.width, y: msg.y * STAGE.height, letter: msg.l, smooth: true },
+            : { kind: msg.m, by: 'tutor', x: msg.x * STAGE.width, y: msg.y * STAGE.height, smooth: true },
         );
       } else if (msg.t === 'closed') {
         sessionStorage.removeItem(storageKey);
@@ -158,11 +158,10 @@ export default function StudentRoom({ code }) {
   // Shows this pointer locally and shares it with the tutor.
   const share = (p, mode) => {
     lastPoint.current = p;
-    if (mode === 'hand' || mode === 'none') return; // nothing to show: the two hands are shared and held, not worn
+    if (mode === 'none') return; // nothing to show: the two hands are shared and held, not worn
     if (!touched) setTouched(true);
-    const letter = mode === 'hand' ? p.letter : null;
-    setMyMarker({ kind: mode, by: 'student', x: p.x, y: p.y, letter });
-    wb.sendPointer({ t: 'p', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), l: letter, m: mode });
+    setMyMarker({ kind: mode, by: 'student', x: p.x, y: p.y });
+    wb.sendPointer({ t: 'p', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), m: mode });
   };
 
   const chooseTool = (next) => {
@@ -172,7 +171,7 @@ export default function StudentRoom({ code }) {
       wb.sendPointer({ t: 'p', m: 'none' });
     }
     const p = lastPoint.current;
-    if (p) share({ ...p, letter: letterAt(p.x, p.y, wb.strip) }, next);
+    if (p) share(p, next);
   };
 
   const ending = ENDINGS[status === 'replaced' ? 'replaced' : phase];

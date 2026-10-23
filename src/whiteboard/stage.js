@@ -30,4 +30,3 @@ export function letterAt(x, y, strip = true) {
 
 // Where the student's hand waits until someone moves it. Both screens start it here,
 // so the tutor always has a hand to grab.
-export const PARKED_HAND = { x: 1490, y: 230 };
