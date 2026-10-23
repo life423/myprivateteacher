@@ -49,6 +49,7 @@ export default function TutorRoom() {
     if (selectedTileId) layout.current?.show('tiles');
   }, [selectedTileId]);
   const stageApi = useRef(null);
+  const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
   const [studentBrowse, setStudentBrowse] = useState({ open: false, pic: null }); // where the student is browsing
   const [guidePic, setGuidePic] = useState(null); // the picture this tutor is pointing at
@@ -345,6 +346,7 @@ export default function TutorRoom() {
             hands={hands.visible}
             handActions={hands}
             canHoldHands={tool === 'none' || tool === 'hand'}
+            barApi={barApi}
             onPoint={onPoint}
             onLeave={onLeave}
             onStroke={{ start: (p) => wb.stroke.start(tool, p), move: wb.stroke.move, end: wb.stroke.end }}
@@ -357,7 +359,7 @@ export default function TutorRoom() {
       }
       call={call}
       peerName='your student'
-      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold={tool === 'none' || tool === 'hand'} handActions={hands} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold={tool === 'none' || tool === 'hand'} handActions={hands} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
       panels={[
         {

@@ -11,7 +11,7 @@ const round4 = (n) => Math.round(n * 10000) / 10000;
 const fromServer = (h) => ({
   on: Boolean(h?.on),
   x: (h?.x ?? 0.5) * STAGE.width,
-  y: (h?.y ?? 0.19) * STAGE.height,
+  y: (h?.y ?? 0.17) * STAGE.height,
   letter: h?.letter ?? null,
   by: h?.by ?? null,
 });

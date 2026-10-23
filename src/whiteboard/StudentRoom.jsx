@@ -32,6 +32,7 @@ export default function StudentRoom({ code }) {
   const [toolsOn, setToolsOn] = useState(false);
   const [tool, setTool] = useState('hand');
   const stageApi = useRef(null);
+  const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
   const [viewingPic, setViewingPic] = useState(null); // the picture open in the slide-out
   const [guidePic, setGuidePic] = useState(null); // the picture the tutor is pointing at
@@ -267,6 +268,7 @@ export default function StudentRoom({ code }) {
             hands={hands.visible}
             handActions={holdActions}
             canHoldHands={toolsOn && tool === 'hand'}
+            barApi={barApi}
             tool={tool}
             markers={markers}
             onPoint={(p) => share(p, tool)}
@@ -285,7 +287,7 @@ export default function StudentRoom({ code }) {
       }
       call={call}
       peerName='your tutor'
-      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn && tool === 'hand'} handActions={holdActions} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn && tool === 'hand'} handActions={holdActions} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
       panels={[
         {

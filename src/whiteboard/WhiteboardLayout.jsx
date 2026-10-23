@@ -32,7 +32,7 @@ function useArrangement() {
   return arrangement;
 }
 
-// The drawing tools on narrower screens: a pencil button that opens the tool rail.
+// The drawing tools on narrower screens: a labelled Tools button that opens the tool rail.
 function FloatingTools({ tools, focus }) {
   const [open, setOpen] = useState(() => window.innerWidth >= 640);
   useEffect(() => {
@@ -46,9 +46,10 @@ function FloatingTools({ tools, focus }) {
         aria-label={open ? 'Hide drawing tools' : 'Show drawing tools'}
         title={open ? 'Hide drawing tools' : 'Show drawing tools'}
         onClick={() => setOpen((was) => !was)}
-        className='pointer-events-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-700'
+        className='pointer-events-auto flex h-12 shrink-0 items-center gap-2 rounded-full bg-violet-600 px-4 text-sm font-bold text-white shadow-lg hover:bg-violet-700'
       >
         {open ? <X className='h-5 w-5' aria-hidden='true' /> : <Pencil className='h-5 w-5' aria-hidden='true' />}
+        {open ? 'Close' : 'Tools'}
       </button>
       {open && <div className='pointer-events-auto max-h-full overflow-y-auto rounded-2xl portrait:[&_nav]:flex-row'>{tools}</div>}
     </div>

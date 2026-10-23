@@ -33,12 +33,13 @@ const isStrokeId = (value) =>
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 
 // The two shared hands, right (r) and left (l): one pair in the lesson, which either person can
-// move by holding it. They wait just under the letters, right on the right, left on the left;
+// move by holding it. They wait just under the letters (above the board, so a phone shows them
+// in its alphabet bar, not off its screen), right on the right, left on the left;
 // the right one is out to start. A held hand lets go if its holder goes quiet (while holding,
 // the screen says so every 2 seconds), disconnects, or (the student) loses their tools.
 const HAND_SIDES = ['r', 'l'];
 const HAND_HOLD_MS = 6000;
-const HAND_HOME = { r: { x: 0.6, y: 0.19 }, l: { x: 0.4, y: 0.19 } };
+const HAND_HOME = { r: { x: 0.6, y: 0.17 }, l: { x: 0.4, y: 0.17 } };
 const freshHands = () => ({
   r: { on: true, ...HAND_HOME.r, letter: null, by: null, timer: null },
   l: { on: false, ...HAND_HOME.l, letter: null, by: null, timer: null },
