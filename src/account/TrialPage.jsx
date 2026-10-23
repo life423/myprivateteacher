@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Check } from 'lucide-react';
 import { Link, navigate } from '../router.jsx';
 import GoogleButton from './GoogleButton.jsx';
-import { planActive, startCheckout, useAccount } from './account.js';
+import { hasAccess, startCheckout, useAccount } from './account.js';
 
 // Start the free trial: sign in with Google, then Stripe Checkout (no card needed to start).
 // A tutor already on the plan goes straight to teaching.
@@ -14,7 +14,7 @@ export default function TrialPage() {
   useEffect(() => {
     if (loading || !tutor || started.current) return;
     started.current = true;
-    if (!trialDays || planActive(tutor.plan)) {
+    if (!trialDays || hasAccess(tutor)) {
       navigate('/whiteboard/teach'); // billing not switched on yet, or already on the plan
       return;
     }

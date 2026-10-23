@@ -133,20 +133,22 @@ describe('one Stripe customer per tutor', () => {
 });
 
 describe('who can start a lesson', () => {
-  it('needs sign-in and a current trial or plan once billing is on; comped tutors always can', async () => {
+  it('needs sign-in and access once billing is on: the owner, free access, or a current plan', async () => {
+    const day = 86400000;
     const tutors = {
-      a: { email: 'a@example.com', subscription: { status: 'trialing' } },
-      b: { email: 'b@example.com', subscription: { status: 'canceled' } },
-      c: { email: 'c@example.com', subscription: null },
-      d: { email: 'd@example.com', subscription: { status: 'past_due' } },
+      owner: { email: 'o@example.com', roles: ['owner'] },
+      comp: { email: 'c@example.com', comp: { until: null } },
+      soon: { email: 's@example.com', comp: { until: Date.now() + day } },
+      expired: { email: 'e@example.com', comp: { until: Date.now() - day } },
+      trial: { email: 't@example.com', subscription: { status: 'trialing' } },
+      due: { email: 'd@example.com', subscription: { status: 'past_due' } },
+      ended: { email: 'n@example.com', subscription: { status: 'canceled' } },
     };
     const accounts = { tutorFor: async (token) => tutors[token] || null };
-    const gate = lessonGate({ accounts, billing: {}, comped: ' C@example.com , x@example.com' });
+    const gate = lessonGate({ accounts, billing: {} });
     expect(await gate('')).toEqual({ ok: false, reason: 'sign-in' });
-    expect(await gate('mpt_session=a')).toEqual({ ok: true });
-    expect(await gate('mpt_session=b')).toEqual({ ok: false, reason: 'plan' });
-    expect(await gate('other=1; mpt_session=c')).toEqual({ ok: true }); // comped, any capitalisation
-    expect(await gate('mpt_session=d')).toEqual({ ok: true }); // still covered while Stripe retries
+    for (const yes of ['owner', 'comp', 'soon', 'trial', 'due']) expect(await gate(`x=1; mpt_session=${yes}`)).toEqual({ ok: true });
+    for (const no of ['expired', 'ended']) expect(await gate(`mpt_session=${no}`)).toEqual({ ok: false, reason: 'plan' });
     expect(await lessonGate({ accounts, billing: null })('')).toEqual({ ok: true }); // no billing: as before
   });
 });

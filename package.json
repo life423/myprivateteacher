@@ -15,7 +15,8 @@
     "articulation": "node scripts/build-articulation.mjs",
     "render-articulation": "node scripts/render-articulation-cards.mjs",
     "stripe-setup": "node --env-file=.env scripts/stripe-setup.mjs",
-    "stripe-go-live": "node --env-file=.env scripts/stripe-go-live.mjs"
+    "stripe-go-live": "node --env-file=.env scripts/stripe-go-live.mjs",
+    "make-owner": "node --env-file=.env scripts/make-owner.mjs"
   },
   "dependencies": {
     "@azure/identity": "^4.13.3",

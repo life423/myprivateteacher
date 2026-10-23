@@ -54,6 +54,15 @@ export function planLabel(plan, now = Date.now()) {
   return 'Plan ended';
 }
 
+// Whether a tutor may teach (the owner, free access, or a current plan), and how to say so.
+export const hasAccess = (tutor) => Boolean(tutor?.access?.ok);
+export function accessLabel(tutor, now = Date.now()) {
+  const access = tutor?.access;
+  if (access?.kind === 'owner') return 'Owner · free access';
+  if (access?.kind === 'comp') return access.until ? `Free access until ${new Date(access.until).toLocaleDateString()}` : 'Free access';
+  return planLabel(tutor?.plan, now);
+}
+
 // Stripe's pages: Checkout (the free trial, or the plan) and the billing page. Returns an
 // error message, or navigates away.
 async function openStripe(path) {

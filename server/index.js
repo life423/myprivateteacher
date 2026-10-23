@@ -6,7 +6,8 @@ import compression from 'compression';
 import { attachRealtime } from './realtime.js';
 import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
 import { connectLibrary } from './library.js';
-import { SESSION_COOKIE, SESSION_DAYS, connectAccounts, publicTutor } from './accounts.js';
+import { SESSION_COOKIE, SESSION_DAYS, connectAccounts, publicTutor, tutorAccess } from './accounts.js';
+import { adminRoutes } from './admin.js';
 import { TRIAL_DAYS, connectBilling } from './billing.js';
 import { closeDatabases, warmDatabase } from './db.js';
 
@@ -71,23 +72,14 @@ const cookieValue = (req, name) => cookieFrom(req.headers.cookie, name);
 
 const isHttps = (req) => req.secure || req.get('x-forwarded-proto') === 'https';
 
-// Starting a lesson. With billing switched on: a signed-in tutor whose trial or plan is current
-// (past due still counts while Stripe retries the card), or one of the comped tutors in
-// COMPED_TUTORS (comma-separated emails). Without billing, anyone can, as before.
-const CURRENT_PLAN = new Set(['trialing', 'active', 'past_due']);
-export function lessonGate({ accounts, billing, comped = process.env.COMPED_TUTORS } = {}) {
+// Starting a lesson. With billing switched on: a signed-in tutor with access (the owner, free
+// access, or a current trial or plan; see tutorAccess). Without billing, anyone can, as before.
+export function lessonGate({ accounts, billing } = {}) {
   if (!accounts || !billing) return async () => ({ ok: true });
-  const free = new Set(
-    String(comped || '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  );
   return async (cookieHeader) => {
     const tutor = await accounts.tutorFor(cookieFrom(cookieHeader, SESSION_COOKIE)).catch(() => null);
     if (!tutor) return { ok: false, reason: 'sign-in' };
-    if (free.has(tutor.email) || CURRENT_PLAN.has(tutor.subscription?.status)) return { ok: true };
-    return { ok: false, reason: 'plan' };
+    return tutorAccess(tutor).ok ? { ok: true } : { ok: false, reason: 'plan' };
   };
 }
 
@@ -265,6 +257,9 @@ export function createApp({ pictures, library, accounts, billing } = {}) {
       }
     });
   }
+
+  // The owner's admin panel (owners only, checked on every request).
+  if (accounts) app.use('/api/admin', adminRoutes({ accounts, billing, currentTutor, sameSite }));
 
   // Pages from the site's old version (a Create React App build) can still be saved in a
   // browser's cache. They ask for their old code under /static, which no longer exists: answer
