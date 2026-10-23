@@ -154,6 +154,7 @@ export default function Stage({
   hands = [], // the two shared hands that are out: { side, x, y, letter, by }
   handActions = null, // { grab(side), move(side, point), drop(side) }
   canHoldHands = false,
+  barApi = null, // on phones: the alphabet bar, which says where a finger over it points
   onPoint,
   onLeave,
   onStroke,
@@ -166,7 +167,7 @@ export default function Stage({
   const pieceDrag = useRef(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
-  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, tiles, tileActions, canManageTiles, strip };
+  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, canManageTiles, strip };
   // The board's frame on screen: all of it fitted (view is null), or zoomed and panned by this
   // person alone. The board's own coordinates never change, so the other screen never notices.
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -490,8 +491,6 @@ export default function Stage({
   const onPointerMove = (event) => {
     const held = holding.current.get(event.pointerId);
     if (held) {
-      const raw = toStage(event.clientX, event.clientY);
-      if (!raw) return;
       const hand = live.current.hands.find((h) => h.side === held.side);
       if (!hand || (hand.by && hand.by !== me)) {
         // Switched off, or the tutor took it: it stops following this pointer.
@@ -499,6 +498,14 @@ export default function Stage({
         setGrip(null);
         return;
       }
+      // Dragged up onto a phone's alphabet bar: the hand goes right under the finger, on that letter.
+      const overBar = live.current.barApi?.current?.pointAt(event.clientX, event.clientY);
+      if (overBar) {
+        live.current.handActions.move(held.side, overBar);
+        return;
+      }
+      const raw = toStage(event.clientX, event.clientY);
+      if (!raw) return;
       live.current.handActions.move(held.side, withLetter({ x: clamp(raw.x + held.dx, 0, STAGE.width), y: clamp(raw.y + held.dy, 0, STAGE.height) }));
       return;
     }
@@ -770,8 +777,9 @@ export default function Stage({
           .map(({ key, ...marker }) => (
             <Marker key={key} {...marker} />
           ))}
+        {/* With the alphabet in its own bar, a hand above the board shows there instead. */}
         {hands
-          .filter((h) => !(fillTop && seen && h.y < seen.y))
+          .filter((h) => !(fillTop && h.y < BOARD.y))
           .map((h) => (
             <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} />
           ))}
