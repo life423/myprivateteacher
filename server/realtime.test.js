@@ -242,9 +242,10 @@ describe('drawing', () => {
     expect(await back.take('room')).toMatchObject({ code, key, fresh: true });
     back.send({ t: 'rs', id: 't1', by: 'tutor', tool: 'pen', pts: [200, 300] });
     back.send({ t: 'rs', id: 's1', by: 'student', tool: 'pen', pts: [300, 300] });
-    back.send({ t: 'restored', tools: true });
+    back.send({ t: 'restored', tools: true, lines: 'small' });
     const board = await back.take('board');
     expect(board.tools).toBe(true);
+    expect(board.lines).toBe('small');
     expect(board.strokes.map((s) => [s.id, s.by])).toEqual([
       ['t1', 'tutor'],
       ['s1', 'student'],
@@ -356,6 +357,21 @@ describe('letter tiles', () => {
 
     student.send({ t: 'tile:drop', id: tile.id, x: 5000, y: 610 });
     expect((await tutor.take('tile:drop')).tile).toMatchObject({ x: 1576 - 84, y: 610, heldBy: null });
+  });
+
+  it('sets the handwriting lines on both screens: tutor only, known sizes only', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    student.send({ t: 'lines:set', size: 'small' });
+    await nothing(tutor, 'lines:set');
+    tutor.send({ t: 'lines:set', size: 'huge' });
+    await nothing(student, 'lines:set');
+    tutor.send({ t: 'lines:set', size: 'small' });
+    expect((await student.take('lines:set')).size).toBe('small');
+    student.ws.close(); // the student leaves and comes back: the lines are still small
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const back = await joinRoom(code);
+    expect(back.board.lines).toBe('small');
   });
 
   it('snaps a tile into a free sound box when it is dropped there', async () => {

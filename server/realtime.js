@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
+import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
 import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, nextHome, snapTile, tileKind } from '../shared/tiles.js';
 import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isPictureId, pieceSize } from '../shared/pieces.js';
 
@@ -155,6 +156,7 @@ export function attachRealtime(server, options = {}) {
     hands: publicHands(room),
     strip: room.strip,
     boxes: room.boxes,
+    lines: room.lines,
     strokes: room.strokes.map(({ id, by, tool, pts, seq }) => ({ id, by, tool, pts, seq })),
     tiles: [...room.tiles.values()],
     pictures: [...room.pictures.values()].map(sharedPicture),
@@ -406,6 +408,7 @@ export function attachRealtime(server, options = {}) {
           order: 0, // creation order, for packing the tray
           strip: true,
           boxes: 0,
+          lines: DEFAULT_LINES,
           // After a restart the tutor's browser hands back its copy of the board.
           restoring: reuse,
         };
@@ -620,6 +623,7 @@ export function attachRealtime(server, options = {}) {
       room.tools = Boolean(msg.tools);
       room.strip = msg.strip !== false;
       room.boxes = BOX_COUNTS.includes(msg.boxes) ? msg.boxes : 0;
+      room.lines = isLineSize(msg.lines) ? msg.lines : DEFAULT_LINES;
       broadcastBoard(room);
     },
 
@@ -718,6 +722,13 @@ export function attachRealtime(server, options = {}) {
       if (!isTutor(ws)) return;
       ws.room.strip = Boolean(msg.on);
       broadcast(ws.room, { t: 'strip:set', on: ws.room.strip });
+    },
+
+    // Tutor only: the handwriting lines (big, medium, small or off) on both screens.
+    'lines:set'(ws, msg) {
+      if (!isTutor(ws) || !isLineSize(msg.size)) return;
+      ws.room.lines = msg.size;
+      broadcast(ws.room, { t: 'lines:set', size: ws.room.lines });
     },
 
     // Tutor only: sound boxes off (0) or 2 to 5 of them.
