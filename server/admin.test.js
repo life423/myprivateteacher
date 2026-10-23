@@ -43,13 +43,40 @@ const accounts = {
     signedOut = id;
     return 2;
   },
+  deleteTutor: async (id) => {
+    const key = Object.keys(people).find((k) => people[k].id === id);
+    delete people[key];
+    return true;
+  },
   record: async (entry) => log.push(entry),
   listActivity: async () => log,
 };
+const charges = { ch_1: { id: 'ch_1', customer: 'cus_t', amount: 1900, refunded: 0 } };
+const cancels = [];
+const resumed = [];
+const paymentOf = (c) => ({ id: c.id, amount: c.amount, refunded: c.refunded, currency: 'usd', status: 'succeeded' });
 const billing = {
   extend: async (t, days) => {
     extended.push([t.id, days]);
     return { status: 'trialing', trialEnd: t.subscription.trialEnd + days * DAY };
+  },
+  payments: async (t) => Object.values(charges).filter((c) => c.customer === t.stripeCustomerId).map(paymentOf),
+  refund: async (t, id, amount) => {
+    const c = charges[id];
+    if (!c || c.customer !== t.stripeCustomerId) throw Object.assign(new Error('not theirs'), { status: 404 });
+    const left = c.amount - c.refunded;
+    const cents = amount ?? left;
+    if (!(Number.isInteger(cents) && cents > 0 && cents <= left)) throw Object.assign(new Error('amount'), { status: 400, left });
+    c.refunded += cents;
+    return paymentOf(c);
+  },
+  cancel: async (t, when) => {
+    cancels.push([t.id, when]);
+    t.subscription = when === 'now' ? { ...t.subscription, status: 'canceled' } : { ...t.subscription, cancelAtPeriodEnd: true };
+  },
+  resume: async (t) => {
+    resumed.push(t.id);
+    t.subscription = { ...t.subscription, cancelAtPeriodEnd: false };
   },
 };
 
@@ -65,7 +92,11 @@ afterAll(() => server.close());
 function call(method, path, { as, body, origin } = {}) {
   return new Promise((resolve, reject) => {
     const headers = { host: `localhost:${port}` };
-    if (body !== undefined) headers['content-type'] = 'application/json';
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    if (payload !== undefined) {
+      headers['content-type'] = 'application/json';
+      headers['content-length'] = Buffer.byteLength(payload); // as browsers send it, DELETE included
+    }
     if (as) headers.cookie = `mpt_session=${as}`;
     if (origin) headers.origin = origin;
     const req = http.request({ port, method, path, headers }, (res) => {
@@ -82,7 +113,7 @@ function call(method, path, { as, body, origin } = {}) {
       });
     });
     req.on('error', reject);
-    req.end(body === undefined ? undefined : JSON.stringify(body));
+    req.end(payload);
   });
 }
 
@@ -143,5 +174,50 @@ describe('the admin panel', () => {
     expect(signedOut).toBe(people.ada.id);
     const activity = await call('GET', '/api/admin/activity', { as: 'owner' });
     expect(activity.json.activity.map((e) => e.action)).toEqual(expect.arrayContaining(['comp', 'uncomp', 'extend', 'grant', 'sign-out']));
+  });
+});
+
+describe('the admin panel, part 2', () => {
+  it('shows the numbers at the top', async () => {
+    const overview = await call('GET', '/api/admin/overview', { as: 'owner' });
+    expect(overview.json).toMatchObject({ tutors: 3, trials: 1, trialsEndingSoon: 1, paying: 0, monthly: 0, free: 2, lessonsNow: 0 });
+  });
+
+  it('lists payments, and refunds only what is left of the tutor’s own', async () => {
+    const list = await call('GET', `/api/admin/tutors/${people.tess.id}/payments`, { as: 'owner' });
+    expect(list.json.payments).toEqual([expect.objectContaining({ id: 'ch_1', amount: 1900, refunded: 0 })]);
+    const refund = (body) => call('POST', `/api/admin/tutors/${people.tess.id}/refund`, { as: 'owner', body });
+    expect((await refund({ charge: 'nope' })).status).toBe(400);
+    expect((await refund({ charge: 'ch_other' })).status).toBe(404);
+    expect((await refund({ charge: 'ch_1', amount: 5000 })).status).toBe(400);
+    expect((await refund({ charge: 'ch_1', amount: 900 })).json.payment.refunded).toBe(900);
+    expect((await refund({ charge: 'ch_1' })).json.payment.refunded).toBe(1900); // the rest
+    expect((await refund({ charge: 'ch_1' })).status).toBe(400); // nothing left
+    expect(log.filter((e) => e.action === 'refund')).toHaveLength(2);
+  });
+
+  it('cancels at the end of the period or now, and can keep the plan', async () => {
+    const at = (path, body) => call('POST', `/api/admin/tutors/${people.tess.id}/${path}`, { as: 'owner', body });
+    expect((await at('cancel', {})).json.tutor.plan.cancelAtPeriodEnd).toBe(true);
+    expect((await at('resume')).json.tutor.plan.cancelAtPeriodEnd).toBe(false);
+    expect((await at('cancel', { when: 'now' })).json.tutor.plan.status).toBe('canceled');
+    expect((await at('cancel', {})).status).toBe(409); // nothing left to cancel
+    expect(cancels).toEqual([
+      [people.tess.id, 'period_end'],
+      [people.tess.id, 'now'],
+    ]);
+  });
+
+  it('deletes an account only with their email typed, never an owner, and cancels a live plan first', async () => {
+    people.ada.stripeCustomerId = 'cus_a';
+    people.ada.subscription = { id: 'sub_a', status: 'active' };
+    const remove = (who, confirm) => call('DELETE', `/api/admin/tutors/${who.id}`, { as: 'owner', body: { confirm } });
+    expect((await remove(people.owner, 'owner@example.com')).status).toBe(409);
+    expect((await remove(people.ada, 'someone@else.com')).status).toBe(400);
+    const adaId = people.ada.id;
+    expect((await remove(people.ada, ' ADA@example.com ')).json).toEqual({ deleted: true });
+    expect(cancels.at(-1)).toEqual([adaId, 'now']);
+    expect(people.ada).toBeUndefined();
+    expect(log.at(-1)).toMatchObject({ action: 'delete', target: { email: 'ada@example.com' } });
   });
 });

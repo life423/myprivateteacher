@@ -24,6 +24,7 @@ async function api(method, path, body) {
   }
 }
 
+const money = (cents) => ((cents || 0) / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
 const date = (ms) => (ms ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
 function ago(ms) {
   if (!ms) return 'never';
@@ -148,6 +149,100 @@ function AccessFields({ initial, onSave, busy, label }) {
   );
 }
 
+// A tutor's payments (from Stripe), with receipts, and refunds: all of what's left or part of it.
+function Payments({ tutor, onDone }) {
+  const [payments, setPayments] = useState(null);
+  const [refunding, setRefunding] = useState(null); // the payment whose refund form is open
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const load = useCallback(() => api('GET', `/tutors/${tutor.id}/payments`).then((r) => setPayments(r.ok ? r.data.payments : [])), [tutor.id]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const refund = async (payment, cents) => {
+    setBusy(true);
+    setNote(null);
+    const result = await api('POST', `/tutors/${tutor.id}/refund`, { charge: payment.id, amount: cents });
+    setBusy(false);
+    if (!result.ok) return setNote({ error: true, text: result.error });
+    const done = result.data.payment;
+    setNote({ text: `Refunded. ${money(done.refunded)} of ${money(done.amount)} has gone back to them in total.` });
+    setRefunding(null);
+    setAmount('');
+    load();
+    onDone?.();
+  };
+  if (!payments) return <p className='text-sm text-slate-500'>Loading payments…</p>;
+  if (!payments.length) return <p className='text-sm text-slate-600'>No payments yet.</p>;
+  return (
+    <div className='grid gap-2'>
+      <Message note={note} />
+      <ul className='grid gap-2'>
+        {payments.map((p) => {
+          const left = p.amount - p.refunded;
+          const raw = p.status.charAt(0).toUpperCase() + p.status.slice(1); // Pending, Failed
+          const state = p.status !== 'succeeded' ? raw : p.refunded === 0 ? 'Paid' : left === 0 ? 'Refunded' : `Partly refunded (${money(p.refunded)})`;
+          const cents = amount ? Math.round(Number(amount) * 100) : left;
+          return (
+            <li key={p.id} className='rounded-xl border border-slate-200 p-3 text-sm'>
+              <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+                <span className='font-bold text-slate-900'>{money(p.amount)}</span>
+                <span className='text-slate-500'>{date(p.created)}</span>
+                <span className='rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700'>{state}</span>
+                {p.receipt && (
+                  <a href={p.receipt} target='_blank' rel='noreferrer' className='ml-auto font-semibold text-violet-700 hover:underline'>
+                    Receipt
+                  </a>
+                )}
+              </div>
+              {p.status === 'succeeded' && left > 0 && (
+                refunding === p.id ? (
+                  <div className='mt-3 grid gap-2'>
+                    <label className='grid gap-1 font-semibold text-slate-700'>
+                      Amount to refund, up to {money(left)}
+                      <input
+                        type='number'
+                        inputMode='decimal'
+                        min='0.01'
+                        step='0.01'
+                        max={(left / 100).toFixed(2)}
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder={`${(left / 100).toFixed(2)} (all of it)`}
+                        className='rounded-xl border border-slate-300 px-3 py-2 font-normal'
+                      />
+                    </label>
+                    <div className='flex flex-wrap gap-2'>
+                      <ConfirmButton danger disabled={busy || !(cents > 0 && cents <= left)} onConfirm={() => refund(p, cents)}>
+                        Refund {money(cents)}
+                      </ConfirmButton>
+                      <button type='button' onClick={() => setRefunding(null)} className={`${BUTTON} text-slate-600 hover:bg-slate-50`}>
+                        Never mind
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setRefunding(p.id);
+                      setAmount('');
+                    }}
+                    className='mt-2 font-semibold text-rose-700 hover:underline'
+                  >
+                    Refund…
+                  </button>
+                )
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function Message({ note }) {
   if (!note) return null;
   return (
@@ -158,8 +253,9 @@ function Message({ note }) {
 }
 
 // One tutor, in a panel from the right (the whole screen on phones).
-function TutorPanel({ tutor, onClose, onChanged }) {
+function TutorPanel({ tutor, onClose, onChanged, onDeleted }) {
   const [busy, setBusy] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
   const [note, setNote] = useState(null);
   const [editing, setEditing] = useState(false);
   useEffect(() => {
@@ -249,6 +345,42 @@ function TutorPanel({ tutor, onClose, onChanged }) {
               </ConfirmButton>
             </div>
           </section>
+          {plan && ['trialing', 'active', 'past_due'].includes(plan.status) && (
+            <section className='grid gap-2'>
+              <h3 className='font-extrabold text-slate-900'>Plan</h3>
+              {plan.cancelAtPeriodEnd ? (
+                <>
+                  <p className='text-sm text-slate-600'>Their plan is set to end on {date(plan.periodEnd || plan.trialEnd)}.</p>
+                  <div>
+                    <ConfirmButton disabled={busy} onConfirm={() => run('POST', `/tutors/${tutor.id}/resume`, null, () => 'Their plan will carry on.')}>
+                      Keep their plan
+                    </ConfirmButton>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className='text-sm text-slate-600'>Ending at the end of the period keeps their access until then. Ending now stops it straight away.</p>
+                  <div className='flex flex-wrap gap-2'>
+                    <ConfirmButton
+                      disabled={busy}
+                      onConfirm={() => run('POST', `/tutors/${tutor.id}/cancel`, { when: 'period_end' }, () => 'Their plan will end at the end of the period.')}
+                    >
+                      Cancel at period end
+                    </ConfirmButton>
+                    <ConfirmButton danger disabled={busy} onConfirm={() => run('POST', `/tutors/${tutor.id}/cancel`, { when: 'now' }, () => 'Their plan is cancelled.')}>
+                      Cancel now
+                    </ConfirmButton>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+          {plan && (
+            <section className='grid gap-2'>
+              <h3 className='font-extrabold text-slate-900'>Payments</h3>
+              <Payments tutor={tutor} onDone={() => onChanged()} />
+            </section>
+          )}
           <section className='grid gap-2'>
             <h3 className='font-extrabold text-slate-900'>Sign out everywhere</h3>
             <p className='text-sm text-slate-600'>Ends their sessions on every device, for a lost phone or a shared login. They can sign straight back in.</p>
@@ -262,6 +394,42 @@ function TutorPanel({ tutor, onClose, onChanged }) {
               </ConfirmButton>
             </div>
           </section>
+          {access.kind !== 'owner' && (
+            <section className='grid gap-3 rounded-2xl border border-rose-200 p-4'>
+              <h3 className='font-extrabold text-rose-800'>Delete account</h3>
+              <p className='text-sm text-slate-600'>
+                For a deletion request. Removes their account and sign-ins
+                {plan ? ', and cancels their plan first so they’re never charged again' : ''}. Stripe keeps its own billing records. This can’t be undone.
+              </p>
+              <label className='grid gap-1 text-sm font-semibold text-slate-700'>
+                Type {tutor.email} to confirm
+                <input
+                  type='text'
+                  autoComplete='off'
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  className='rounded-xl border border-slate-300 px-3 py-2 font-normal'
+                />
+              </label>
+              <div>
+                <button
+                  type='button'
+                  disabled={busy || confirmText.trim().toLowerCase() !== tutor.email}
+                  onClick={async () => {
+                    setBusy(true);
+                    setNote(null);
+                    const result = await api('DELETE', `/tutors/${tutor.id}`, { confirm: confirmText });
+                    setBusy(false);
+                    if (!result.ok) return setNote({ error: true, text: result.error });
+                    onDeleted();
+                  }}
+                  className={`${BUTTON} bg-rose-600 text-white hover:bg-rose-700`}
+                >
+                  Delete account permanently
+                </button>
+              </div>
+            </section>
+          )}
         </div>
       </aside>
     </div>
@@ -329,6 +497,10 @@ const ACTIONS = {
   uncomp: 'removed free access from',
   extend: 'extended',
   'sign-out': 'signed out',
+  refund: 'refunded',
+  cancel: 'cancelled the plan of',
+  resume: 'kept the plan of',
+  delete: 'deleted the account of',
   grant: 'invited',
   ungrant: 'removed the invite for',
 };
@@ -336,6 +508,8 @@ function detailOf(e) {
   const d = e.detail || {};
   if (e.action === 'extend') return `${d.days} days, to ${date(d.until)}`;
   if (e.action === 'comp' || e.action === 'grant') return `${d.until ? `until ${date(d.until)}` : 'no end date'}${d.note ? ` · ${d.note}` : ''}`;
+  if (e.action === 'refund') return `${money(d.amount)} refunded in total`;
+  if (e.action === 'cancel') return d.when === 'now' ? 'straight away' : 'at the end of the period';
   if (e.action === 'sign-out') return `${d.sessions} session${d.sessions === 1 ? '' : 's'}`;
   return '';
 }
@@ -377,13 +551,16 @@ export default function AdminPage() {
   const [filter, setFilter] = useState('all');
   const [openId, setOpenId] = useState(null);
   const [activity, setActivity] = useState(null);
+  const [overview, setOverview] = useState(null);
   const owner = Boolean(tutor?.owner);
 
+  const refreshNumbers = useCallback(() => api('GET', '/overview').then((r) => r.ok && setOverview(r.data)), []);
   const load = useCallback(async () => {
     const result = await api('GET', '/tutors');
     if (result.ok) setData(result.data);
     else setError(result.error);
-  }, []);
+    refreshNumbers();
+  }, [refreshNumbers]);
   useEffect(() => {
     if (owner) load();
   }, [owner, load]);
@@ -406,12 +583,14 @@ export default function AdminPage() {
 
   const tutors = data?.tutors || [];
   const grants = data?.grants || [];
-  const count = (group) => tutors.filter((t) => status(t).group === group).length;
+  const o = overview;
   const stats = [
-    ['Tutors', tutors.length],
-    ['On a trial', count('trial')],
-    ['Paying', count('paying')],
-    ['Free access', count('free')],
+    ['Tutors', o?.tutors, o?.newThisWeek ? `${o.newThisWeek} new this week` : null],
+    ['On a trial', o?.trials, o?.trialsEndingSoon ? `${o.trialsEndingSoon} ending this week` : null],
+    ['Paying', o?.paying, o ? `${money(o.monthly)} a month` : null],
+    ['Past due', o?.pastDue, o?.pastDue ? 'card needs updating' : null],
+    ['Free access', o?.free, null],
+    ['Lessons now', o?.lessonsNow, o?.lessonsNow ? `${o.studentsNow} with a student` : null],
   ];
   const needle = query.trim().toLowerCase();
   const shown = tutors.filter((t) => (filter === 'all' || status(t).group === filter) && (!needle || `${t.name} ${t.email}`.toLowerCase().includes(needle)));
@@ -442,11 +621,12 @@ export default function AdminPage() {
       <main className='mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-6 px-4 py-8 sm:px-6'>
         <h1 className='text-2xl font-extrabold text-slate-900 sm:text-3xl'>Admin</h1>
         {error && <Message note={{ error: true, text: error }} />}
-        <dl className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
-          {stats.map(([label, value]) => (
+        <dl className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
+          {stats.map(([label, value, sub]) => (
             <div key={label} className='rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200'>
               <dt className='text-sm text-slate-500'>{label}</dt>
-              <dd className='mt-1 text-2xl font-extrabold text-slate-900'>{data ? value : '–'}</dd>
+              <dd className='mt-1 text-2xl font-extrabold text-slate-900'>{o ? value : '–'}</dd>
+              {sub && <p className='mt-1 text-xs text-slate-500'>{sub}</p>}
             </div>
           ))}
         </dl>
@@ -533,6 +713,11 @@ export default function AdminPage() {
           onClose={closePanel}
           onChanged={(changed) => {
             if (changed) setData((d) => ({ ...d, tutors: d.tutors.map((t) => (t.id === changed.id ? changed : t)) }));
+            refreshNumbers();
+          }}
+          onDeleted={() => {
+            setOpenId(null);
+            load();
           }}
         />
       )}
