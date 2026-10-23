@@ -42,3 +42,14 @@ describe('the whiteboard viewport', () => {
     expect(huge.scale).toBeCloseTo(0.7 * 4);
   });
 });
+
+describe('a phone with its own alphabet bar', () => {
+  it('never shows the board strip, at any zoom, pan or fit', () => {
+    const fit = frame(393, 600, null, 'center', 168);
+    expect(-fit.top / fit.scale).toBeCloseTo(168, 5); // the fit view starts just below the strip, at the top
+    const panned = frame(393, 600, { scale: 1.2, cx: 300, cy: 0 }, 'center', 168); // asked to look at the very top
+    expect(-panned.top / panned.scale).toBeCloseTo(168, 5);
+    const normal = frame(393, 600, { scale: 1.2, cx: 300, cy: 0 }); // without a bar the strip can show
+    expect(Math.abs(normal.top)).toBe(0); // the very top (0 or -0)
+  });
+});

@@ -20,18 +20,26 @@ export const BELOW_STRIP = 168;
 
 // Where the board sits in a width x height box for a view. Bigger than the box, it never
 // leaves a gap at an edge; smaller, it sits in the middle.
-export function frame(width, height, view, align = 'center') {
+// minY: nothing above this stage line ever shows. On phones the alphabet has its own bar, so the
+// board's own strip is kept out of view, whatever the zoom, pan or fit.
+export function frame(width, height, view, align = 'center', minY = 0) {
   if (!width || !height) return { left: 0, top: 0, width: 0, height: 0, scale: 0, fit: 0, max: 0 };
-  const fit = Math.min(width / STAGE.width, height / STAGE.height);
-  const max = Math.max(width / STAGE.width, height / STAGE.height) * MAX_ZOOM;
+  const span = STAGE.height - minY; // the height of the stage that may show
+  const fit = Math.min(width / STAGE.width, height / span);
+  const max = Math.max(width / STAGE.width, height / span) * MAX_ZOOM;
   const scale = view ? clamp(view.scale, fit, max) : fit;
   const w = STAGE.width * scale;
   const h = STAGE.height * scale;
+  const shown = span * scale;
   const place = (box, size, centre, end = false) =>
     size <= box ? (end ? box - size : (box - size) / 2) : clamp(box / 2 - centre * scale, box - size, 0);
+  const top =
+    shown <= height
+      ? -minY * scale + (minY ? 0 : align === 'end' ? height - shown : (height - shown) / 2) // with minY, at the top: nothing above it shows
+      : clamp(height / 2 - (view ? view.cy : minY + span / 2) * scale, height - h, -minY * scale);
   return {
     left: place(width, w, view ? view.cx : STAGE.width / 2),
-    top: place(height, h, view ? view.cy : STAGE.height / 2, align === 'end'),
+    top,
     width: w,
     height: h,
     scale,

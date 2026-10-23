@@ -62,12 +62,13 @@ function letterTone(letter, pointed) {
 }
 
 // The bottom layer: the alphabet strip (unless hidden), the board, its guide lines and the sound boxes.
-const Backdrop = memo(function Backdrop({ pointed, strip, boxes, viewBox }) {
+const Backdrop = memo(function Backdrop({ pointed, strip, boxes, viewBox, bar = false }) {
   const board = boardRect(strip);
   return (
     <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='absolute inset-0 h-full w-full' aria-hidden='true'>
       <rect width={STAGE.width} height={STAGE.height} rx='28' className='fill-slate-100' />
       {strip &&
+        !bar && // the alphabet has its own bar (phones): no second alphabet on the board
         LETTERS.map((letter, i) => {
           const tone = letterTone(letter, pointed);
           const x = STRIP.x + i * CELL_WIDTH;
@@ -181,7 +182,7 @@ export default function Stage({
   // On tablets the automatic fill keeps filling as the space changes (the sheet sliding up or
   // down), until someone zooms, pans or fits the board themselves.
   const autoFill = useRef(false);
-  const layout = frame(size.width, size.height, view, align);
+  const layout = frame(size.width, size.height, view, align, fillTop);
   const viewBox = viewBoxOf(layout, size.width, size.height);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -211,7 +212,7 @@ export default function Stage({
     if (!focus || !size.width) return;
     autoFill.current = false;
     const scale = Math.min(size.width / focus.w, size.height / focus.h);
-    if (scale <= frame(size.width, size.height, null).fit * 1.02) setView(null);
+    if (scale <= frame(size.width, size.height, null, 'center', fillTop).fit * 1.02) setView(null);
     else setView({ scale, cx: focus.x + focus.w / 2, cy: focus.y + focus.h / 2 });
   }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const [grip, setGrip] = useState(null); // 'grab', 'grabbing' or 'remove', for the cursor
@@ -683,7 +684,7 @@ export default function Stage({
           {view ? <Shrink className='h-4 w-4' aria-hidden='true' /> : <Expand className='h-4 w-4' aria-hidden='true' />}
         </button>
       )}
-      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} viewBox={viewBox} />
+      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} viewBox={viewBox} bar={Boolean(fillTop)} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} />
