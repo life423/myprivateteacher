@@ -397,7 +397,7 @@ export default function TutorRoom() {
         {...pictureProps}
         layout='drawer'
         browseOnly
-        notice={studentBrowsing ? { text: browseText, tone: 'violet' } : { text: 'Point at a picture to show it to your student.', tone: 'sky' }}
+        notice={studentBrowsing ? { text: browseText, tone: 'violet' } : { text: 'Choose Show student on a picture to put it on your student’s screen.', tone: 'sky' }}
         onPlaced={() => setBrowsing(false)}
       />
     </PictureDrawer>
