@@ -25,9 +25,10 @@ const RANK = { active: 0, trialing: 1, past_due: 2, unpaid: 3, paused: 4, incomp
 export const bestSubscription = (subs) =>
   [...subs].sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9) || b.created - a.created)[0] || null;
 
-export function connectBilling({ secretKey = process.env.STRIPE_SECRET_KEY, webhookSecret = process.env.STRIPE_WEBHOOK_SECRET, accounts } = {}) {
-  if (!secretKey || !accounts) return null;
-  const stripe = new Stripe(secretKey);
+export function connectBilling({ secretKey = process.env.STRIPE_SECRET_KEY, webhookSecret = process.env.STRIPE_WEBHOOK_SECRET, accounts, stripe: client } = {}) {
+  if ((!secretKey && !client) || !accounts) return null;
+  const stripe = client || new Stripe(secretKey);
+  const creating = new Map(); // tutor id -> the Stripe customer being created for them
   let price = null;
 
   async function priceId() {
@@ -38,12 +39,27 @@ export function connectBilling({ secretKey = process.env.STRIPE_SECRET_KEY, webh
     return price;
   }
 
-  // Each tutor gets one Stripe customer, made the first time they need one.
-  async function customerFor(tutor) {
-    if (tutor.stripeCustomerId) return tutor.stripeCustomerId;
-    const customer = await stripe.customers.create({ email: tutor.email, name: tutor.name || undefined, metadata: { tutorId: tutor.id } });
-    await accounts.setBilling(tutor.id, { stripeCustomerId: customer.id });
-    return customer.id;
+  // Each tutor gets exactly one Stripe customer, made the first time they need one. Requests
+  // that arrive together share the one being made, and the idempotency key makes Stripe
+  // return that same customer to any repeat, so extra clicks can never make duplicates.
+  function customerFor(tutor) {
+    if (tutor.stripeCustomerId) return Promise.resolve(tutor.stripeCustomerId);
+    if (!creating.has(tutor.id)) {
+      const job = (async () => {
+        const customer = await stripe.customers.create(
+          { email: tutor.email, name: tutor.name || undefined, metadata: { tutorId: tutor.id } },
+          { idempotencyKey: `tutor-customer-${tutor.id}` },
+        );
+        await accounts.setBilling(tutor.id, { stripeCustomerId: customer.id });
+        return customer.id;
+      })();
+      creating.set(tutor.id, job);
+      job.then(
+        () => creating.delete(tutor.id),
+        () => creating.delete(tutor.id),
+      );
+    }
+    return creating.get(tutor.id);
   }
 
   // Reads the customer's subscriptions from Stripe (the source of truth) and saves the one that

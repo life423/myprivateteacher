@@ -101,3 +101,32 @@ describe('reading a subscription', () => {
     expect(best.id).toBe('now');
   });
 });
+
+describe('one Stripe customer per tutor', () => {
+  it('makes a single customer when several checkouts start at once', async () => {
+    const { connectBilling } = await import('./billing.js');
+    let made = 0;
+    const keys = new Set();
+    const stripe = {
+      customers: {
+        create: async (params, options) => {
+          made += 1;
+          keys.add(options?.idempotencyKey);
+          await new Promise((resolve) => setTimeout(resolve, 30)); // Stripe takes a moment
+          return { id: 'cus_once' };
+        },
+      },
+      prices: { list: async () => ({ data: [{ id: 'price_1' }] }) },
+      checkout: { sessions: { create: async ({ customer }) => ({ url: `https://checkout.stripe.test/${customer}` }) } },
+    };
+    const saved = [];
+    const accounts = { setBilling: async (id, fields) => saved.push(fields) };
+    const billing = connectBilling({ stripe, accounts });
+    const newTutor = { id: 't9', email: 'new@example.com', name: 'New', stripeCustomerId: null, subscription: null };
+    const urls = await Promise.all([1, 2, 3].map(() => billing.checkout(newTutor, 'http://localhost')));
+    expect(made).toBe(1);
+    expect([...keys]).toEqual(['tutor-customer-t9']);
+    expect(saved).toEqual([{ stripeCustomerId: 'cus_once' }]);
+    expect(new Set(urls)).toEqual(new Set(['https://checkout.stripe.test/cus_once']));
+  });
+});

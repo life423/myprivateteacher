@@ -9,6 +9,16 @@ import { openBilling, planActive, planLabel, signOut, startCheckout, useAccount 
 export default function LoginPage() {
   const { loading, tutor, googleClientId, trialDays } = useAccount();
   const [billingError, setBillingError] = useState(null);
+  const [opening, setOpening] = useState(false); // waiting for Stripe: one click is enough
+  const openStripe = (open) => {
+    if (opening) return;
+    setOpening(true);
+    setBillingError(null);
+    open().then((message) => {
+      setBillingError(message);
+      if (message) setOpening(false); // on success the page is already leaving for Stripe
+    });
+  };
   return (
     <main className='flex min-h-dvh items-center justify-center bg-gradient-to-b from-violet-50 to-white px-4 py-12'>
       <div className='w-full max-w-sm rounded-3xl bg-white p-8 text-center shadow-xl ring-1 ring-slate-200'>
@@ -41,20 +51,22 @@ export default function LoginPage() {
               {trialDays && (tutor.billingAccount && tutor.plan ? (
                 <button
                   type='button'
-                  onClick={() => openBilling().then(setBillingError)}
-                  className='inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50'
+                  disabled={opening}
+                  onClick={() => openStripe(openBilling)}
+                  className='inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60'
                 >
                   <CreditCard className='h-5 w-5' aria-hidden='true' />
-                  Manage billing
+                  {opening ? 'Opening…' : 'Manage billing'}
                 </button>
               ) : (
                 <button
                   type='button'
-                  onClick={() => startCheckout().then(setBillingError)}
-                  className='inline-flex items-center justify-center gap-2 rounded-xl border border-violet-300 px-4 py-3 font-semibold text-violet-700 hover:bg-violet-50'
+                  disabled={opening}
+                  onClick={() => openStripe(startCheckout)}
+                  className='inline-flex items-center justify-center gap-2 rounded-xl border border-violet-300 px-4 py-3 font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-60'
                 >
                   <Sparkles className='h-5 w-5' aria-hidden='true' />
-                  Start {trialDays}-day free trial
+                  {opening ? 'Opening…' : `Start ${trialDays}-day free trial`}
                 </button>
               ))}
               {billingError && (

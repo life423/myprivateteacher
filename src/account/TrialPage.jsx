@@ -52,9 +52,13 @@ export default function TrialPage() {
               <button
                 type='button'
                 onClick={() => {
+                  if (started.current) return;
+                  started.current = true;
                   setError(null);
-                  started.current = false;
-                  startCheckout().then(setError);
+                  startCheckout().then((message) => {
+                    setError(message);
+                    if (message) started.current = false;
+                  });
                 }}
                 className='w-full rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white hover:bg-violet-700'
               >
