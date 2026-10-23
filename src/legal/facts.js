@@ -2,7 +2,7 @@
 export const LEGAL = {
   service: 'My Private Teacher',
   site: 'myprivateteacher.com',
-  operator: 'Clark Company Limited', // the business that runs the service
+  operator: 'Andrew Clark', // who runs the service (a sole proprietor until a business is registered)
   email: 'drew@drewclark.io', // where people write about privacy, billing and these terms
   state: 'Texas', // whose law governs the Terms
   effective: 'October 23, 2026',
