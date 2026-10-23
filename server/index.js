@@ -8,6 +8,7 @@ import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
 import { connectLibrary } from './library.js';
 import { SESSION_COOKIE, SESSION_DAYS, connectAccounts, publicTutor } from './accounts.js';
 import { TRIAL_DAYS, connectBilling } from './billing.js';
+import { closeDatabases, warmDatabase } from './db.js';
 
 const PORT = Number(process.env.PORT) || 8080;
 const CANONICAL_HOST = process.env.CANONICAL_HOST || 'myprivateteacher.com';
@@ -276,6 +277,7 @@ export function start(port = PORT) {
     get: (code, id) => realtime.pictures.get(code, id),
     isTutor: (code, key) => realtime.pictures.isTutor(code, key),
   };
+  warmDatabase(process.env.MONGODB_URI); // connect now, not on the first visitor's request
   const library = connectLibrary();
   const accounts = connectAccounts();
   if (accounts) console.log('Tutor sign-in connected');
@@ -305,6 +307,7 @@ export function start(port = PORT) {
     realtime.close();
     library?.close();
     accounts?.close();
+    closeDatabases();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };

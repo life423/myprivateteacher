@@ -1,4 +1,5 @@
-import { MongoClient, ObjectId } from 'mongodb';
+import { ObjectId } from 'mongodb';
+import { mongoClient } from './db.js';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { DefaultAzureCredential } from '@azure/identity';
 
@@ -11,7 +12,7 @@ export const CONTAINER = 'library';
 
 export function connectLibrary({ uri = process.env.MONGODB_URI, account = process.env.AZURE_STORAGE_ACCOUNT } = {}) {
   if (!uri || !account) return null;
-  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10000, retryWrites: false });
+  const client = mongoClient(uri);
   const cards = client.db(DATABASE).collection(CARDS);
   const storage = new BlobServiceClient(`https://${account}.blob.core.windows.net`, new DefaultAzureCredential());
   const container = storage.getContainerClient(CONTAINER);
@@ -46,6 +47,6 @@ export function connectLibrary({ uri = process.env.MONGODB_URI, account = proces
       const bytes = await container.getBlobClient(card.image.path).downloadToBuffer();
       return { bytes, w: card.image.width, h: card.image.height, title: card.title, regions: Array.isArray(card.regions) ? card.regions : [] };
     },
-    close: () => client.close(),
+    close: () => {}, // the shared connection closes with the server
   };
 }

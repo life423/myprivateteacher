@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { MongoClient, ObjectId } from 'mongodb';
+import { ObjectId } from 'mongodb';
+import { mongoClient } from './db.js';
 import { OAuth2Client } from 'google-auth-library';
 
 // Tutor accounts: Sign in with Google, with sessions kept in MongoDB. Only a fingerprint
@@ -31,12 +32,20 @@ export const publicTutor = (t) => ({
 
 export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = process.env.GOOGLE_CLIENT_ID } = {}) {
   if (!uri || !clientId) return null;
-  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10000, retryWrites: false });
-  const db = client.db('myprivateteacher');
+  const db = mongoClient(uri).db('myprivateteacher');
   const tutors = db.collection('tutors');
   const sessions = db.collection('sessions');
   tutors.createIndex({ googleSub: 1 }, { unique: true }).catch(() => {});
   const google = new OAuth2Client(clientId);
+
+  // Recent sign-in checks, remembered for 30 seconds so page loads don't each ask the database.
+  // Signing out, or any billing change, forgets them at once.
+  const recent = new Map(); // session fingerprint -> { tutor, until }
+  const REMEMBER_MS = 30000;
+  const remember = (key, tutor, expiresAt) => {
+    if (recent.size > 2000) recent.clear();
+    recent.set(key, { tutor, until: Math.min(Date.now() + REMEMBER_MS, expiresAt.getTime()) });
+  };
 
   return {
     clientId,
@@ -72,25 +81,36 @@ export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = proc
     // The signed-in tutor for a session token, or null.
     async tutorFor(token) {
       if (!token) return null;
-      const session = await sessions.findOne({ _id: fingerprint(token) });
+      const key = fingerprint(token);
+      const known = recent.get(key);
+      if (known && known.until > Date.now()) return known.tutor;
+      recent.delete(key);
+      const session = await sessions.findOne({ _id: key });
       if (!session) return null;
       if (session.expiresAt < new Date()) {
         await sessions.deleteOne({ _id: session._id });
         return null;
       }
       const tutor = await tutors.findOne({ _id: session.tutorId });
-      return tutor ? tutorRecord(tutor) : null;
+      if (!tutor) return null;
+      const record = tutorRecord(tutor);
+      remember(key, record, session.expiresAt);
+      return record;
     },
     // Billing details from Stripe: a tutor's customer id, or a customer's subscription status.
     async setBilling(tutorId, fields) {
+      recent.clear();
       await tutors.updateOne({ _id: new ObjectId(tutorId) }, { $set: { ...fields, billingUpdatedAt: new Date() } });
     },
     async setBillingByCustomer(customerId, fields) {
+      recent.clear();
       await tutors.updateOne({ stripeCustomerId: customerId }, { $set: { ...fields, billingUpdatedAt: new Date() } });
     },
     async signOut(token) {
-      if (token) await sessions.deleteOne({ _id: fingerprint(token) });
+      if (!token) return;
+      recent.delete(fingerprint(token));
+      await sessions.deleteOne({ _id: fingerprint(token) });
     },
-    close: () => client.close(),
+    close: () => {}, // the shared connection closes with the server
   };
 }
