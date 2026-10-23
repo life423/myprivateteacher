@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { LogOut, PlayCircle } from 'lucide-react';
+import { CreditCard, LogOut, PlayCircle } from 'lucide-react';
 import { Link } from '../router.jsx';
-import { signOut } from './account.js';
+import { planActive, planLabel, signOut, useAccount } from './account.js';
 
 // A tutor's picture (from Google) or the first letter of their name.
 export function Avatar({ tutor, size = 32 }) {
@@ -20,6 +20,7 @@ export function Avatar({ tutor, size = 32 }) {
 export default function AccountMenu({ tutor }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const { trialDays } = useAccount();
   useEffect(() => {
     if (!open) return undefined;
     const close = (event) => {
@@ -50,11 +51,22 @@ export default function AccountMenu({ tutor }) {
           <div className='px-3 py-2'>
             <p className='truncate font-bold text-slate-900'>{tutor.name || 'Tutor'}</p>
             <p className='truncate text-sm text-slate-500'>{tutor.email}</p>
+            {trialDays && (
+              <p className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${planActive(tutor.plan) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                {planLabel(tutor.plan)}
+              </p>
+            )}
           </div>
           <Link to='/whiteboard/teach' role='menuitem' className='flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>
             <PlayCircle className='h-4 w-4 text-violet-600' aria-hidden='true' />
             Start teaching
           </Link>
+          {trialDays && (
+            <Link to='/account' role='menuitem' className='flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>
+              <CreditCard className='h-4 w-4 text-slate-500' aria-hidden='true' />
+              Account and billing
+            </Link>
+          )}
           <button
             type='button'
             role='menuitem'

@@ -3,6 +3,8 @@ import { useRoute } from './router.jsx';
 import ActivityChooser from './components/ActivityChooser.jsx';
 import LandingPage from './landing/LandingPage.jsx';
 import LoginPage from './account/LoginPage.jsx';
+import TrialPage from './account/TrialPage.jsx';
+import BillingDonePage from './account/BillingDonePage.jsx';
 import ArticulationGallery from './dev/ArticulationGallery.jsx';
 import ArticulationCardsGallery, { ArticulationCardPage } from './dev/ArticulationCardsGallery.jsx';
 import PhonemeSeparationGame from './components/PhonemeSeparationGame.jsx';
@@ -20,6 +22,9 @@ function page(path) {
   if (path === '/dev/articulation-cards') return { title: 'Articulation cards', element: <ArticulationCardsGallery /> };
   if (path === '/dev/articulation') return { title: 'Articulation gallery', element: <ArticulationGallery /> };
   if (path === '/login') return { title: 'Sign in', element: <LoginPage /> };
+  if (path === '/account') return { title: 'Your account', element: <LoginPage /> };
+  if (path === '/trial') return { title: 'Start your free trial', element: <TrialPage /> };
+  if (path === '/billing/done') return { title: 'Welcome', element: <BillingDonePage /> };
   if (path === '/activities') return { title: 'Activities', element: <ActivityChooser /> };
   if (path === '/phoneme-pop') return { title: 'Phoneme Pop', element: <PhonemeSeparationGame /> };
   if (path === '/whiteboard') return { title: 'Alphabet Whiteboard', element: <WhiteboardLobby /> };

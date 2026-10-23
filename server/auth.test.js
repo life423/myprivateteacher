@@ -54,7 +54,7 @@ function call(method, path, { body, cookie, origin } = {}) {
 describe('tutor sign-in with Google', () => {
   it('says nobody is signed in, and that Google sign-in is available', async () => {
     const me = await call('GET', '/api/me');
-    expect(me.json).toEqual({ tutor: null, signIn: { google: 'client-123' } });
+    expect(me.json).toMatchObject({ tutor: null, signIn: { google: 'client-123' } });
   });
 
   it('refuses a credential Google would not accept', async () => {

@@ -13,7 +13,8 @@
     "shots": "node scripts/responsive-shots.mjs shots",
     "import-library": "node --env-file=.env scripts/import-library.mjs",
     "articulation": "node scripts/build-articulation.mjs",
-    "render-articulation": "node scripts/render-articulation-cards.mjs"
+    "render-articulation": "node scripts/render-articulation-cards.mjs",
+    "stripe-setup": "node --env-file=.env scripts/stripe-setup.mjs"
   },
   "dependencies": {
     "@azure/identity": "^4.13.3",
@@ -22,6 +23,7 @@
     "express": "^5.2.1",
     "google-auth-library": "^11.1.0",
     "mongodb": "^6.21.0",
+    "stripe": "^23.0.1",
     "ws": "^8.22.0"
   },
   "devDependencies": {
