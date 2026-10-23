@@ -84,20 +84,21 @@ describe('whiteboard rooms', () => {
     await expect(connect('https://somewhere-else.example')).rejects.toThrow('403');
   });
 
-  it('relays pointers both ways, clamped, with the letter and the tool', async () => {
+  it('relays pointers both ways, clamped, with the tool', async () => {
     const { tutor, code } = await openRoom();
     expect(code).toMatch(/^[0-9]{4}$/);
     const { student } = await joinRoom(code);
     expect(await tutor.take('presence')).toMatchObject({ tutor: true, student: true });
 
-    student.send({ t: 'p', x: 0.48, y: 1.7, l: 'M', m: 'hand' });
-    expect(await tutor.take('p')).toEqual({ t: 'p', x: 0.48, y: 1, l: 'M', m: 'hand' });
+    student.send({ t: 'p', x: 0.48, y: 1.7, m: 'pen' });
+    expect(await tutor.take('p')).toEqual({ t: 'p', x: 0.48, y: 1, m: 'pen' });
 
-    student.send({ t: 'p', x: 0.1, y: 0.1, l: 'not a letter' });
-    expect((await tutor.take('p')).l).toBeNull();
+    // The old personal glove mode (and any unknown mode) shows nothing.
+    student.send({ t: 'p', x: 0.1, y: 0.1, l: 'M', m: 'hand' });
+    expect(await tutor.take('p')).toEqual({ t: 'p', m: 'none' });
 
     tutor.send({ t: 'p', x: 0.5, y: 0.5, m: 'pen' });
-    expect(await student.take('p')).toMatchObject({ x: 0.5, y: 0.5, l: null, m: 'pen' });
+    expect(await student.take('p')).toEqual({ t: 'p', x: 0.5, y: 0.5, m: 'pen' });
     tutor.send({ t: 'p', m: 'none' });
     expect(await student.take('p')).toEqual({ t: 'p', m: 'none' });
   });
@@ -304,13 +305,13 @@ describe('pointers', () => {
   it('shows a returning tutor where the student is pointing', async () => {
     const { tutor, code, key } = await openRoom();
     const { student } = await joinRoom(code);
-    student.send({ t: 'p', x: 0.3, y: 0.08, l: 'H', m: 'hand' });
+    student.send({ t: 'p', x: 0.3, y: 0.08, m: 'pen' });
     await tutor.take('p');
 
     const back = await connect(); // the tutor refreshes: same code and key, new connection
     back.send({ t: 'create', code, key });
     await back.take('room');
-    expect(await back.take('p')).toMatchObject({ x: 0.3, y: 0.08, l: 'H', m: 'hand' });
+    expect(await back.take('p')).toMatchObject({ x: 0.3, y: 0.08, m: 'pen' });
   });
 });
 

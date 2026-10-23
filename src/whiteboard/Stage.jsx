@@ -5,7 +5,7 @@ import Tile from './Tile.jsx';
 import PieceImage from './PieceImage.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
-import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, TOUCH_LIFT, boardRect, clamp, letterAt } from './stage.js';
+import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
 import { TILE_HEIGHT, clampTile, soundBoxes, tileWidth } from '../../shared/tiles.js';
 import { clampPiece, pieceSize } from '../../shared/pieces.js';
 import { Copy, Expand, Shrink, Trash2 } from 'lucide-react';
@@ -218,7 +218,7 @@ export default function Stage({
   const [grip, setGrip] = useState(null); // 'grab', 'grabbing' or 'remove', for the cursor
   const [selectedPieceId, setSelectedPieceId] = useState(null);
   // Pieces are handled with the pointer tools (Watch, Hand), never the pen or eraser.
-  const movable = tool === 'none' || tool === 'hand';
+  const movable = tool === 'none';
   const stackedPieces = [...pieces].sort((a, b) => a.z - b.z);
   const selectedPiece = movable ? pieces.find((p) => p.id === selectedPieceId) || null : null;
   const pieceButtons = [canDuplicatePieces && 'duplicate', canDeletePieces && 'delete'].filter(Boolean);
@@ -311,11 +311,6 @@ export default function Stage({
   };
 
   const withLetter = (p) => ({ ...p, letter: letterAt(p.x, p.y, live.current.strip) });
-
-  const handPoint = (event) => {
-    const p = toStage(event.clientX, event.clientY, event.pointerType === 'touch' ? TOUCH_LIFT : 0);
-    return p && withLetter(p);
-  };
 
   const isPalm = (event) => {
     if (event.pointerType === 'pen') lastPen.current = performance.now();
@@ -476,13 +471,7 @@ export default function Stage({
       }
       return;
     }
-    if (tool === 'hand') {
-      if (event.pointerType !== 'mouse') capture(event);
-      const p = handPoint(event);
-      if (p) point?.(p);
-      return;
-    }
-    point?.({ ...raw, letter: null });
+    point?.(raw);
     if (drawing.current !== null || !insideBoard(raw, boardRect(live.current.strip))) return;
     capture(event);
     drawing.current = event.pointerId;
@@ -585,13 +574,7 @@ export default function Stage({
       setGrip(next);
     }
     if (tool === 'none') return;
-    if (tool === 'hand') {
-      if (event.pointerType !== 'mouse' && event.buttons === 0) return;
-      const p = handPoint(event);
-      if (p) point?.(p);
-      return;
-    }
-    if (event.pointerType !== 'touch') point?.({ ...raw, letter: null });
+    if (event.pointerType !== 'touch') point?.(raw);
   };
 
   // Ends what a pointer was doing (a stroke, a drag). Also used when a second finger arrives.
@@ -643,7 +626,7 @@ export default function Stage({
     if (tool === 'pen' || tool === 'eraser') live.current.onLeave?.();
   };
 
-  let cursor = tool === 'none' || tool === 'hand' ? '' : 'cursor-none';
+  let cursor = tool === 'none' ? '' : 'cursor-none';
   if (grip === 'grab') cursor = 'cursor-grab';
   if (grip === 'grabbing') cursor = 'cursor-grabbing';
   if (grip === 'remove') cursor = 'cursor-pointer';
@@ -774,7 +757,7 @@ export default function Stage({
             of the board on screen shows in the bar, on its letter, rather than peeking out under it.
             Scrolled up to the board's own strip, the hand shows there as usual. */}
         {markers
-          .filter((m) => m.kind !== 'hand' && !(fillTop && seen && m.y < seen.y))
+          .filter((m) => !(fillTop && seen && m.y < seen.y))
           .map(({ key, ...marker }) => (
             <Marker key={key} {...marker} />
           ))}
