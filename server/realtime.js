@@ -881,6 +881,16 @@ export function attachRealtime(server, options = {}) {
       if (role) send(ws, { t: 'rtc:config', iceServers: iceServersFor(ws.room, role) });
     },
 
+    // A one-line note about how a call went (device, browser, route type; no addresses), so a
+    // failed call on someone's device leaves a trace in the server log.
+    'rtc:report'(ws, msg) {
+      const role = roleOf(ws);
+      if (!role || typeof msg.text !== 'string') return;
+      ws.callReports = (ws.callReports || 0) + 1;
+      if (ws.callReports > 20) return;
+      console.log(`Video ${ws.room.code} ${role}: ${msg.text.replace(/[^ -~’]/g, ' ').slice(0, 200)}`);
+    },
+
     'rtc:ready'(ws) {
       relayRtc(ws, { t: 'rtc:ready' });
     },
