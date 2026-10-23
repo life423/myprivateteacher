@@ -6,6 +6,7 @@ import LoginPage from './account/LoginPage.jsx';
 import TrialPage from './account/TrialPage.jsx';
 import BillingDonePage from './account/BillingDonePage.jsx';
 import TeachGate from './account/TeachGate.jsx';
+import AdminPage from './admin/AdminPage.jsx';
 import TermsPage from './legal/TermsPage.jsx';
 import PrivacyPage from './legal/PrivacyPage.jsx';
 import ArticulationGallery from './dev/ArticulationGallery.jsx';
@@ -25,6 +26,7 @@ function page(path) {
   if (path === '/dev/articulation-cards') return { title: 'Articulation cards', element: <ArticulationCardsGallery /> };
   if (path === '/dev/articulation') return { title: 'Articulation gallery', element: <ArticulationGallery /> };
   if (path === '/login') return { title: 'Sign in', element: <LoginPage /> };
+  if (path === '/admin') return { title: 'Admin', element: <AdminPage /> };
   if (path === '/terms') return { title: 'Terms of Service', element: <TermsPage /> };
   if (path === '/privacy') return { title: 'Privacy Policy', element: <PrivacyPage /> };
   if (path === '/account') return { title: 'Your account', element: <LoginPage /> };

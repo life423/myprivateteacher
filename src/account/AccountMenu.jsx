@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { CreditCard, LogOut, PlayCircle, Sparkles } from 'lucide-react';
+import { CreditCard, LogOut, PlayCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { Link } from '../router.jsx';
-import { planActive, planLabel, signOut, useAccount } from './account.js';
+import { accessLabel, hasAccess, signOut, useAccount } from './account.js';
 
 // A tutor's picture (from Google) or the first letter of their name.
 export function Avatar({ tutor, size = 32 }) {
@@ -52,12 +52,12 @@ export default function AccountMenu({ tutor }) {
             <p className='truncate font-bold text-slate-900'>{tutor.name || 'Tutor'}</p>
             <p className='truncate text-sm text-slate-500'>{tutor.email}</p>
             {trialDays && (
-              <p className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${planActive(tutor.plan) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                {planLabel(tutor.plan)}
+              <p className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${hasAccess(tutor) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                {accessLabel(tutor)}
               </p>
             )}
           </div>
-          {trialDays && !planActive(tutor.plan) && (
+          {trialDays && !hasAccess(tutor) && (
             <Link to='/trial' role='menuitem' className='flex items-center gap-2 rounded-xl bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100'>
               <Sparkles className='h-4 w-4' aria-hidden='true' />
               {tutor.plan ? 'Subscribe to the Tutor plan' : `Start ${trialDays}-day free trial`}
@@ -67,6 +67,12 @@ export default function AccountMenu({ tutor }) {
             <PlayCircle className='h-4 w-4 text-violet-600' aria-hidden='true' />
             Start teaching
           </Link>
+          {tutor.owner && (
+            <Link to='/admin' role='menuitem' className='flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>
+              <ShieldCheck className='h-4 w-4 text-violet-600' aria-hidden='true' />
+              Admin
+            </Link>
+          )}
           {trialDays && (
             <Link to='/account' role='menuitem' className='flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>
               <CreditCard className='h-4 w-4 text-slate-500' aria-hidden='true' />

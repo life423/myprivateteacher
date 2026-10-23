@@ -93,6 +93,16 @@ export function connectBilling({ secretKey = process.env.STRIPE_SECRET_KEY, webh
       });
       return session.url;
     },
+    // A free extension from the admin panel: the next charge moves back by that many days, as
+    // extra trial time, which Stripe never bills for. Returns the new status.
+    async extend(tutor, days) {
+      const sub = tutor.subscription;
+      if (!sub?.id || !tutor.stripeCustomerId) throw new Error('no subscription to extend');
+      const now = Math.floor(Date.now() / 1000);
+      const from = Math.max(now, Math.floor((sub.trialEnd || 0) / 1000), Math.floor((sub.periodEnd || 0) / 1000));
+      await stripe.subscriptions.update(sub.id, { trial_end: from + days * 86400, proration_behavior: 'none' });
+      return syncCustomer(tutor.stripeCustomerId);
+    },
     // Stripe's own billing page: card, invoices, cancel.
     async portal(tutor, origin) {
       const session = await stripe.billingPortal.sessions.create({ customer: await customerFor(tutor), return_url: `${origin}/account` });

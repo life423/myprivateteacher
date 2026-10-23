@@ -3,7 +3,7 @@ import { ArrowRight, BookOpen, Check, Gamepad2, Image as ImageIcon, LayoutGrid, 
 import { Link } from '../router.jsx';
 import AccountMenu from '../account/AccountMenu.jsx';
 import SiteFooter from './SiteFooter.jsx';
-import { planActive, signOut, useAccount } from '../account/account.js';
+import { hasAccess, signOut, useAccount } from '../account/account.js';
 
 // The public home page: what My Private Teacher is, for the tutors who subscribe to it, with a
 // quick way in for students who already have a lesson code.
@@ -87,7 +87,7 @@ export default function LandingPage() {
             <Link to={JOIN} className='rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100'>
               Join a lesson
             </Link>
-            {tutor && planActive(tutor.plan) ? (
+            {hasAccess(tutor) ? (
               <Link to='/whiteboard/teach' className='inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700'>
                 Start teaching <ArrowRight className='h-4 w-4' aria-hidden='true' />
               </Link>
