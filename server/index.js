@@ -7,6 +7,7 @@ import { attachRealtime } from './realtime.js';
 import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
 import { connectLibrary } from './library.js';
 import { SESSION_COOKIE, SESSION_DAYS, connectAccounts, publicTutor, tutorAccess } from './accounts.js';
+import { connectWords } from './words.js';
 import { adminRoutes } from './admin.js';
 import { PLAN_PRICE_CENTS, TRIAL_DAYS, connectBilling } from './billing.js';
 import { closeDatabases, warmDatabase } from './db.js';
@@ -94,7 +95,7 @@ function sameSite(req) {
   }
 }
 
-export function createApp({ pictures, library, accounts, billing, liveLessons } = {}) {
+export function createApp({ pictures, library, accounts, billing, liveLessons, words } = {}) {
   const gate = lessonGate({ accounts, billing });
   const app = express();
   app.disable('x-powered-by');
@@ -172,6 +173,19 @@ export function createApp({ pictures, library, accounts, billing, liveLessons } 
   // Tutor accounts (Sign in with Google). Which tutor this browser is signed in as, if any,
   // and whether sign-in is available.
   const currentTutor = async (req) => (accounts ? accounts.tutorFor(cookieValue(req, SESSION_COOKIE)).catch(() => null) : null);
+  // Phoneme Pop's words, by level. Anyone may read them; the game falls back to its own if this fails.
+  if (words) {
+    app.get('/api/words', async (req, res) => {
+      try {
+        const bank = await words.bank();
+        res.set('Cache-Control', 'public, max-age=300').json(bank);
+      } catch (error) {
+        console.error('Word bank:', error.message);
+        res.status(503).json({ error: 'The word bank is not available right now.' });
+      }
+    });
+  }
+
   app.get('/api/me', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     if (!accounts) return res.json({ tutor: null, signIn: null });
@@ -304,12 +318,14 @@ export function start(port = PORT) {
   const library = connectLibrary();
   const accounts = connectAccounts();
   if (accounts) console.log('Tutor sign-in connected');
+  const words = connectWords();
+  if (words) console.log('Word bank connected');
   const billing = connectBilling({ accounts });
   if (billing) console.log('Billing connected');
   if (library) console.log('Picture library connected');
   // Lessons running now, for the admin panel (the realtime server starts just below).
   const liveLessons = () => (realtime ? { lessons: realtime.rooms.size, withStudent: [...realtime.rooms.values()].filter((r) => r.student).length } : null);
-  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons }));
+  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons, words }));
   realtime = attachRealtime(server, {
     allowedOrigins: ALLOWED_ORIGINS,
     turn: { host: process.env.TURN_HOST, secret: process.env.TURN_SECRET, tls: process.env.TURN_TLS === 'true' },
