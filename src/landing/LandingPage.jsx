@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, BookOpen, Check, Gamepad2, Image as ImageIcon, LayoutGrid, Link2, Menu, MonitorPlay, PlayCircle, Users, Video, X } from 'lucide-react';
 import { Link } from '../router.jsx';
 import AccountMenu from '../account/AccountMenu.jsx';
+import SiteFooter from './SiteFooter.jsx';
 import { planActive, signOut, useAccount } from '../account/account.js';
 
 // The public home page: what My Private Teacher is, for the tutors who subscribe to it, with a
@@ -316,14 +317,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className='border-t border-slate-200 bg-white'>
-        <div className='mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 text-sm text-slate-500 sm:px-6'>
-          <span>© {new Date().getFullYear()} My Private Teacher</span>
-          <Link to={JOIN} className='hover:text-violet-700'>Join a lesson</Link>
-          <Link to='/phoneme-pop' className='hover:text-violet-700'>Phoneme Pop</Link>
-          <Link to='/activities' className='hover:text-violet-700'>All activities</Link>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

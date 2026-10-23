@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bestSubscription, subscriptionSummary } from './billing.js';
-import { createApp } from './index.js';
+import { createApp, lessonGate } from './index.js';
 
 // A signed-in tutor (cookie mpt_session=tok), and stand-ins for Stripe.
 const tutor = { id: 't1', email: 'tutor@example.com', name: 'Ada', picture: '', stripeCustomerId: 'cus_123', subscription: { id: 'sub_1', status: 'trialing', trialEnd: 1, periodEnd: 2, cancelAtPeriodEnd: false } };
@@ -56,6 +56,7 @@ describe('billing with Stripe', () => {
     const me = await call('GET', '/api/me', { cookie: 'mpt_session=tok' });
     expect(me.json.tutor.plan).toEqual({ status: 'trialing', trialEnd: 1, periodEnd: 2, cancelAtPeriodEnd: false });
     expect(me.json.billing).toEqual({ trialDays: 14 });
+    expect(me.json.lesson).toEqual({ ok: true }); // trialing: may start a lesson
     expect(JSON.stringify(me.json)).not.toMatch(/cus_|sub_/);
   });
 
@@ -128,5 +129,24 @@ describe('one Stripe customer per tutor', () => {
     expect([...keys]).toEqual(['tutor-customer-t9']);
     expect(saved).toEqual([{ stripeCustomerId: 'cus_once' }]);
     expect(new Set(urls)).toEqual(new Set(['https://checkout.stripe.test/cus_once']));
+  });
+});
+
+describe('who can start a lesson', () => {
+  it('needs sign-in and a current trial or plan once billing is on; comped tutors always can', async () => {
+    const tutors = {
+      a: { email: 'a@example.com', subscription: { status: 'trialing' } },
+      b: { email: 'b@example.com', subscription: { status: 'canceled' } },
+      c: { email: 'c@example.com', subscription: null },
+      d: { email: 'd@example.com', subscription: { status: 'past_due' } },
+    };
+    const accounts = { tutorFor: async (token) => tutors[token] || null };
+    const gate = lessonGate({ accounts, billing: {}, comped: ' C@example.com , x@example.com' });
+    expect(await gate('')).toEqual({ ok: false, reason: 'sign-in' });
+    expect(await gate('mpt_session=a')).toEqual({ ok: true });
+    expect(await gate('mpt_session=b')).toEqual({ ok: false, reason: 'plan' });
+    expect(await gate('other=1; mpt_session=c')).toEqual({ ok: true }); // comped, any capitalisation
+    expect(await gate('mpt_session=d')).toEqual({ ok: true }); // still covered while Stripe retries
+    expect(await lessonGate({ accounts, billing: null })('')).toEqual({ ok: true }); // no billing: as before
   });
 });

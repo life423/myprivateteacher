@@ -703,3 +703,31 @@ describe('the shared picture library', () => {
     await nothing(student, 'browse');
   });
 });
+
+describe('starting a lesson', () => {
+  it('needs the go-ahead for a new lesson, but never for rejoining your own', async () => {
+    let verdict = { ok: false, reason: 'sign-in' };
+    const gated = http.createServer((req, res) => res.end());
+    const rt = attachRealtime(gated, { allowedOrigins: new Set([ORIGIN]), canStartLesson: async () => verdict });
+    await new Promise((resolve) => gated.listen(0, resolve));
+    const address = `ws://localhost:${gated.address().port}/ws`;
+    try {
+      const tutor = await connect(ORIGIN, address);
+      tutor.send({ t: 'create' });
+      expect((await tutor.take('error')).reason).toBe('sign-in');
+      verdict = { ok: true };
+      tutor.send({ t: 'create' });
+      const { code, key } = await tutor.take('room');
+      verdict = { ok: false, reason: 'plan' };
+      const reloaded = await connect(ORIGIN, address);
+      reloaded.send({ t: 'create', code, key }); // the same lesson, after a reload: never stopped
+      expect((await reloaded.take('room')).code).toBe(code);
+      const other = await connect(ORIGIN, address);
+      other.send({ t: 'create', code: code === '1234' ? '4321' : '1234', key: 'f'.repeat(32) }); // an invented lesson is a new one
+      expect((await other.take('error')).reason).toBe('plan');
+    } finally {
+      rt.close?.();
+      gated.close();
+    }
+  });
+});
