@@ -252,6 +252,7 @@ export default function StudentRoom({ code }) {
             me='student'
             strip={wb.strip}
             boxes={wb.boxes}
+            lines={wb.lines}
             tiles={wb.tiles}
             tileActions={wb.tileActions}
             pieces={wb.pieces}

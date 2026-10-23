@@ -1,3 +1,5 @@
+import { DEFAULT_LINES } from '../../shared/lines.js';
+import { guideRows } from './guides.js';
 import { memo, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Hand from './Hand.jsx';
 import InkCanvas from './InkCanvas.jsx';
@@ -13,7 +15,6 @@ import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './vie
 
 const VIEW_BOX = `0 0 ${STAGE.width} ${STAGE.height}`;
 // Handwriting guides (top line, dashed midline, baseline) stay put even when the board grows.
-const GUIDE_LINES = [0.3, 0.55, 0.8].map((f) => BOARD.y + BOARD.height * f);
 const PALM_MS = 1500; // touches this soon after an Apple Pencil event count as a resting palm
 const CLICK_SLOP = 6; // a tile that moves less than this was clicked, not dragged
 
@@ -62,7 +63,7 @@ function letterTone(letter, pointed) {
 }
 
 // The bottom layer: the alphabet strip (unless hidden), the board, its guide lines and the sound boxes.
-const Backdrop = memo(function Backdrop({ pointed, strip, boxes, viewBox, bar = false }) {
+const Backdrop = memo(function Backdrop({ pointed, strip, boxes, lines, viewBox, bar = false }) {
   const board = boardRect(strip);
   return (
     <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='absolute inset-0 h-full w-full' aria-hidden='true'>
@@ -89,17 +90,13 @@ const Backdrop = memo(function Backdrop({ pointed, strip, boxes, viewBox, bar = 
           );
         })}
       <rect x={board.x} y={board.y} width={board.width} height={board.height} rx='20' strokeWidth='3' className='fill-white stroke-slate-200' />
-      {GUIDE_LINES.map((y, i) => (
-        <line
-          key={y}
-          x1={BOARD.x + 40}
-          x2={BOARD.x + BOARD.width - 40}
-          y1={y}
-          y2={y}
-          strokeWidth='3'
-          strokeDasharray={i === 1 ? '16 14' : undefined}
-          className='stroke-slate-200'
-        />
+      {/* Handwriting lines: top line, dashed midline, and a slightly stronger baseline per row. */}
+      {guideRows(board, lines).map((row) => (
+        <g key={row.top} strokeWidth='3'>
+          <line x1={board.x + 40} x2={board.x + board.width - 40} y1={row.top} y2={row.top} className='stroke-slate-200' />
+          <line x1={board.x + 40} x2={board.x + board.width - 40} y1={row.mid} y2={row.mid} strokeDasharray='16 14' className='stroke-slate-200' />
+          <line x1={board.x + 40} x2={board.x + board.width - 40} y1={row.base} y2={row.base} className='stroke-slate-300' />
+        </g>
       ))}
       {soundBoxes(boxes).map((box) => (
         <rect
@@ -135,6 +132,7 @@ export default function Stage({
   letters = [], // the letters the hands point at
   strip = true,
   boxes = 0,
+  lines = DEFAULT_LINES,
   tiles = [],
   selectedTile = null,
   canManageTiles = false,
@@ -667,7 +665,7 @@ export default function Stage({
           {view ? <Shrink className='h-4 w-4' aria-hidden='true' /> : <Expand className='h-4 w-4' aria-hidden='true' />}
         </button>
       )}
-      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} viewBox={viewBox} bar={Boolean(fillTop)} />
+      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} />

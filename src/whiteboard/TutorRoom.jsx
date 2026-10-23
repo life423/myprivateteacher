@@ -9,7 +9,8 @@ import { STAGE } from './stage.js';
 import { useHands } from './useHands.js';
 import WhiteboardLayout from './WhiteboardLayout.jsx';
 import AlphabetBar from './AlphabetBar.jsx';
-import { ClearButton, HandsSwitch, Switch, ToolButton, ToolRail } from './Toolbar.jsx';
+import { ClearButton, HandsSwitch, LinesButton, Switch, ToolButton, ToolRail } from './Toolbar.jsx';
+import { isLineSize } from '../../shared/lines.js';
 import TileBar from './TileBar.jsx';
 import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
 import { pictureUrl } from './pictures.js';
@@ -28,6 +29,16 @@ function loadSaved() {
     return {};
   }
 }
+
+const LINES_KEY = 'mpt.writingLines';
+const rememberedLines = () => {
+  try {
+    const size = window.localStorage.getItem(LINES_KEY);
+    return isLineSize(size) ? size : null;
+  } catch {
+    return null;
+  }
+};
 
 export default function TutorRoom() {
   const [room, setRoom] = useState(loadSaved); // { code, key } once the server hands them out
@@ -79,6 +90,14 @@ export default function TutorRoom() {
   studentToolsRef.current = studentTools;
 
   const wb = useWhiteboard('tutor', (msg) => sendRef.current(msg));
+  const chooseLines = (size) => {
+    wb.setLines(size);
+    try {
+      window.localStorage.setItem(LINES_KEY, size);
+    } catch {
+      // storage blocked: the choice lasts for this lesson
+    }
+  };
   const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
 
@@ -93,6 +112,7 @@ export default function TutorRoom() {
       if (msg.t === 'browse') return setStudentBrowse({ open: msg.open === true, pic: msg.pic || null });
       if (msg.t === 'view') return setStudentView({ x: msg.x, y: msg.y, w: msg.w, h: msg.h });
       if (msg.t === 'room') {
+        const isNew = !roomRef.current.code;
         const saved = { code: msg.code, key: msg.key };
         sessionStorage.setItem(SAVED, JSON.stringify(saved));
         setRoom(saved);
@@ -101,6 +121,10 @@ export default function TutorRoom() {
           wb.restore(studentToolsRef.current, saved);
           hands.restore();
         }
+        // A new lesson starts with the lines this tutor chose last time (after the hand-over
+        // above, which a new room also gets, so it wins).
+        const lines = rememberedLines();
+        if (isNew && lines) wb.setLines(lines);
       } else if (msg.t === 'tools') {
         setStudentTools(Boolean(msg.on));
       } else if (msg.t === 'presence') {
@@ -304,6 +328,7 @@ export default function TutorRoom() {
             pressed={tool === 'eraser'}
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
+          <LinesButton size={wb.lines} onChoose={chooseLines} />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
         </ToolRail>
@@ -315,6 +340,7 @@ export default function TutorRoom() {
             me='tutor'
             strip={wb.strip}
             boxes={wb.boxes}
+            lines={wb.lines}
             tiles={wb.tiles}
             selectedTile={selectedTileId}
             canManageTiles

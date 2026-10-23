@@ -1,3 +1,4 @@
+import { DEFAULT_LINES, isLineSize } from '../../shared/lines.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
 import { BOX_COUNTS, MAX_TILES, cleanTileText } from '../../shared/tiles.js';
@@ -60,7 +61,7 @@ export function useFrameState(initial) {
 export function useWhiteboard(role, send) {
   const [board] = useState(() => new Board());
   const [, setVersion] = useState(0);
-  const [settings, setSettings] = useState({ strip: true, boxes: 0 });
+  const [settings, setSettings] = useState({ strip: true, boxes: 0, lines: DEFAULT_LINES });
   const [, setTileFrame] = useFrameState(0);
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -331,6 +332,7 @@ export function useWhiteboard(role, send) {
   const clearTiles = useCallback(() => sendRef.current({ t: 'tiles:clear' }), []);
   const setStrip = useCallback((on) => sendRef.current({ t: 'strip:set', on }), []);
   const setBoxes = useCallback((count) => sendRef.current({ t: 'boxes:set', count }), []);
+  const setLines = useCallback((size) => sendRef.current({ t: 'lines:set', size }), []);
 
   // After a server restart, the tutor hands back the board they still have: strokes,
   // tiles (in stacking order) and settings.
@@ -347,8 +349,8 @@ export function useWhiteboard(role, send) {
       const ordered = [...tiles.current.values()].sort((a, b) => a.z - b.z);
       for (const tile of ordered) sendRef.current({ t: 'rs-tile', tile });
       for (const piece of [...pieces.current.values()].sort((a, b) => a.z - b.z)) sendRef.current({ t: 'rs-piece', piece });
-      const { strip, boxes } = settingsRef.current;
-      sendRef.current({ t: 'restored', tools, strip, boxes });
+      const { strip, boxes, lines } = settingsRef.current;
+      sendRef.current({ t: 'restored', tools, strip, boxes, lines });
     },
     [board],
   );
@@ -367,7 +369,11 @@ export function useWhiteboard(role, send) {
           pictures.current = new Map((Array.isArray(msg.pictures) ? msg.pictures : []).map((p) => [p.id, p]));
           pieces.current = new Map((Array.isArray(msg.pieces) ? msg.pieces : []).map((p) => [p.id, p]));
           offers.current = new Map((Array.isArray(msg.offers) ? msg.offers : []).map((o) => [o.id, o]));
-          setSettings({ strip: msg.strip !== false, boxes: BOX_COUNTS.includes(msg.boxes) ? msg.boxes : 0 });
+          setSettings({
+            strip: msg.strip !== false,
+            boxes: BOX_COUNTS.includes(msg.boxes) ? msg.boxes : 0,
+            lines: isLineSize(msg.lines) ? msg.lines : DEFAULT_LINES,
+          });
           renderTiles();
           bump();
           return true;
@@ -465,6 +471,9 @@ export function useWhiteboard(role, send) {
         case 'boxes:set':
           setSettings((s) => ({ ...s, boxes: BOX_COUNTS.includes(msg.count) ? msg.count : 0 }));
           return true;
+        case 'lines:set':
+          setSettings((s) => ({ ...s, lines: isLineSize(msg.size) ? msg.size : s.lines }));
+          return true;
         default:
           return false;
       }
@@ -498,7 +507,9 @@ export function useWhiteboard(role, send) {
     clearTiles,
     strip: settings.strip,
     boxes: settings.boxes,
+    lines: settings.lines,
     setStrip,
     setBoxes,
+    setLines,
   };
 }

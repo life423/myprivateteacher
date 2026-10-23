@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Check } from 'lucide-react';
 import { GloveIcon } from './Hand.jsx';
 
 export function ToolRail({ label, children }) {
@@ -106,5 +108,142 @@ export function Switch({ checked, onChange, label }) {
       </span>
       {label}
     </button>
+  );
+}
+
+// A row of handwriting lines: top line, dashed midline, baseline.
+export function LinesIcon({ className }) {
+  return (
+    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' className={className} aria-hidden='true'>
+      <path d='M3 6h18' />
+      <path d='M3 12h18' strokeDasharray='2.5 3' />
+      <path d='M3 18h18' />
+    </svg>
+  );
+}
+
+const LINE_CHOICES = [
+  { size: 'big', label: 'Big', hint: 'Kindergarten to 1st grade', rows: 1 },
+  { size: 'medium', label: 'Medium', hint: '2nd and 3rd grade', rows: 2 },
+  { size: 'small', label: 'Small', hint: 'Cursive, 3rd grade and up', rows: 3 },
+  { size: 'off', label: 'Off', hint: 'A blank board', rows: 0 },
+];
+
+// A tiny picture of a line size: bigger lines, fewer rows.
+function LinesPreview({ rows }) {
+  const lines = [];
+  if (rows) {
+    const band = 20 / (rows * 1.5 - 0.5);
+    for (let i = 0; i < rows; i += 1) {
+      const top = 2 + i * band * 1.5;
+      lines.push(<path key={`t${i}`} d={`M3 ${top}h26`} />, <path key={`m${i}`} d={`M3 ${top + band / 2}h26`} strokeDasharray='2 2' />, <path key={`b${i}`} d={`M3 ${top + band}h26`} />);
+    }
+  }
+  return (
+    <svg viewBox='0 0 32 24' fill='none' stroke='currentColor' strokeWidth='1.5' className='h-6 w-8 shrink-0' aria-hidden='true'>
+      <rect x='1' y='0.75' width='30' height='22.5' rx='3' className='stroke-slate-200' />
+      {lines}
+    </svg>
+  );
+}
+
+const MENU_WIDTH = 248;
+
+// The tutor's handwriting lines: big, medium, small or off. The menu opens beside the rail, or
+// above the tools on a phone, and stays on screen.
+export function LinesButton({ size, onChoose }) {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState(null);
+  const button = useRef(null);
+  const menu = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const r = button.current.getBoundingClientRect();
+    const height = menu.current?.offsetHeight || 280;
+    const width = window.innerWidth;
+    const fit = (value, low, high) => Math.min(Math.max(value, low), high);
+    if (r.right + 8 + MENU_WIDTH <= width - 8) {
+      setPlace({ left: r.right + 8, top: fit(r.top + r.height / 2 - height / 2, 8, window.innerHeight - height - 8) });
+    } else {
+      setPlace({ left: fit(r.left + r.width / 2 - MENU_WIDTH / 2, 8, width - MENU_WIDTH - 8), top: Math.max(8, r.top - 8 - height) });
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (event) => {
+      if (!button.current?.contains(event.target) && !menu.current?.contains(event.target)) setOpen(false);
+    };
+    const escape = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const close = () => setOpen(false);
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', escape);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', escape);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={button}
+        type='button'
+        onClick={() => {
+          setPlace(null);
+          setOpen((was) => !was);
+        }}
+        aria-haspopup='menu'
+        aria-expanded={open}
+        title='Writing lines'
+        className={`flex w-11 flex-col items-center gap-1 rounded-xl px-1 py-2 text-xs font-bold transition-colors sm:w-14 lg:w-16 ${
+          open ? 'bg-violet-600 text-white shadow' : 'text-slate-700 hover:bg-violet-50'
+        }`}
+      >
+        <LinesIcon className='h-6 w-6' />
+        <span className='max-sm:sr-only'>Lines</span>
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={menu}
+            role='menu'
+            aria-label='Writing lines'
+            style={{ position: 'fixed', width: MENU_WIDTH, left: place?.left ?? 0, top: place?.top ?? 0, visibility: place ? 'visible' : 'hidden' }}
+            className='z-50 rounded-2xl border border-slate-200 bg-white p-1.5 text-left shadow-xl'
+          >
+            <p className='px-3 pb-1 pt-1.5 text-sm font-bold text-slate-900'>Writing lines</p>
+            {LINE_CHOICES.map((choice) => {
+              const on = choice.size === size;
+              return (
+                <button
+                  key={choice.size}
+                  type='button'
+                  role='menuitemradio'
+                  aria-checked={on}
+                  onClick={() => {
+                    setOpen(false);
+                    if (!on) onChoose(choice.size);
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${on ? 'bg-violet-50 text-violet-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  <LinesPreview rows={choice.rows} />
+                  <span className='min-w-0 flex-1'>
+                    <span className={`block text-sm font-bold ${on ? 'text-violet-700' : 'text-slate-800'}`}>{choice.label}</span>
+                    <span className='block text-xs text-slate-500'>{choice.hint}</span>
+                  </span>
+                  {on && <Check className='h-4 w-4 shrink-0 text-violet-600' strokeWidth={3} aria-hidden='true' />}
+                </button>
+              );
+            })}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
