@@ -173,6 +173,9 @@ export default function Stage({
   const [view, setView] = useState(null);
   const { fill, bar: alphabetBar, align, sticky } = useContext(BoardFit);
   const fillTop = alphabetBar && strip ? BELOW_STRIP : 0; // the alphabet has its own bar, so start at the writing
+  // With sound boxes on, a phone filling its screen with the board centres on them (they're a
+  // centred row), rather than starting at the board's left edge.
+  const fillCentre = boxes ? STAGE.width / 2 : null;
   const filled = useRef(false);
   // On tablets the automatic fill keeps filling as the space changes (the sheet sliding up or
   // down), until someone zooms, pans or fits the board themselves.
@@ -219,6 +222,17 @@ export default function Stage({
   const pieceButtons = [canDuplicatePieces && 'duplicate', canDeletePieces && 'delete'].filter(Boolean);
   const bar = selectedPiece && pieceButtons.length ? toolbarOf(selectedPiece, pieceButtons) : null;
 
+  // When the tutor switches sound boxes on, a phone showing the board at its screen-filling zoom
+  // moves over to them. A view the person zoomed or panned themselves is left where it is.
+  const hadBoxes = useRef(Boolean(boxes));
+  useEffect(() => {
+    const had = hadBoxes.current;
+    hadBoxes.current = Boolean(boxes);
+    if (!boxes || had || !view || !size.width) return;
+    const onBoxes = fillView(size.width, size.height, fillTop, STAGE.width / 2);
+    if (Math.abs(view.scale - onBoxes.scale) < 0.01) setView(onBoxes);
+  }, [boxes]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // The space the board has. Upright phones start with the board filling the height.
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -229,9 +243,9 @@ export default function Stage({
       if (fill && !filled.current && width && height / width > (STAGE.height / STAGE.width) * 1.15) {
         filled.current = true;
         autoFill.current = Boolean(sticky);
-        setView(fillView(width, height, fillTop));
+        setView(fillView(width, height, fillTop, fillCentre));
       } else if (autoFill.current && width && height) {
-        setView(fillView(width, height, fillTop));
+        setView(fillView(width, height, fillTop, fillCentre));
       }
     };
     update();
@@ -653,7 +667,7 @@ export default function Stage({
           type='button'
           onClick={() => {
             autoFill.current = !view && Boolean(sticky);
-            setView(view ? null : fillView(size.width, size.height, fillTop));
+            setView(view ? null : fillView(size.width, size.height, fillTop, fillCentre));
           }}
           aria-label={view ? 'Fit the whole board' : 'Fill the screen with the board'}
           title={view ? 'Fit the whole board' : 'Fill the screen with the board'}

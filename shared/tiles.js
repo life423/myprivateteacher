@@ -11,7 +11,10 @@ export const BOX_COUNTS = [0, 2, 3, 4, 5]; // 0 means the boxes are off
 // Tiles can sit anywhere on the working area: the board, plus the strip's space.
 export const WORK = { left: 24, top: 24, right: 1576, bottom: 976 };
 const TRAY = { left: 48, right: 1552, bottom: WORK.bottom - 16, rows: 6 };
-const BOX = { width: 200, height: 150, gap: 24, top: 206, snapMargin: 30 };
+// The boxes sit in the middle of the board (y 184 to 976), so there's as much room above them,
+// for marking each sound with a symbol, as below them for writing the word.
+const BOARD_MIDDLE = (184 + 976) / 2;
+const BOX = { width: 200, height: 150, gap: 24, top: BOARD_MIDDLE - 150 / 2, snapMargin: 30 };
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
@@ -54,7 +57,7 @@ export function clampTile(text, x, y) {
   };
 }
 
-// The sound boxes: a centred row near the top of the board.
+// The sound boxes: a centred row in the middle of the board.
 export function soundBoxes(count) {
   if (!BOX_COUNTS.includes(count) || count === 0) return [];
   const total = count * BOX.width + (count - 1) * BOX.gap;
