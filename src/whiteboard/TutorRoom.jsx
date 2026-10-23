@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, Eraser, Eye, EyeOff, Hand as HandIcon, Image as ImageIcon, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
+import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
@@ -292,13 +292,6 @@ export default function TutorRoom() {
       tools={
         <ToolRail label='Your tools'>
           <ToolButton icon={MousePointer2} label='Watch' pressed={tool === 'none'} onClick={() => chooseTool('none')} />
-          <ToolButton
-            icon={HandIcon}
-            label='Hand'
-            swatch={INK.tutor}
-            pressed={tool === 'hand'}
-            onClick={() => chooseTool(tool === 'hand' ? 'none' : 'hand')}
-          />
           <HandsSwitch hands={hands.hands} onToggle={hands.show} />
           <ToolButton
             icon={Pencil}
@@ -345,7 +338,7 @@ export default function TutorRoom() {
             markers={markers}
             hands={hands.visible}
             handActions={hands}
-            canHoldHands={tool === 'none' || tool === 'hand'}
+            canHoldHands // a press on a glove holds it, whatever the tool
             barApi={barApi}
             onPoint={onPoint}
             onLeave={onLeave}
@@ -359,7 +352,7 @@ export default function TutorRoom() {
       }
       call={call}
       peerName='your student'
-      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold={tool === 'none' || tool === 'hand'} handActions={hands} api={barApi} stageApi={stageApi} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold handActions={hands} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
       panels={[
         {

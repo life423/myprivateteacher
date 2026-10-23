@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eraser, Hand as HandIcon, Image as ImageIcon, Pencil, Undo2 } from 'lucide-react';
+import { Eraser, Image as ImageIcon, Pencil, Undo2 } from 'lucide-react';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
@@ -30,7 +30,7 @@ export default function StudentRoom({ code }) {
   const [phase, setPhase] = useState('joining'); // joining | in | rejoining | a key of ENDINGS
   const [tutorHere, setTutorHere] = useState(true);
   const [toolsOn, setToolsOn] = useState(false);
-  const [tool, setTool] = useState('hand');
+  const [tool, setTool] = useState('none'); // nothing chosen: a touch moves hands, tiles and pictures
   const stageApi = useRef(null);
   const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
@@ -69,7 +69,7 @@ export default function StudentRoom({ code }) {
   // The tutor decides whether the toolbar is available.
   const applyTools = (on, announce) => {
     setToolsOn(on);
-    if (!on) setTool('hand');
+    if (!on) setTool('none');
     if (announce) setNotice(on ? 'Your tutor turned on your tools ✏️' : 'Your tutor turned off the tools');
   };
 
@@ -158,7 +158,7 @@ export default function StudentRoom({ code }) {
   // Shows this pointer locally and shares it with the tutor.
   const share = (p, mode) => {
     lastPoint.current = p;
-    if (mode === 'hand') return; // the two hands are shared and held, not worn
+    if (mode === 'hand' || mode === 'none') return; // nothing to show: the two hands are shared and held, not worn
     if (!touched) setTouched(true);
     const letter = mode === 'hand' ? p.letter : null;
     setMyMarker({ kind: mode, by: 'student', x: p.x, y: p.y, letter });
@@ -167,7 +167,7 @@ export default function StudentRoom({ code }) {
 
   const chooseTool = (next) => {
     setTool(next);
-    if (next === 'hand') {
+    if (next === 'none') {
       setMyMarker(null);
       wb.sendPointer({ t: 'p', m: 'none' });
     }
@@ -239,10 +239,9 @@ export default function StudentRoom({ code }) {
       tools={
         toolsOn && (
           <ToolRail label='Your tools'>
-            <ToolButton icon={HandIcon} label='Hand' pressed={tool === 'hand'} onClick={() => chooseTool('hand')} />
             <HandsSwitch hands={hands.hands} onToggle={hands.show} />
-            <ToolButton icon={Pencil} label='Pen' swatch={INK.student} pressed={tool === 'pen'} onClick={() => chooseTool('pen')} />
-            <ToolButton icon={Eraser} label='Eraser' pressed={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
+            <ToolButton icon={Pencil} label='Pen' swatch={INK.student} pressed={tool === 'pen'} onClick={() => chooseTool(tool === 'pen' ? 'none' : 'pen')} />
+            <ToolButton icon={Eraser} label='Eraser' pressed={tool === 'eraser'} onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')} />
             <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           </ToolRail>
         )
@@ -267,7 +266,7 @@ export default function StudentRoom({ code }) {
             letters={hands.letters}
             hands={hands.visible}
             handActions={holdActions}
-            canHoldHands={toolsOn && tool === 'hand'}
+            canHoldHands={toolsOn} // with tools on, a press on a glove holds it, whatever the tool
             barApi={barApi}
             tool={tool}
             markers={markers}
@@ -280,14 +279,14 @@ export default function StudentRoom({ code }) {
           />
           {phase === 'in' && notice && <StageNotice>{notice}</StageNotice>}
           {phase === 'in' && !notice && !tutorHere && <StageNotice>Waiting for your tutor…</StageNotice>}
-          {phase === 'in' && !notice && tutorHere && !touched && toolsOn && tool === 'hand' && hands.visible.length > 0 && (
+          {phase === 'in' && !notice && tutorHere && !touched && toolsOn && hands.visible.length > 0 && (
             <StageNotice>Drag a hand to a letter ✋</StageNotice>
           )}
         </>
       }
       call={call}
       peerName='your tutor'
-      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn && tool === 'hand'} handActions={holdActions} api={barApi} stageApi={stageApi} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn} handActions={holdActions} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
       panels={[
         {
