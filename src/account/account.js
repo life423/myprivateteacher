@@ -30,5 +30,39 @@ export function useAccount() {
     if (!current) load();
     return () => listeners.delete(setState);
   }, []);
-  return { loading: !state, tutor: state?.tutor || null, googleClientId: state?.signIn?.google || null };
+  return {
+    loading: !state,
+    tutor: state?.tutor || null,
+    googleClientId: state?.signIn?.google || null,
+    trialDays: state?.billing?.trialDays || null, // null when billing isn't switched on
+  };
 }
+
+// The tutor plan: whether it lets a tutor teach, and how to describe it.
+export const planActive = (plan) => ['trialing', 'active', 'past_due'].includes(plan?.status);
+
+export function planLabel(plan, now = Date.now()) {
+  if (!plan) return 'No plan yet';
+  const daysLeft = (time) => Math.max(0, Math.ceil((time - now) / 86400000));
+  const day = (n) => `${n} day${n === 1 ? '' : 's'}`;
+  if (plan.status === 'trialing') return `Free trial · ${day(daysLeft(plan.trialEnd))} left`;
+  if (plan.status === 'active') {
+    return plan.cancelAtPeriodEnd ? `Tutor plan · ends ${new Date(plan.periodEnd).toLocaleDateString()}` : 'Tutor plan · active';
+  }
+  if (plan.status === 'past_due') return 'Payment due · update your card';
+  return 'Plan ended';
+}
+
+// Stripe's pages: Checkout (the free trial, or the plan) and the billing page. Returns an
+// error message, or navigates away.
+async function openStripe(path) {
+  const res = await fetch(path, { method: 'POST' }).catch(() => null);
+  const data = await res?.json().catch(() => null);
+  if (res?.ok && data?.url) {
+    window.location.assign(data.url);
+    return null;
+  }
+  return data?.error || 'Billing is not available right now. Please try again.';
+}
+export const startCheckout = () => openStripe('/api/billing/checkout');
+export const openBilling = () => openStripe('/api/billing/portal');

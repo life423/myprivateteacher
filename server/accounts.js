@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import { OAuth2Client } from 'google-auth-library';
 
 // Tutor accounts: Sign in with Google, with sessions kept in MongoDB. Only a fingerprint
@@ -8,7 +8,26 @@ import { OAuth2Client } from 'google-auth-library';
 export const SESSION_COOKIE = 'mpt_session';
 export const SESSION_DAYS = 30;
 const fingerprint = (token) => createHash('sha256').update(token).digest('hex');
-const publicTutor = (t) => ({ id: String(t._id), email: t.email, name: t.name || '', picture: t.picture || '' });
+// What the server works with: the tutor plus their Stripe customer and subscription status.
+const tutorRecord = (t) => ({
+  id: String(t._id),
+  email: t.email,
+  name: t.name || '',
+  picture: t.picture || '',
+  stripeCustomerId: t.stripeCustomerId || null,
+  subscription: t.subscription || null,
+});
+// What the tutor's own browser is told (no Stripe ids).
+export const publicTutor = (t) => ({
+  id: t.id,
+  email: t.email,
+  name: t.name,
+  picture: t.picture,
+  plan: t.subscription
+    ? { status: t.subscription.status, trialEnd: t.subscription.trialEnd, periodEnd: t.subscription.periodEnd, cancelAtPeriodEnd: t.subscription.cancelAtPeriodEnd }
+    : null,
+  billingAccount: Boolean(t.stripeCustomerId),
+});
 
 export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = process.env.GOOGLE_CLIENT_ID } = {}) {
   if (!uri || !clientId) return null;
@@ -48,7 +67,7 @@ export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = proc
         expiresAt: new Date(now.getTime() + SESSION_DAYS * 86400000),
         userAgent: String(userAgent).slice(0, 200),
       });
-      return { token, tutor: publicTutor(tutor) };
+      return { token, tutor: tutorRecord(tutor) };
     },
     // The signed-in tutor for a session token, or null.
     async tutorFor(token) {
@@ -60,7 +79,14 @@ export function connectAccounts({ uri = process.env.MONGODB_URI, clientId = proc
         return null;
       }
       const tutor = await tutors.findOne({ _id: session.tutorId });
-      return tutor ? publicTutor(tutor) : null;
+      return tutor ? tutorRecord(tutor) : null;
+    },
+    // Billing details from Stripe: a tutor's customer id, or a customer's subscription status.
+    async setBilling(tutorId, fields) {
+      await tutors.updateOne({ _id: new ObjectId(tutorId) }, { $set: { ...fields, billingUpdatedAt: new Date() } });
+    },
+    async setBillingByCustomer(customerId, fields) {
+      await tutors.updateOne({ stripeCustomerId: customerId }, { $set: { ...fields, billingUpdatedAt: new Date() } });
     },
     async signOut(token) {
       if (token) await sessions.deleteOne({ _id: fingerprint(token) });

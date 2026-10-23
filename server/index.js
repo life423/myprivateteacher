@@ -6,7 +6,8 @@ import compression from 'compression';
 import { attachRealtime } from './realtime.js';
 import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
 import { connectLibrary } from './library.js';
-import { SESSION_COOKIE, SESSION_DAYS, connectAccounts } from './accounts.js';
+import { SESSION_COOKIE, SESSION_DAYS, connectAccounts, publicTutor } from './accounts.js';
+import { TRIAL_DAYS, connectBilling } from './billing.js';
 
 const PORT = Number(process.env.PORT) || 8080;
 const CANONICAL_HOST = process.env.CANONICAL_HOST || 'myprivateteacher.com';
@@ -78,7 +79,7 @@ function sameSite(req) {
   }
 }
 
-export function createApp({ pictures, library, accounts } = {}) {
+export function createApp({ pictures, library, accounts, billing } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
@@ -154,11 +155,12 @@ export function createApp({ pictures, library, accounts } = {}) {
 
   // Tutor accounts (Sign in with Google). Which tutor this browser is signed in as, if any,
   // and whether sign-in is available.
+  const currentTutor = async (req) => (accounts ? accounts.tutorFor(cookieValue(req, SESSION_COOKIE)).catch(() => null) : null);
   app.get('/api/me', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     if (!accounts) return res.json({ tutor: null, signIn: null });
-    const tutor = await accounts.tutorFor(cookieValue(req, SESSION_COOKIE)).catch(() => null);
-    res.json({ tutor, signIn: { google: accounts.clientId } });
+    const tutor = await currentTutor(req);
+    res.json({ tutor: tutor ? publicTutor(tutor) : null, signIn: { google: accounts.clientId }, billing: billing ? { trialDays: TRIAL_DAYS } : null });
   });
   if (accounts) {
     // The page hands over Google's credential; the server checks it with Google's keys, then
@@ -171,7 +173,7 @@ export function createApp({ pictures, library, accounts } = {}) {
         if (!profile) return res.status(401).json({ error: 'That Google account could not be used.' });
         const { token, tutor } = await accounts.signIn(profile, { userAgent: req.get('user-agent') || '' });
         res.cookie(SESSION_COOKIE, token, { httpOnly: true, secure: isHttps(req), sameSite: 'lax', path: '/', maxAge: SESSION_DAYS * 86400000 });
-        res.set('Cache-Control', 'no-store').json({ tutor });
+        res.set('Cache-Control', 'no-store').json({ tutor: publicTutor(tutor) });
       } catch (error) {
         console.warn(`Google sign-in failed: ${error.message}`);
         res.status(401).json({ error: 'Sign-in failed. Please try again.' });
@@ -182,6 +184,56 @@ export function createApp({ pictures, library, accounts } = {}) {
       await accounts.signOut(cookieValue(req, SESSION_COOKIE)).catch(() => {});
       res.clearCookie(SESSION_COOKIE, { path: '/', httpOnly: true, sameSite: 'lax', secure: isHttps(req) });
       res.sendStatus(204);
+    });
+  }
+
+  // Billing with Stripe (tutors only): Checkout for the free trial and plan, Stripe's billing
+  // page, and Stripe's notifications. Checkout and billing need a signed-in tutor and this
+  // site's own pages; notifications are accepted only with Stripe's signature.
+  if (accounts && billing) {
+    const origin = (req) => `${isHttps(req) ? 'https' : 'http'}://${req.get('host')}`;
+    const planOf = (summary) => summary && { status: summary.status, trialEnd: summary.trialEnd, periodEnd: summary.periodEnd, cancelAtPeriodEnd: summary.cancelAtPeriodEnd };
+    const billingPage = (open) => async (req, res) => {
+      if (!sameSite(req)) return res.sendStatus(403);
+      const tutor = await currentTutor(req);
+      if (!tutor) return res.status(401).json({ error: 'Sign in first.' });
+      try {
+        res.set('Cache-Control', 'no-store').json({ url: await open(tutor, origin(req)) });
+      } catch (error) {
+        console.warn(`Billing page failed: ${error.message}`);
+        res.status(502).json({ error: 'Billing is not available right now. Please try again.' });
+      }
+    };
+    app.post('/api/billing/checkout', billingPage((tutor, at) => billing.checkout(tutor, at)));
+    app.post('/api/billing/portal', billingPage((tutor, at) => billing.portal(tutor, at)));
+    app.get('/api/billing/done', async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      const tutor = await currentTutor(req);
+      if (!tutor) return res.status(401).json({ error: 'Sign in first.' });
+      const id = typeof req.query.session_id === 'string' && /^cs_[A-Za-z0-9_]{10,250}$/.test(req.query.session_id) ? req.query.session_id : null;
+      if (!id) return res.status(400).json({ error: 'That checkout link is not complete.' });
+      try {
+        res.json({ plan: planOf(await billing.completeCheckout(id, tutor)) });
+      } catch (error) {
+        console.warn(`Checkout confirmation failed: ${error.message}`);
+        res.status(502).json({ error: 'Could not confirm with Stripe yet. Please refresh in a moment.' });
+      }
+    });
+    app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+      let event;
+      try {
+        event = billing.event(req.body, req.get('stripe-signature') || '');
+      } catch (error) {
+        console.warn(`Stripe notification rejected: ${error.message}`);
+        return res.sendStatus(400);
+      }
+      try {
+        await billing.handle(event);
+        res.json({ received: true });
+      } catch (error) {
+        console.warn(`Stripe notification ${event.type} failed: ${error.message}`);
+        res.sendStatus(500); // Stripe tries again later
+      }
     });
   }
 
@@ -227,8 +279,10 @@ export function start(port = PORT) {
   const library = connectLibrary();
   const accounts = connectAccounts();
   if (accounts) console.log('Tutor sign-in connected');
+  const billing = connectBilling({ accounts });
+  if (billing) console.log('Billing connected');
   if (library) console.log('Picture library connected');
-  const server = http.createServer(createApp({ pictures, library, accounts }));
+  const server = http.createServer(createApp({ pictures, library, accounts, billing }));
   realtime = attachRealtime(server, {
     allowedOrigins: ALLOWED_ORIGINS,
     turn: { host: process.env.TURN_HOST, secret: process.env.TURN_SECRET, tls: process.env.TURN_TLS === 'true' },

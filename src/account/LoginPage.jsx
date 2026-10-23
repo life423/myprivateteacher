@@ -1,12 +1,14 @@
-import { BookOpen, LogOut, PlayCircle } from 'lucide-react';
+import { useState } from 'react';
+import { BookOpen, CreditCard, LogOut, PlayCircle, Sparkles } from 'lucide-react';
 import { Link, navigate } from '../router.jsx';
 import { Avatar } from './AccountMenu.jsx';
 import GoogleButton from './GoogleButton.jsx';
-import { signOut, useAccount } from './account.js';
+import { openBilling, planActive, planLabel, signOut, startCheckout, useAccount } from './account.js';
 
 // Sign in, for tutors. Students join a lesson with a code and never need an account.
 export default function LoginPage() {
-  const { loading, tutor, googleClientId } = useAccount();
+  const { loading, tutor, googleClientId, trialDays } = useAccount();
+  const [billingError, setBillingError] = useState(null);
   return (
     <main className='flex min-h-dvh items-center justify-center bg-gradient-to-b from-violet-50 to-white px-4 py-12'>
       <div className='w-full max-w-sm rounded-3xl bg-white p-8 text-center shadow-xl ring-1 ring-slate-200'>
@@ -25,12 +27,41 @@ export default function LoginPage() {
                 <p className='text-lg font-extrabold text-slate-900'>{tutor.name || tutor.email}</p>
                 <p className='text-sm text-slate-500'>{tutor.email}</p>
               </div>
+              {trialDays && (
+                <p className={`rounded-full px-3 py-1 text-sm font-semibold ${planActive(tutor.plan) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                  {planLabel(tutor.plan)}
+                </p>
+              )}
             </div>
             <div className='mt-6 grid gap-2'>
               <Link to='/whiteboard/teach' className='inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white hover:bg-violet-700'>
                 <PlayCircle className='h-5 w-5' aria-hidden='true' />
                 Start teaching
               </Link>
+              {trialDays && (tutor.billingAccount && tutor.plan ? (
+                <button
+                  type='button'
+                  onClick={() => openBilling().then(setBillingError)}
+                  className='inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50'
+                >
+                  <CreditCard className='h-5 w-5' aria-hidden='true' />
+                  Manage billing
+                </button>
+              ) : (
+                <button
+                  type='button'
+                  onClick={() => startCheckout().then(setBillingError)}
+                  className='inline-flex items-center justify-center gap-2 rounded-xl border border-violet-300 px-4 py-3 font-semibold text-violet-700 hover:bg-violet-50'
+                >
+                  <Sparkles className='h-5 w-5' aria-hidden='true' />
+                  Start {trialDays}-day free trial
+                </button>
+              ))}
+              {billingError && (
+                <p role='alert' className='text-sm font-semibold text-rose-700'>
+                  {billingError}
+                </p>
+              )}
               <button
                 type='button'
                 onClick={() => signOut()}

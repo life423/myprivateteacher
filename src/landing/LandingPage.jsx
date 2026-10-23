@@ -6,7 +6,7 @@ import { signOut, useAccount } from '../account/account.js';
 
 // The public home page: what My Private Teacher is, for the tutors who subscribe to it, with a
 // quick way in for students who already have a lesson code.
-const START = '/whiteboard/teach'; // a tutor starts a lesson
+const START = '/trial'; // a tutor starts the free trial: sign in, then Stripe Checkout
 const JOIN = '/whiteboard'; // a student types their code
 
 function Button({ to, kind = 'primary', children, className = '' }) {
@@ -163,7 +163,7 @@ export default function LandingPage() {
               </div>
               <p className='mt-4 text-center text-sm text-slate-500 sm:text-left'>
                 <span className='sm:hidden'>No credit card required</span>
-                <span className='hidden sm:inline'>Free during early access · No credit card required · Designed for one-to-one tutoring</span>
+                <span className='hidden sm:inline'>14-day free trial · No credit card required · Designed for one-to-one tutoring</span>
               </p>
               <p className='mt-3 text-center text-sm sm:hidden'>
                 <Link to={JOIN} className='font-semibold text-violet-700'>
@@ -270,7 +270,7 @@ export default function LandingPage() {
                   <span className='text-4xl font-extrabold'>$19</span>
                   <span className='text-slate-500'>/ month</span>
                 </p>
-                <p className='mt-1 inline-block rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700'>Free during early access</p>
+                <p className='mt-1 inline-block rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700'>14-day free trial</p>
               </div>
               <div className='hidden flex-col items-center gap-2 sm:flex'>
                 <Button to={START}>
