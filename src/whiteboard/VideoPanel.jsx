@@ -31,6 +31,7 @@ export default function VideoPanel({ call, peerName, fill = false, floating = fa
   const [open, setOpen] = useState(true);
   const on = Boolean(call.localStream);
   const connected = call.status === 'connected';
+  const [showDetails, setShowDetails] = useState(false);
   // Focus mode tucks the video away, and leaving it puts the video back the way it was.
   const before = useRef(true);
   useEffect(() => {
@@ -141,6 +142,29 @@ export default function VideoPanel({ call, peerName, fill = false, floating = fa
         <p role='status' className='text-xs font-semibold text-rose-700'>
           {call.problem}
         </p>
+      )}
+      {/* What happened, step by step: shown when something is wrong or while connecting. */}
+      {(call.problem || call.status === 'connecting' || showDetails) && call.details?.length > 0 && (
+        <div className='-mt-1'>
+          <button
+            type='button'
+            onClick={() => setShowDetails((was) => !was)}
+            aria-expanded={showDetails}
+            className='text-xs font-semibold text-slate-500 hover:text-slate-700 hover:underline'
+          >
+            {showDetails ? 'Hide connection details' : 'Connection details'}
+          </button>
+          {showDetails && (
+            <ol className='mt-1 max-h-40 space-y-0.5 overflow-y-auto rounded-lg bg-slate-50 p-2 text-[11px] leading-snug text-slate-600'>
+              {call.details.map((d, i) => (
+                <li key={i}>
+                  <span className='tabular-nums text-slate-400'>{new Date(d.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>{' '}
+                  {d.text}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       )}
       {on ? (
         <div className='flex justify-center gap-2'>
