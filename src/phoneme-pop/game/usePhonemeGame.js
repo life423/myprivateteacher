@@ -92,6 +92,14 @@ export function usePhonemeGame({ onChange } = {}) {
         settled.current = true;
         chooseLevel(intent.level);
         return;
+      // The tutor's demonstration: picks the next sound in the word, as the student should
+      case 'showNext': {
+        if (s.phase !== 'tiles') return;
+        const sound = s.word.phonemes[s.selected.length];
+        const tile = s.tiles.find((t) => t.sound === sound && !s.selected.some((x) => x.id === t.id));
+        if (tile) dispatch({ type: 'toggleTile', tile });
+        return;
+      }
       default:
     }
   };

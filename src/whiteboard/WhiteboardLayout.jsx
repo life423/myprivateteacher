@@ -39,7 +39,7 @@ function FloatingTools({ tools, focus }) {
     if (focus) setOpen(false);
   }, [focus]);
   return (
-    <div className='pointer-events-none absolute bottom-3 left-3 z-20 flex max-h-[calc(100%-1.5rem)] items-end gap-2 landscape:bottom-auto landscape:top-3 landscape:items-start'>
+    <div className='pointer-events-none absolute bottom-3 left-3 z-20 flex max-h-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col items-start gap-2 landscape:bottom-auto landscape:top-3 landscape:flex-row'>
       <button
         type='button'
         aria-expanded={open}
@@ -51,7 +51,12 @@ function FloatingTools({ tools, focus }) {
         {open ? <X className='h-5 w-5' aria-hidden='true' /> : <Pencil className='h-5 w-5' aria-hidden='true' />}
         {open ? 'Close' : 'Tools'}
       </button>
-      {open && <div className='pointer-events-auto max-h-full overflow-y-auto rounded-2xl portrait:[&_nav]:flex-row'>{tools}</div>}
+      {/* Held upright, the tools sit in a grid that wraps, so every button stays on the screen */}
+      {open && (
+        <div className='pointer-events-auto max-h-full max-w-full overflow-y-auto rounded-2xl portrait:[&_nav]:grid portrait:[&_nav]:grid-cols-3 portrait:[&_nav]:gap-1 portrait:[&_nav>[aria-label=Hands]]:col-span-3 portrait:[&_nav>[aria-label=Hands]]:w-full'>
+          {tools}
+        </div>
+      )}
     </div>
   );
 }

@@ -301,9 +301,6 @@ export default function StudentRoom({ code }) {
           />
           {phase === 'in' && notice && <StageNotice>{notice}</StageNotice>}
           {phase === 'in' && !notice && !tutorHere && <StageNotice>Waiting for your tutor…</StageNotice>}
-          {phase === 'in' && !notice && tutorHere && !touched && toolsOn && hands.visible.length > 0 && (
-            <StageNotice>Drag a hand to a letter ✋</StageNotice>
-          )}
         </>
         )
       }
@@ -311,16 +308,21 @@ export default function StudentRoom({ code }) {
       peerName='your tutor'
       alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn} handActions={holdActions} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
-      panels={[
-        {
-          id: 'pictures',
-          label: 'Pictures',
-          icon: ImageIcon,
-          content: (
-            <PicturesPanel {...pictureProps} notice={guidePic && !browsing ? { text: 'Your tutor picked a picture for you.', tone: 'sky' } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
-          ),
-        },
-      ]}
+      // While a game is on it has the whole board: no pictures panel to take up the screen
+      panels={
+        game
+          ? []
+          : [
+              {
+                id: 'pictures',
+                label: 'Pictures',
+                icon: ImageIcon,
+                content: (
+                  <PicturesPanel {...pictureProps} notice={guidePic && !browsing ? { text: 'Your tutor picked a picture for you.', tone: 'sky' } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
+                ),
+              },
+            ]
+      }
     />
     <PictureDrawer
       open={browsing}

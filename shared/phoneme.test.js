@@ -32,6 +32,7 @@ describe('what a student may send', () => {
     expect(cleanIntent({ type: 'toggleTile', id: 'sun-0' })).toEqual({ type: 'toggleTile', id: 'sun-0' });
     expect(cleanIntent({ type: 'split' })).toEqual({ type: 'split' });
     expect(cleanIntent({ type: 'check' })).toEqual({ type: 'check' });
+    expect(cleanIntent({ type: 'showNext' })).toEqual({ type: 'showNext' });
     expect(cleanIntent({ type: 'chooseLevel', level: 2 })).toEqual({ type: 'chooseLevel', level: 2 });
   });
 

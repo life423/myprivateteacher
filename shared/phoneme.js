@@ -2,7 +2,7 @@
 // student's (as JSON, so the solved words are a list), and the actions a student may send. Shared by
 // the browser and the server, which checks what a student sends before passing it on.
 
-export const INTENTS = new Set(['toggleTile', 'split', 'check', 'hear', 'next', 'chooseLevel']);
+export const INTENTS = new Set(['toggleTile', 'split', 'check', 'hear', 'next', 'chooseLevel', 'showNext']);
 const MAX_LEVEL = 99;
 const MAX_ID = 80;
 

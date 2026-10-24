@@ -448,12 +448,39 @@ export default function TutorRoom() {
               </section>
               <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
                 <h3 className='mb-2 text-lg font-bold text-slate-900'>Phoneme Pop</h3>
-                <div className='flex flex-col items-start gap-3'>
+                <div className='flex flex-col items-start gap-4'>
                   <p className='text-base text-slate-700'>Hear the word, split it into its sounds, and put them back in order.</p>
+                  {phoneme.active && (
+                    <>
+                      <div role='group' aria-label='Level' className='flex flex-wrap gap-2'>
+                        {phoneme.bank.levels.map((l) => (
+                          <button
+                            key={l.level}
+                            type='button'
+                            aria-pressed={phoneme.state.level === l.level}
+                            onClick={() => phoneme.act({ type: 'chooseLevel', level: l.level })}
+                            className={`min-h-11 rounded-full px-4 py-2 text-sm font-bold ${
+                              phoneme.state.level === l.level ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-violet-50'
+                            }`}
+                          >
+                            Level {l.level}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type='button'
+                        onClick={() => phoneme.act({ type: 'showNext' })}
+                        disabled={phoneme.state.phase !== 'tiles'}
+                        className='min-h-11 rounded-full bg-amber-500 px-5 py-2 font-bold text-white shadow hover:bg-amber-600 disabled:opacity-40'
+                      >
+                        Show me the next sound
+                      </button>
+                    </>
+                  )}
                   <button
                     type='button'
                     onClick={phoneme.active ? phoneme.stop : startPhoneme}
-                    className='rounded-full bg-violet-600 px-5 py-2 font-bold text-white shadow hover:bg-violet-700'
+                    className='min-h-11 rounded-full border-2 border-violet-600 px-5 py-2 font-bold text-violet-700 hover:bg-violet-50'
                   >
                     {phoneme.active ? 'Put Phoneme Pop away' : 'Start Phoneme Pop'}
                   </button>
