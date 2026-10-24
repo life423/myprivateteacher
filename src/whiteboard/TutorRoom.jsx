@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import BridgeControls from '../bridge/BridgeControls.jsx';
+import GameCarousel from './GameCarousel.jsx';
 import { useTutorBridge } from '../bridge/useTutorBridge.js';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
@@ -104,6 +105,7 @@ export default function TutorRoom() {
   const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
   const bridge = useTutorBridge((msg) => sendRef.current(msg));
+  const [gameIndex, setGameIndex] = useState(0); // which game is at the front of the carousel
 
   const { status, send } = useRealtime({
     // Asking for the saved code again lets a refresh or a deploy keep the same room.
@@ -419,10 +421,19 @@ export default function TutorRoom() {
           ),
         },
         {
-          id: 'bridge',
-          label: 'Bridge',
+          id: 'games',
+          label: 'Games',
           icon: Milestone,
-          content: <BridgeControls bridge={bridge} />,
+          content: (
+            <GameCarousel
+              games={[
+                { id: 'bridge', title: 'Alphabet Bridge', content: <BridgeControls bridge={bridge} /> },
+                { id: 'phoneme-pop', title: 'Phoneme Pop', content: <p className='text-base text-slate-600'>Coming to the whiteboard next.</p> },
+              ]}
+              active={gameIndex}
+              onTurn={setGameIndex}
+            />
+          ),
         },
         {
           id: 'pictures',

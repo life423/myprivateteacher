@@ -8,7 +8,7 @@ export default function BridgeControls({ bridge }) {
 
   if (!game) {
     return (
-      <div className='flex flex-col items-start gap-3 p-4'>
+      <div className='flex flex-col items-start gap-3'>
         <p className='text-base text-slate-700'>
           The bridge is put away. Turn it on from the tools to show it on your board and your student's.
         </p>
@@ -20,7 +20,7 @@ export default function BridgeControls({ bridge }) {
   }
 
   return (
-    <div className='flex flex-col gap-4 p-4'>
+    <div className='flex flex-col gap-4'>
       <div className='grid gap-4 sm:grid-cols-3'>
         <label className='flex flex-col gap-1 text-sm font-semibold text-slate-700'>
           Letters in the row
