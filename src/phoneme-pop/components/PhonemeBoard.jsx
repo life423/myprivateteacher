@@ -32,14 +32,15 @@ export default function PhonemeBoard({ state, total, onIntent }) {
         <CelebrationOverlay show={phase === 'celebrating'} />
       </main>
 
-      <footer className='border-t bg-white px-3 py-2 sm:px-4 sm:py-3'>
+      {/* On a phone the Tools button sits over the bottom-left corner, so the progress line clears it */}
+      <footer className='border-t bg-white px-3 pb-16 pt-2 sm:px-4 sm:py-3'>
         <div className='mx-auto flex max-w-7xl items-center gap-4'>
           <ProgressBar level={level} solvedCount={solved.size} total={total} />
           {phase !== 'word' && (
             <button
               type='button'
               onClick={() => onIntent({ type: 'next' })}
-              className='flex items-center gap-2 whitespace-nowrap rounded-full border-2 border-purple-600 px-4 py-2 text-sm font-bold text-purple-700 hover:bg-purple-50 sm:text-base'
+              className='flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full border-2 border-purple-600 px-4 py-2 text-sm font-bold text-purple-700 hover:bg-purple-50 sm:text-base'
             >
               <RefreshCw className='h-4 w-4' aria-hidden='true' />
               Next word

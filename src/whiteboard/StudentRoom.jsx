@@ -56,7 +56,6 @@ export default function StudentRoom({ code }) {
     }, 200);
   };
   const [notice, setNotice] = useState(null);
-  const [touched, setTouched] = useState(false);
   const [myMarker, setMyMarker] = useFrameState(null);
   const [tutorMarker, setTutorMarker] = useFrameState(null);
   const keyRef = useRef(sessionStorage.getItem(storageKey));
@@ -165,7 +164,6 @@ export default function StudentRoom({ code }) {
   const share = (p, mode) => {
     lastPoint.current = p;
     if (mode === 'none') return; // nothing to show: the two hands are shared and held, not worn
-    if (!touched) setTouched(true);
     setMyMarker({ kind: mode, by: 'student', x: p.x, y: p.y });
     wb.sendPointer({ t: 'p', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), m: mode });
   };
@@ -206,15 +204,7 @@ export default function StudentRoom({ code }) {
   }
 
   const markers = [tutorMarker && { key: 'tutor', ...tutorMarker }, myMarker && { key: 'me', ...myMarker }].filter(Boolean);
-  // Holding a hand for the first time puts away the hint.
-  const holdActions = {
-    ...hands,
-    grab: (side) => {
-      const held = hands.grab(side);
-      if (held) setTouched(true);
-      return held;
-    },
-  };
+  const holdActions = hands;
 
   // The Pictures panel's settings, shared by the side column (or sheet) and the slide-out.
   const pictureProps = {

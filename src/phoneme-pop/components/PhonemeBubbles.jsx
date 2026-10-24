@@ -15,7 +15,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
           type='button'
           onClick={onHearWord}
           aria-label='Hear the word again'
-          className='rounded-full bg-white p-2 text-purple-600 shadow hover:bg-purple-50'
+          className='flex min-h-11 min-w-[2.75rem] items-center justify-center rounded-full bg-white p-2 text-purple-600 shadow hover:bg-purple-50'
         >
           <Volume2 className='w-5 h-5' aria-hidden='true' />
         </button>
@@ -33,7 +33,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
               aria-pressed={isSelected}
               aria-label={visual ? `${tile.sound}, as in ${visual.hint}` : tile.sound}
               onClick={() => onTileClick(tile)}
-              className='flex flex-col items-center gap-1 motion-safe:animate-pop disabled:cursor-default'
+              className='flex min-h-11 min-w-[2.75rem] flex-col items-center gap-1 motion-safe:animate-pop disabled:cursor-default'
               style={{ animationDelay: `${i * 80}ms` }}
             >
               <span className='h-9 sm:h-10 text-2xl sm:text-3xl' aria-hidden='true'>{visual?.symbol}</span>
@@ -69,7 +69,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
           type='button'
           onClick={onCheck}
           disabled={locked || selected.length === 0}
-          className='whitespace-nowrap rounded-full bg-green-700 px-6 py-2 text-base font-bold text-white transition-colors hover:bg-green-800 disabled:opacity-40'
+          className='min-h-11 whitespace-nowrap rounded-full bg-green-700 px-6 py-2 text-base font-bold text-white transition-colors hover:bg-green-800 disabled:opacity-40'
         >
           Check word
         </button>
