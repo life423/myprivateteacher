@@ -34,7 +34,8 @@ function useArrangement() {
 
 // The drawing tools on narrower screens: a labelled Tools button that opens the tool rail.
 function FloatingTools({ tools, focus }) {
-  const [open, setOpen] = useState(() => window.innerWidth >= 640);
+  // Open by default on tablets; closed on a phone held sideways, where it would cover the short board
+  const [open, setOpen] = useState(() => window.innerWidth >= 640 && window.innerHeight >= 500);
   useEffect(() => {
     if (focus) setOpen(false);
   }, [focus]);
@@ -53,7 +54,7 @@ function FloatingTools({ tools, focus }) {
       </button>
       {/* Held upright, the tools sit in a grid that wraps, so every button stays on the screen */}
       {open && (
-        <div className='pointer-events-auto max-h-full max-w-full overflow-y-auto rounded-2xl portrait:[&_nav]:grid portrait:[&_nav]:grid-cols-3 portrait:[&_nav]:gap-1 portrait:[&_nav>[aria-label=Hands]]:col-span-3 portrait:[&_nav>[aria-label=Hands]]:w-full'>
+        <div className='pointer-events-auto max-h-full max-w-full overflow-y-auto rounded-2xl portrait:[&_nav]:grid portrait:[&_nav]:grid-cols-3 portrait:[&_nav]:gap-1 portrait:[&_nav>[aria-label=Hands]]:col-span-3 portrait:[&_nav>[aria-label=Hands]]:w-full landscape:[&_nav]:flex-row landscape:[&_nav]:flex-wrap'>
           {tools}
         </div>
       )}
@@ -362,11 +363,12 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
           {alphabet}
           <main className='relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-slate-100 shadow'>
             <BoardFit.Provider value={alphabet ? FILL_WITH_BAR : FILL}>{board}</BoardFit.Provider>
+            {/* Inside the board, so they never sit over the alphabet bar */}
+            {tools && <FloatingTools tools={tools} focus={focus} />}
+            <FloatingVideo>
+              <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
+            </FloatingVideo>
           </main>
-          {tools && <FloatingTools tools={tools} focus={focus} />}
-          <FloatingVideo>
-            <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
-          </FloatingVideo>
           {focus && <ExitFocus onClick={() => setFocus(false)} />}
         </div>
       </div>
