@@ -28,12 +28,13 @@ const capitalise = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 // over the board on narrower ones (`floating`). Hiding it never ends the call, and the other
 // person's voice keeps playing. `collapse` (focus mode) tucks it away; it can still be opened.
 export default function VideoPanel({ call, peerName, fill = false, floating = false, collapse = false }) {
-  const [open, setOpen] = useState(true);
+  // Floating over the board on a phone, it starts folded so the game has the screen; one tap opens it
+  const [open, setOpen] = useState(() => !floating);
   const on = Boolean(call.localStream);
   const connected = call.status === 'connected';
   const [showDetails, setShowDetails] = useState(false);
   // Focus mode tucks the video away, and leaving it puts the video back the way it was.
-  const before = useRef(true);
+  const before = useRef(open);
   useEffect(() => {
     if (collapse) {
       before.current = open;

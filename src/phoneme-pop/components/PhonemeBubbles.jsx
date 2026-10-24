@@ -15,7 +15,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
           type='button'
           onClick={onHearWord}
           aria-label='Hear the word again'
-          className='rounded-full bg-white p-2 text-purple-600 shadow hover:bg-purple-50'
+          className='flex min-h-11 min-w-[2.75rem] items-center justify-center rounded-full bg-white p-2 text-purple-600 shadow hover:bg-purple-50'
         >
           <Volume2 className='w-5 h-5' aria-hidden='true' />
         </button>
@@ -33,7 +33,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
               aria-pressed={isSelected}
               aria-label={visual ? `${tile.sound}, as in ${visual.hint}` : tile.sound}
               onClick={() => onTileClick(tile)}
-              className='flex flex-col items-center gap-1 motion-safe:animate-pop disabled:cursor-default'
+              className='flex min-h-11 min-w-[2.75rem] flex-col items-center gap-1 motion-safe:animate-pop disabled:cursor-default'
               style={{ animationDelay: `${i * 80}ms` }}
             >
               <span className='h-9 sm:h-10 text-2xl sm:text-3xl' aria-hidden='true'>{visual?.symbol}</span>
@@ -58,7 +58,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
             <span className='text-base font-medium text-gray-500'>Tap the sounds in order</span>
           ) : (
             selected.map((t, idx) => (
-              <span key={t.id} className='flex items-center'>
+              <span key={t.id} className={`flex items-center ${feedback === 'wrong-order' ? 'text-red-700' : ''}`}>
                 {t.sound}
                 {idx < selected.length - 1 && <span className='mx-1 text-gray-400' aria-hidden='true'>→</span>}
               </span>
@@ -69,11 +69,11 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
           type='button'
           onClick={onCheck}
           disabled={locked || selected.length === 0}
-          className='whitespace-nowrap rounded-full bg-green-700 px-6 py-2 text-base font-bold text-white transition-colors hover:bg-green-800 disabled:opacity-40'
+          className='min-h-11 whitespace-nowrap rounded-full bg-green-700 px-6 py-2 text-base font-bold text-white transition-colors hover:bg-green-800 disabled:opacity-40'
         >
           Check word
         </button>
-        <p role='status' className='flex items-center gap-1 text-sm sm:text-base font-semibold text-red-700 empty:hidden'>
+        <p role='status' className='flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-base sm:text-lg font-bold text-red-800 empty:hidden'>
           {feedback ? (
             <>
               <X className='w-5 h-5' aria-hidden='true' />

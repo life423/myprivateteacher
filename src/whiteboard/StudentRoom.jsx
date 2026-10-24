@@ -14,6 +14,9 @@ import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
 import { pictureUrl } from './pictures.js';
 import { useVideoCall } from './useVideoCall.js';
 import { FocusButton, MessageScreen, StageNotice, StatusPill, TopBar } from './ui.jsx';
+import BridgeBoard from '../bridge/BridgeBoard.jsx';
+import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
+import { fromWire } from '../../shared/phoneme.js';
 
 const round4 = (n) => Math.round(n * 10000) / 10000;
 
@@ -31,6 +34,8 @@ export default function StudentRoom({ code }) {
   const [tutorHere, setTutorHere] = useState(true);
   const [toolsOn, setToolsOn] = useState(false);
   const [tool, setTool] = useState('none'); // nothing chosen: a touch moves hands, tiles and pictures
+  const [game, setGame] = useState(null); // the bridge, while the tutor has it on
+  const [selected, setSelected] = useState(null); // the letter picked from the bridge's tray
   const stageApi = useRef(null);
   const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
@@ -51,7 +56,6 @@ export default function StudentRoom({ code }) {
     }, 200);
   };
   const [notice, setNotice] = useState(null);
-  const [touched, setTouched] = useState(false);
   const [myMarker, setMyMarker] = useFrameState(null);
   const [tutorMarker, setTutorMarker] = useFrameState(null);
   const keyRef = useRef(sessionStorage.getItem(storageKey));
@@ -77,6 +81,7 @@ export default function StudentRoom({ code }) {
     hello: joinMessage,
     onMessage: (msg) => {
       if (call.handle(msg)) return;
+      if (msg.t === 'board' || msg.t === 'game') setGame(msg.game || null);
       if (msg.t === 'board') applyTools(Boolean(msg.tools), false);
       if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
@@ -159,7 +164,6 @@ export default function StudentRoom({ code }) {
   const share = (p, mode) => {
     lastPoint.current = p;
     if (mode === 'none') return; // nothing to show: the two hands are shared and held, not worn
-    if (!touched) setTouched(true);
     setMyMarker({ kind: mode, by: 'student', x: p.x, y: p.y });
     wb.sendPointer({ t: 'p', x: round4(p.x / STAGE.width), y: round4(p.y / STAGE.height), m: mode });
   };
@@ -173,6 +177,13 @@ export default function StudentRoom({ code }) {
     const p = lastPoint.current;
     if (p) share(p, next);
   };
+
+  // A letter that's now in its gap can't be picked any more
+  useEffect(() => {
+    if (selected && game?.kind !== 'phoneme' && game && !game.tray.includes(selected)) setSelected(null);
+  }, [game, selected]);
+  // The tutor applies the tap and sends the game back, so the screen shows it once it's there
+  const placeLetter = (slot, letter) => send({ t: 'game:act', act: { a: 'place', slot, letter } });
 
   const ending = ENDINGS[status === 'replaced' ? 'replaced' : phase];
   if (ending) return <MessageScreen title={ending[0]}>{ending[1]}</MessageScreen>;
@@ -193,15 +204,7 @@ export default function StudentRoom({ code }) {
   }
 
   const markers = [tutorMarker && { key: 'tutor', ...tutorMarker }, myMarker && { key: 'me', ...myMarker }].filter(Boolean);
-  // Holding a hand for the first time puts away the hint.
-  const holdActions = {
-    ...hands,
-    grab: (side) => {
-      const held = hands.grab(side);
-      if (held) setTouched(true);
-      return held;
-    },
-  };
+  const holdActions = hands;
 
   // The Pictures panel's settings, shared by the side column (or sheet) and the slide-out.
   const pictureProps = {
@@ -246,6 +249,15 @@ export default function StudentRoom({ code }) {
         )
       }
       board={
+        game?.kind === 'phoneme' ? (
+          <div className='h-full'>
+            <PhonemeBoard state={fromWire(game)} total={game.total} onIntent={(intent) => send({ t: 'game:act', act: intent })} />
+          </div>
+        ) : game ? (
+          <div className='flex h-full items-center justify-center overflow-auto p-2'>
+            <BridgeBoard game={game} selected={selected} onSelect={setSelected} onPlace={placeLetter} />
+          </div>
+        ) : (
         <>
           <Stage
             board={wb.board}
@@ -279,25 +291,28 @@ export default function StudentRoom({ code }) {
           />
           {phase === 'in' && notice && <StageNotice>{notice}</StageNotice>}
           {phase === 'in' && !notice && !tutorHere && <StageNotice>Waiting for your tutor…</StageNotice>}
-          {phase === 'in' && !notice && tutorHere && !touched && toolsOn && hands.visible.length > 0 && (
-            <StageNotice>Drag a hand to a letter ✋</StageNotice>
-          )}
         </>
+        )
       }
       call={call}
       peerName='your tutor'
       alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn} handActions={holdActions} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
-      panels={[
-        {
-          id: 'pictures',
-          label: 'Pictures',
-          icon: ImageIcon,
-          content: (
-            <PicturesPanel {...pictureProps} notice={guidePic && !browsing ? { text: 'Your tutor picked a picture for you.', tone: 'sky' } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
-          ),
-        },
-      ]}
+      // While a game is on it has the whole board: no pictures panel to take up the screen
+      panels={
+        game
+          ? []
+          : [
+              {
+                id: 'pictures',
+                label: 'Pictures',
+                icon: ImageIcon,
+                content: (
+                  <PicturesPanel {...pictureProps} notice={guidePic && !browsing ? { text: 'Your tutor picked a picture for you.', tone: 'sky' } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
+                ),
+              },
+            ]
+      }
     />
     <PictureDrawer
       open={browsing}

@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
+import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
+import BridgeBoard from '../bridge/BridgeBoard.jsx';
+import BridgeControls from '../bridge/BridgeControls.jsx';
+import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
+import { usePhonemeTutor } from '../phoneme-pop/game/usePhonemeTutor.js';
+import { useTutorBridge } from '../bridge/useTutorBridge.js';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
@@ -100,12 +105,16 @@ export default function TutorRoom() {
   };
   const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
+  const bridge = useTutorBridge((msg) => sendRef.current(msg));
+  const phoneme = usePhonemeTutor((msg) => sendRef.current(msg));
 
   const { status, send } = useRealtime({
     // Asking for the saved code again lets a refresh or a deploy keep the same room.
     hello: () => ({ t: 'create', code: roomRef.current.code, key: roomRef.current.key }),
     onMessage: (msg) => {
       if (call.handle(msg)) return;
+      bridge.handle(msg);
+      phoneme.handle(msg);
       if (msg.t === 'board') setStudentTools(Boolean(msg.tools));
       if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
@@ -211,6 +220,21 @@ export default function TutorRoom() {
   const onLeave = () => {
     setMyMarker(null);
     wb.sendPointer({ t: 'p', m: 'none' });
+  };
+
+  // One game at a time: starting one puts the other away
+  const gameOn = bridge.game !== null || phoneme.active;
+  const putGameAway = () => {
+    if (bridge.game) bridge.stop();
+    if (phoneme.active) phoneme.stop();
+  };
+  const startBridge = () => {
+    if (phoneme.active) phoneme.stop();
+    bridge.start();
+  };
+  const startPhoneme = () => {
+    if (bridge.game) bridge.stop();
+    phoneme.start();
   };
 
   let pill = <StatusPill tone='wait'>Waiting for student</StatusPill>;
@@ -329,11 +353,21 @@ export default function TutorRoom() {
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
           <LinesButton size={wb.lines} onChoose={chooseLines} />
+          <ToolButton icon={Milestone} label='Games' pressed={gameOn} onClick={() => (gameOn ? putGameAway() : layout.current?.show('games'))} />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
         </ToolRail>
       }
       board={
+        bridge.game ? (
+          <div className='flex h-full items-center justify-center overflow-auto p-2'>
+            <BridgeBoard game={bridge.game} selected={bridge.selected} onSelect={bridge.setSelected} onPlace={bridge.place} />
+          </div>
+        ) : phoneme.active ? (
+          <div className='h-full'>
+            <PhonemeBoard state={phoneme.state} total={phoneme.bank.words[phoneme.state.level]?.length ?? 0} onIntent={phoneme.act} />
+          </div>
+        ) : (
         <>
           <Stage
             board={wb.board}
@@ -373,6 +407,7 @@ export default function TutorRoom() {
           )}
           {studentHere && tip && <StageNotice>{tip}</StageNotice>}
         </>
+        )
       }
       call={call}
       peerName='your student'
@@ -399,6 +434,59 @@ export default function TutorRoom() {
               boxes={wb.boxes}
               onBoxes={wb.setBoxes}
             />
+          ),
+        },
+        {
+          id: 'games',
+          label: 'Games',
+          icon: Milestone,
+          content: (
+            <div className='flex flex-col gap-4 p-3'>
+              <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
+                <h3 className='mb-3 text-lg font-bold text-slate-900'>Alphabet Bridge</h3>
+                <BridgeControls bridge={{ ...bridge, start: startBridge }} />
+              </section>
+              <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
+                <h3 className='mb-2 text-lg font-bold text-slate-900'>Phoneme Pop</h3>
+                <div className='flex flex-col items-start gap-4'>
+                  <p className='text-base text-slate-700'>Hear the word, split it into its sounds, and put them back in order.</p>
+                  {phoneme.active && (
+                    <>
+                      <div role='group' aria-label='Level' className='flex flex-wrap gap-2'>
+                        {phoneme.bank.levels.map((l) => (
+                          <button
+                            key={l.level}
+                            type='button'
+                            aria-pressed={phoneme.state.level === l.level}
+                            onClick={() => phoneme.act({ type: 'chooseLevel', level: l.level })}
+                            className={`min-h-11 rounded-full px-4 py-2 text-sm font-bold ${
+                              phoneme.state.level === l.level ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-violet-50'
+                            }`}
+                          >
+                            Level {l.level}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type='button'
+                        onClick={() => phoneme.act({ type: 'showNext' })}
+                        disabled={phoneme.state.phase !== 'tiles'}
+                        className='min-h-11 rounded-full bg-amber-500 px-5 py-2 font-bold text-white shadow hover:bg-amber-600 disabled:opacity-40'
+                      >
+                        Show me the next sound
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type='button'
+                    onClick={phoneme.active ? phoneme.stop : startPhoneme}
+                    className='min-h-11 rounded-full border-2 border-violet-600 px-5 py-2 font-bold text-violet-700 hover:bg-violet-50'
+                  >
+                    {phoneme.active ? 'Put Phoneme Pop away' : 'Start Phoneme Pop'}
+                  </button>
+                </div>
+              </section>
+            </div>
           ),
         },
         {

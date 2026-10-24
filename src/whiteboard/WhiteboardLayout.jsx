@@ -34,12 +34,13 @@ function useArrangement() {
 
 // The drawing tools on narrower screens: a labelled Tools button that opens the tool rail.
 function FloatingTools({ tools, focus }) {
-  const [open, setOpen] = useState(() => window.innerWidth >= 640);
+  // Open by default on tablets; closed on a phone held sideways, where it would cover the short board
+  const [open, setOpen] = useState(() => window.innerWidth >= 640 && window.innerHeight >= 500);
   useEffect(() => {
     if (focus) setOpen(false);
   }, [focus]);
   return (
-    <div className='pointer-events-none absolute bottom-3 left-3 z-20 flex max-h-[calc(100%-1.5rem)] items-end gap-2 landscape:bottom-auto landscape:top-3 landscape:items-start'>
+    <div className='pointer-events-none absolute bottom-3 left-3 z-20 flex max-h-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col items-start gap-2 landscape:bottom-auto landscape:top-3 landscape:flex-row'>
       <button
         type='button'
         aria-expanded={open}
@@ -51,13 +52,18 @@ function FloatingTools({ tools, focus }) {
         {open ? <X className='h-5 w-5' aria-hidden='true' /> : <Pencil className='h-5 w-5' aria-hidden='true' />}
         {open ? 'Close' : 'Tools'}
       </button>
-      {open && <div className='pointer-events-auto max-h-full overflow-y-auto rounded-2xl portrait:[&_nav]:flex-row'>{tools}</div>}
+      {/* Held upright, the tools sit in a grid that wraps, so every button stays on the screen */}
+      {open && (
+        <div className='pointer-events-auto max-h-full max-w-full overflow-y-auto rounded-2xl portrait:[&_nav]:grid portrait:[&_nav]:grid-cols-3 portrait:[&_nav]:gap-1 portrait:[&_nav>[aria-label=Hands]]:col-span-3 portrait:[&_nav>[aria-label=Hands]]:w-full landscape:[&_nav]:flex-row landscape:[&_nav]:flex-wrap'>
+          {tools}
+        </div>
+      )}
     </div>
   );
 }
 
 // A small video window over the board that can be dragged anywhere in its area.
-const VIDEO_CORNER = 'absolute bottom-20 right-3 z-20 flex w-40 touch-none justify-end sm:w-52 landscape:bottom-auto landscape:top-3';
+const VIDEO_CORNER = 'absolute right-3 top-3 z-20 flex w-40 touch-none justify-end sm:w-52';
 
 function FloatingVideo({ children, place = VIDEO_CORNER }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -354,14 +360,16 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
       <div className='relative min-h-0 flex-1 p-2'>
         {/* The floating tools and video live in the same space as the board, above the bottom bar. */}
         <div className='relative flex h-full w-full flex-col gap-2'>
-          {alphabet}
+          {/* On a short screen (a phone held sideways) the alphabet would take most of the board's height, so it steps aside */}
+          {alphabet && <div className='[@media(max-height:500px)]:hidden'>{alphabet}</div>}
           <main className='relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-slate-100 shadow'>
             <BoardFit.Provider value={alphabet ? FILL_WITH_BAR : FILL}>{board}</BoardFit.Provider>
+            {/* Inside the board, so they never sit over the alphabet bar */}
+            {tools && <FloatingTools tools={tools} focus={focus} />}
+            <FloatingVideo>
+              <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
+            </FloatingVideo>
           </main>
-          {tools && <FloatingTools tools={tools} focus={focus} />}
-          <FloatingVideo>
-            <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
-          </FloatingVideo>
           {focus && <ExitFocus onClick={() => setFocus(false)} />}
         </div>
       </div>

@@ -3,7 +3,7 @@ import { wordLists } from '../data/wordLists.js';
 import { LEVELS, POINTS_PER_WORD, randomItem } from './logic.js';
 
 // phase: 'word' (whole word showing) -> 'tiles' (split into sounds) -> 'celebrating'
-function init({ level, lists }) {
+export function init({ level, lists }) {
   return {
     level,
     solved: new Set(),
@@ -17,8 +17,12 @@ function init({ level, lists }) {
   };
 }
 
-function reducer(state, action) {
+export function reducer(state, action) {
   switch (action.type) {
+    // Adopts a game state from elsewhere (the tutor's copy, when a student or a reconnect needs it)
+    case 'restore':
+      return action.state;
+
     case 'split':
       if (state.phase !== 'word') return state;
       return { ...state, phase: 'tiles', tiles: action.tiles, selected: [], feedback: null };
@@ -46,8 +50,9 @@ function reducer(state, action) {
       if (state.phase !== 'tiles') return state;
       return { ...state, feedback: action.reason, streak: action.reason === 'wrong-order' ? 0 : state.streak };
 
+    // The message fades, but the student's sounds stay put: they can see what to change, and tap to undo
     case 'clearFeedback':
-      return { ...state, feedback: null, selected: state.feedback === 'wrong-order' ? [] : state.selected };
+      return { ...state, feedback: null };
 
     // The player picked a level: start it fresh. Score and streak carry on.
     case 'chooseLevel':

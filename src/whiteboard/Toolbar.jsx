@@ -25,7 +25,7 @@ export function ToolButton({ icon: Icon, label, pressed, disabled = false, dange
       disabled={disabled}
       aria-pressed={pressed}
       title={label}
-      className={`flex w-11 flex-col items-center gap-1 rounded-xl px-1 py-2 text-xs font-bold transition-colors disabled:opacity-30 sm:w-14 lg:w-16 ${tone}`}
+      className={`flex min-h-11 w-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-xs font-bold transition-colors disabled:opacity-30 sm:w-14 lg:w-16 ${tone}`}
     >
       <span className='relative'>
         <Icon className='h-6 w-6' aria-hidden='true' />
@@ -58,7 +58,7 @@ export function HandsSwitch({ hands, onToggle }) {
               aria-label={name}
               title={`${name}: ${on ? 'showing' : 'hidden'}`}
               onClick={() => onToggle(side, !on)}
-              className={`flex h-9 min-w-0 flex-1 items-center justify-center rounded-lg transition-colors ${on ? 'bg-violet-100 ring-2 ring-inset ring-violet-400' : 'hover:bg-violet-50'}`}
+              className={`flex h-11 min-w-0 flex-1 items-center justify-center rounded-lg transition-colors ${on ? 'bg-violet-100 ring-2 ring-inset ring-violet-400' : 'hover:bg-violet-50'}`}
             >
               <GloveIcon side={side} className={`h-6 w-auto ${on ? '' : 'opacity-40 grayscale'}`} />
             </button>
