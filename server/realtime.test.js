@@ -752,3 +752,48 @@ describe('starting a lesson', () => {
     }
   });
 });
+
+describe('the alphabet bridge game in a room', () => {
+  const round = { letters: 'JKLMN', slots: [1, 3], placed: {}, tray: ['K', 'M'], miss: null, settings: { length: 5, gaps: 2, distractors: 0 } };
+
+  it("the tutor's game reaches the student, and comes back with the board after a rejoin", async () => {
+    const { tutor, code, key } = await openRoom();
+    const student = await joinRoom(code, key);
+    expect(student.board.game).toBeNull();
+
+    tutor.send({ t: 'game', game: round });
+    expect((await student.student.take('game')).game).toEqual(round);
+
+    student.student.ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const again = await joinRoom(code, key);
+    expect(again.board.game).toEqual(round);
+    tutor.ws.close();
+    again.student.ws.close();
+  });
+
+  it("a student's move goes to the tutor; a student can't set the game, and a bad move is dropped", async () => {
+    const { tutor, code, key } = await openRoom();
+    const student = await joinRoom(code, key);
+    tutor.send({ t: 'game', game: round });
+    await student.student.take('game');
+
+    student.student.send({ t: 'game', game: { letters: 'XYZ' } }); // students can't set the game
+    student.student.send({ t: 'game:act', act: { a: 'show', slot: 1 } }); // only the tutor demonstrates
+    student.student.send({ t: 'game:act', act: { a: 'place', slot: 1, letter: 'K' } });
+    expect((await tutor.take('game:act')).act).toEqual({ a: 'place', slot: 1, letter: 'K' });
+
+    tutor.ws.close();
+    student.student.ws.close();
+  });
+
+  it('a game that is too big is refused', async () => {
+    const { tutor, code, key } = await openRoom();
+    const student = await joinRoom(code, key);
+    tutor.send({ t: 'game', game: { letters: 'A'.repeat(5000) } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(student.student.take('game', 150)).rejects.toThrow();
+    tutor.ws.close();
+    student.student.ws.close();
+  });
+});

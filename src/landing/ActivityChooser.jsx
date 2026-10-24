@@ -15,6 +15,13 @@ const ACTIVITIES = [
     text: 'Point to letters on a shared alphabet strip while your tutor watches live.',
     tone: 'from-sky-500 to-violet-600',
   },
+  {
+    to: '/bridge',
+    emoji: '🌉',
+    title: 'Alphabet Bridge',
+    text: 'Fill in the missing letters to build a bridge in order, together with your tutor or on your own.',
+    tone: 'from-amber-500 to-emerald-600',
+  },
 ];
 
 export default function ActivityChooser() {

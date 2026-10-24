@@ -22,6 +22,10 @@ const ArticulationCardPage = lazyPage(() =>
   import('./dev/ArticulationCardsGallery.jsx').then((m) => ({ default: m.ArticulationCardPage })),
 );
 const PhonemeSeparationGame = lazyPage(() => import('./phoneme-pop/components/PhonemeSeparationGame.jsx'));
+const BridgeLobby = lazyPage(() => import('./bridge/BridgeLobby.jsx'));
+const BridgeSolo = lazyPage(() => import('./bridge/BridgeSolo.jsx'));
+const BridgeTeach = lazyPage(() => import('./bridge/BridgeTeach.jsx'));
+const BridgeStudent = lazyPage(() => import('./bridge/BridgeStudent.jsx'));
 const WhiteboardLobby = lazyPage(() => import('./whiteboard/WhiteboardLobby.jsx'));
 const TutorRoom = lazyPage(() => import('./whiteboard/TutorRoom.jsx'));
 const StudentRoom = lazyPage(() => import('./whiteboard/StudentRoom.jsx'));
@@ -41,6 +45,21 @@ function page(path) {
   if (path === '/billing/done') return one('Welcome', BillingDonePage);
   if (path === '/activities') return one('Activities', ActivityChooser);
   if (path === '/phoneme-pop') return one('Phoneme Pop', PhonemeSeparationGame);
+  if (path === '/bridge') return one('Alphabet Bridge', BridgeLobby);
+  if (path === '/bridge/solo') return one('Alphabet Bridge', BridgeSolo);
+  if (path === '/bridge/teach') {
+    return {
+      title: 'Alphabet Bridge',
+      needs: [TeachGate, BridgeTeach],
+      element: (
+        <TeachGate>
+          <BridgeTeach />
+        </TeachGate>
+      ),
+    };
+  }
+  const bridgeCode = path.startsWith('/bridge/') ? path.slice('/bridge/'.length) : '';
+  if (isRoomCode(bridgeCode)) return { title: 'Alphabet Bridge', needs: [BridgeStudent], element: <BridgeStudent key={bridgeCode} code={bridgeCode} /> };
   // A student on the join page needs the lesson next: fetch it while they type the code.
   if (path === '/whiteboard') return { ...one('Alphabet Whiteboard', WhiteboardLobby), soon: [StudentRoom] };
   if (path === '/whiteboard/teach') {

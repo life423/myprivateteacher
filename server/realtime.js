@@ -3,6 +3,7 @@ import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
 import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, nextHome, snapTile, tileKind } from '../shared/tiles.js';
 import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isPictureId, pieceSize } from '../shared/pieces.js';
+import { cleanAct } from '../shared/bridge.js';
 
 // Live rooms for the Alphabet Whiteboard: one tutor and one student per room.
 // Pointers go both ways. The board is an ordered list of strokes (pen ink or
@@ -15,6 +16,7 @@ const REPLACED = 4000; // close code: the same person connected again somewhere 
 const MODES = new Set(['pen', 'eraser', 'none']); // what a shared pointer shows
 const TOOLS = new Set(['pen', 'eraser']);
 const MAX_STROKES = 2000;
+const MAX_GAME_CHARS = 4000; // the alphabet bridge's state, as JSON: a few letters and their positions
 const MAX_STROKE_NUMBERS = 8000; // 4,000 points
 const MAX_CHUNK_NUMBERS = 256;
 const POINTER_PER_SECOND = 60;
@@ -63,6 +65,13 @@ function cleanPoints(pts) {
     out.push(clampTo(pts[i], STAGE.width), clampTo(pts[i + 1], STAGE.height));
   }
   return out;
+}
+
+// The tutor's game state, if it's a reasonable size. Only the tutor can send it, so it's kept as sent.
+function cleanGame(game) {
+  if (!game || typeof game !== 'object' || Array.isArray(game)) return null;
+  const json = JSON.stringify(game);
+  return json.length <= MAX_GAME_CHARS ? JSON.parse(json) : null;
 }
 
 // A part of the board (x, y, w, h in board units), tidied up, or null.
@@ -162,6 +171,7 @@ export function attachRealtime(server, options = {}) {
     pictures: [...room.pictures.values()].map(sharedPicture),
     pieces: [...room.pieces.values()],
     offers: [...room.offers.values()],
+    game: room.game,
   });
 
   const broadcast = (room, msg) => {
@@ -359,6 +369,22 @@ export function attachRealtime(server, options = {}) {
   };
 
   const handlers = {
+    // The alphabet bridge game. The tutor's copy is the one that counts: the tutor sets the game
+    // and the student's screen follows it. The student's moves go to the tutor to apply.
+    game(ws, msg) {
+      const room = ws.room;
+      if (!room || room.tutor !== ws || !allow(ws, 'game', DRAW_PER_SECOND)) return;
+      const game = cleanGame(msg.game);
+      if (!game) return;
+      room.game = game;
+      send(room.student, { t: 'game', game });
+    },
+    'game:act'(ws, msg) {
+      const room = ws.room;
+      if (!room || room.student !== ws || !room.game || !allow(ws, 'game:act', DRAW_PER_SECOND)) return;
+      const act = cleanAct(msg.act);
+      if (act) send(room.tutor, { t: 'game:act', act });
+    },
     // A tutor opens a room, or takes theirs back after a reconnect or a server restart.
     create(ws, msg, cleared = false) {
       let room = isCode(msg.code) ? rooms.get(msg.code) : undefined;
@@ -395,6 +421,7 @@ export function attachRealtime(server, options = {}) {
           studentKey: null,
           closeTimer: null,
           tools: false,
+          game: null, // the alphabet bridge, as the tutor last set it
           strokes: [],
           strokeById: new Map(),
           seq: 0,
