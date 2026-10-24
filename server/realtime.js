@@ -69,9 +69,9 @@ function cleanPoints(pts) {
 
 // The tutor's game state, if it's a reasonable size. Only the tutor can send it, so it's kept as sent.
 function cleanGame(game) {
-  if (!game || typeof game !== 'object' || Array.isArray(game)) return null;
+  if (!game || typeof game !== 'object' || Array.isArray(game)) return undefined;
   const json = JSON.stringify(game);
-  return json.length <= MAX_GAME_CHARS ? JSON.parse(json) : null;
+  return json.length <= MAX_GAME_CHARS ? JSON.parse(json) : undefined;
 }
 
 // A part of the board (x, y, w, h in board units), tidied up, or null.
@@ -370,12 +370,13 @@ export function attachRealtime(server, options = {}) {
 
   const handlers = {
     // The alphabet bridge game. The tutor's copy is the one that counts: the tutor sets the game
-    // and the student's screen follows it. The student's moves go to the tutor to apply.
+    // (or null, to put the bridge away) and the student's screen follows it. The student's moves
+    // go to the tutor to apply.
     game(ws, msg) {
       const room = ws.room;
       if (!room || room.tutor !== ws || !allow(ws, 'game', DRAW_PER_SECOND)) return;
-      const game = cleanGame(msg.game);
-      if (!game) return;
+      const game = msg.game === null ? null : cleanGame(msg.game);
+      if (game === undefined) return;
       room.game = game;
       send(room.student, { t: 'game', game });
     },

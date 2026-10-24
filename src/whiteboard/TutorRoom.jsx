@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
+import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
+import BridgeBoard from '../bridge/BridgeBoard.jsx';
+import BridgeControls from '../bridge/BridgeControls.jsx';
+import { useTutorBridge } from '../bridge/useTutorBridge.js';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
@@ -100,12 +103,14 @@ export default function TutorRoom() {
   };
   const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
+  const bridge = useTutorBridge((msg) => sendRef.current(msg));
 
   const { status, send } = useRealtime({
     // Asking for the saved code again lets a refresh or a deploy keep the same room.
     hello: () => ({ t: 'create', code: roomRef.current.code, key: roomRef.current.key }),
     onMessage: (msg) => {
       if (call.handle(msg)) return;
+      bridge.handle(msg);
       if (msg.t === 'board') setStudentTools(Boolean(msg.tools));
       if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
@@ -329,11 +334,22 @@ export default function TutorRoom() {
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
           <LinesButton size={wb.lines} onChoose={chooseLines} />
+          <ToolButton
+            icon={Milestone}
+            label='Bridge'
+            pressed={bridge.game !== null}
+            onClick={() => (bridge.game ? bridge.stop() : bridge.start())}
+          />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
         </ToolRail>
       }
       board={
+        bridge.game ? (
+          <div className='h-full overflow-auto p-2'>
+            <BridgeBoard game={bridge.game} selected={bridge.selected} onSelect={bridge.setSelected} onPlace={bridge.place} />
+          </div>
+        ) : (
         <>
           <Stage
             board={wb.board}
@@ -373,6 +389,7 @@ export default function TutorRoom() {
           )}
           {studentHere && tip && <StageNotice>{tip}</StageNotice>}
         </>
+        )
       }
       call={call}
       peerName='your student'
@@ -400,6 +417,12 @@ export default function TutorRoom() {
               onBoxes={wb.setBoxes}
             />
           ),
+        },
+        {
+          id: 'bridge',
+          label: 'Bridge',
+          icon: Milestone,
+          content: <BridgeControls bridge={bridge} />,
         },
         {
           id: 'pictures',

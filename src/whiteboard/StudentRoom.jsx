@@ -14,6 +14,7 @@ import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
 import { pictureUrl } from './pictures.js';
 import { useVideoCall } from './useVideoCall.js';
 import { FocusButton, MessageScreen, StageNotice, StatusPill, TopBar } from './ui.jsx';
+import BridgeBoard from '../bridge/BridgeBoard.jsx';
 
 const round4 = (n) => Math.round(n * 10000) / 10000;
 
@@ -31,6 +32,8 @@ export default function StudentRoom({ code }) {
   const [tutorHere, setTutorHere] = useState(true);
   const [toolsOn, setToolsOn] = useState(false);
   const [tool, setTool] = useState('none'); // nothing chosen: a touch moves hands, tiles and pictures
+  const [game, setGame] = useState(null); // the bridge, while the tutor has it on
+  const [selected, setSelected] = useState(null); // the letter picked from the bridge's tray
   const stageApi = useRef(null);
   const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
@@ -77,6 +80,7 @@ export default function StudentRoom({ code }) {
     hello: joinMessage,
     onMessage: (msg) => {
       if (call.handle(msg)) return;
+      if (msg.t === 'board' || msg.t === 'game') setGame(msg.game || null);
       if (msg.t === 'board') applyTools(Boolean(msg.tools), false);
       if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
@@ -174,6 +178,13 @@ export default function StudentRoom({ code }) {
     if (p) share(p, next);
   };
 
+  // A letter that's now in its gap can't be picked any more
+  useEffect(() => {
+    if (selected && game && !game.tray.includes(selected)) setSelected(null);
+  }, [game, selected]);
+  // The tutor applies the tap and sends the game back, so the screen shows it once it's there
+  const placeLetter = (slot, letter) => send({ t: 'game:act', act: { a: 'place', slot, letter } });
+
   const ending = ENDINGS[status === 'replaced' ? 'replaced' : phase];
   if (ending) return <MessageScreen title={ending[0]}>{ending[1]}</MessageScreen>;
 
@@ -246,6 +257,11 @@ export default function StudentRoom({ code }) {
         )
       }
       board={
+        game ? (
+          <div className='h-full overflow-auto p-2'>
+            <BridgeBoard game={game} selected={selected} onSelect={setSelected} onPlace={placeLetter} />
+          </div>
+        ) : (
         <>
           <Stage
             board={wb.board}
@@ -283,6 +299,7 @@ export default function StudentRoom({ code }) {
             <StageNotice>Drag a hand to a letter ✋</StageNotice>
           )}
         </>
+        )
       }
       call={call}
       peerName='your tutor'

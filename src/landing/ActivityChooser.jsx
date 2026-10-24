@@ -19,7 +19,7 @@ const ACTIVITIES = [
     to: '/bridge',
     emoji: '🌉',
     title: 'Alphabet Bridge',
-    text: 'Fill in the missing letters to build a bridge in order, together with your tutor or on your own.',
+    text: 'Fill in the missing letters to build a bridge in order, on your own. Tutors run it live in the whiteboard.',
     tone: 'from-amber-500 to-emerald-600',
   },
 ];

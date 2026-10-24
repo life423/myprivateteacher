@@ -797,3 +797,18 @@ describe('the alphabet bridge game in a room', () => {
     student.student.ws.close();
   });
 });
+
+describe('turning the alphabet bridge on and off', () => {
+  it("the tutor's null turns the game off for the student; a bad game is ignored, not turned off", async () => {
+    const { tutor, code, key } = await openRoom();
+    const student = await joinRoom(code, key);
+    const round = { letters: 'JKLMN', slots: [1], placed: {}, tray: ['K'], miss: null, settings: { length: 5, gaps: 1, distractors: 0 } };
+    tutor.send({ t: 'game', game: round });
+    await student.student.take('game');
+    tutor.send({ t: 'game', game: 'not a game' });
+    tutor.send({ t: 'game', game: null });
+    expect((await student.student.take('game')).game).toBeNull();
+    tutor.ws.close();
+    student.student.ws.close();
+  });
+});
