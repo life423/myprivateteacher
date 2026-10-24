@@ -50,8 +50,9 @@ export function reducer(state, action) {
       if (state.phase !== 'tiles') return state;
       return { ...state, feedback: action.reason, streak: action.reason === 'wrong-order' ? 0 : state.streak };
 
+    // The message fades, but the student's sounds stay put: they can see what to change, and tap to undo
     case 'clearFeedback':
-      return { ...state, feedback: null, selected: state.feedback === 'wrong-order' ? [] : state.selected };
+      return { ...state, feedback: null };
 
     // The player picked a level: start it fresh. Score and streak carry on.
     case 'chooseLevel':

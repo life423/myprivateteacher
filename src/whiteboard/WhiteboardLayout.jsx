@@ -63,7 +63,7 @@ function FloatingTools({ tools, focus }) {
 }
 
 // A small video window over the board that can be dragged anywhere in its area.
-const VIDEO_CORNER = 'absolute bottom-20 right-3 z-20 flex w-40 touch-none justify-end sm:w-52 landscape:bottom-auto landscape:top-3';
+const VIDEO_CORNER = 'absolute right-3 top-3 z-20 flex w-40 touch-none justify-end sm:w-52';
 
 function FloatingVideo({ children, place = VIDEO_CORNER }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -360,7 +360,8 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
       <div className='relative min-h-0 flex-1 p-2'>
         {/* The floating tools and video live in the same space as the board, above the bottom bar. */}
         <div className='relative flex h-full w-full flex-col gap-2'>
-          {alphabet}
+          {/* On a short screen (a phone held sideways) the alphabet would take most of the board's height, so it steps aside */}
+          {alphabet && <div className='[@media(max-height:500px)]:hidden'>{alphabet}</div>}
           <main className='relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-slate-100 shadow'>
             <BoardFit.Provider value={alphabet ? FILL_WITH_BAR : FILL}>{board}</BoardFit.Provider>
             {/* Inside the board, so they never sit over the alphabet bar */}

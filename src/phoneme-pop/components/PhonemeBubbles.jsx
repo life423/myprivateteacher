@@ -58,7 +58,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
             <span className='text-base font-medium text-gray-500'>Tap the sounds in order</span>
           ) : (
             selected.map((t, idx) => (
-              <span key={t.id} className='flex items-center'>
+              <span key={t.id} className={`flex items-center ${feedback === 'wrong-order' ? 'text-red-700' : ''}`}>
                 {t.sound}
                 {idx < selected.length - 1 && <span className='mx-1 text-gray-400' aria-hidden='true'>→</span>}
               </span>
@@ -73,7 +73,7 @@ export default function PhonemeBubbles({ tiles, selected, feedback, locked, onTi
         >
           Check word
         </button>
-        <p role='status' className='flex items-center gap-1 text-sm sm:text-base font-semibold text-red-700 empty:hidden'>
+        <p role='status' className='flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-base sm:text-lg font-bold text-red-800 empty:hidden'>
           {feedback ? (
             <>
               <X className='w-5 h-5' aria-hidden='true' />
