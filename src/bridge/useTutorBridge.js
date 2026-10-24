@@ -50,10 +50,11 @@ export function useTutorBridge(send) {
   // handles the same 'board' message for its own pieces.
   const handle = (msg) => {
     if (msg.t === 'board') {
-      // A reconnect gets the game that was under way (or none)
-      gameRef.current = msg.game || null;
-      setGame(msg.game || null);
-    } else if (msg.t === 'game:act') {
+      // A reconnect gets the game that was under way (or none). Phoneme Pop is a different game.
+      const bridge = msg.game && msg.game.kind !== 'phoneme' ? msg.game : null;
+      gameRef.current = bridge;
+      setGame(bridge);
+    } else if (msg.t === 'game:act' && msg.act?.a) {
       const next = applyAct(gameRef.current, msg.act);
       if (gameRef.current && next !== gameRef.current) commit(next);
     }

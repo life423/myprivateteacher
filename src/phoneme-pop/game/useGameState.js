@@ -3,7 +3,7 @@ import { wordLists } from '../data/wordLists.js';
 import { LEVELS, POINTS_PER_WORD, randomItem } from './logic.js';
 
 // phase: 'word' (whole word showing) -> 'tiles' (split into sounds) -> 'celebrating'
-function init({ level, lists }) {
+export function init({ level, lists }) {
   return {
     level,
     solved: new Set(),
@@ -17,8 +17,12 @@ function init({ level, lists }) {
   };
 }
 
-function reducer(state, action) {
+export function reducer(state, action) {
   switch (action.type) {
+    // Adopts a game state from elsewhere (the tutor's copy, when a student or a reconnect needs it)
+    case 'restore':
+      return action.state;
+
     case 'split':
       if (state.phase !== 'word') return state;
       return { ...state, phase: 'tiles', tiles: action.tiles, selected: [], feedback: null };

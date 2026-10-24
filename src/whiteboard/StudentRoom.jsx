@@ -15,6 +15,8 @@ import { pictureUrl } from './pictures.js';
 import { useVideoCall } from './useVideoCall.js';
 import { FocusButton, MessageScreen, StageNotice, StatusPill, TopBar } from './ui.jsx';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
+import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
+import { fromWire } from '../../shared/phoneme.js';
 
 const round4 = (n) => Math.round(n * 10000) / 10000;
 
@@ -180,7 +182,7 @@ export default function StudentRoom({ code }) {
 
   // A letter that's now in its gap can't be picked any more
   useEffect(() => {
-    if (selected && game && !game.tray.includes(selected)) setSelected(null);
+    if (selected && game?.kind !== 'phoneme' && game && !game.tray.includes(selected)) setSelected(null);
   }, [game, selected]);
   // The tutor applies the tap and sends the game back, so the screen shows it once it's there
   const placeLetter = (slot, letter) => send({ t: 'game:act', act: { a: 'place', slot, letter } });
@@ -257,7 +259,11 @@ export default function StudentRoom({ code }) {
         )
       }
       board={
-        game ? (
+        game?.kind === 'phoneme' ? (
+          <div className='h-full'>
+            <PhonemeBoard state={fromWire(game)} total={game.total} onIntent={(intent) => send({ t: 'game:act', act: intent })} />
+          </div>
+        ) : game ? (
           <div className='h-full overflow-auto p-2'>
             <BridgeBoard game={game} selected={selected} onSelect={setSelected} onPlace={placeLetter} />
           </div>

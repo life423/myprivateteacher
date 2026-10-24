@@ -790,7 +790,7 @@ describe('the alphabet bridge game in a room', () => {
   it('a game that is too big is refused', async () => {
     const { tutor, code, key } = await openRoom();
     const student = await joinRoom(code, key);
-    tutor.send({ t: 'game', game: { letters: 'A'.repeat(5000) } });
+    tutor.send({ t: 'game', game: { letters: 'A'.repeat(9000) } });
     await new Promise((resolve) => setTimeout(resolve, 100));
     await expect(student.student.take('game', 150)).rejects.toThrow();
     tutor.ws.close();
@@ -808,6 +808,29 @@ describe('turning the alphabet bridge on and off', () => {
     tutor.send({ t: 'game', game: 'not a game' });
     tutor.send({ t: 'game', game: null });
     expect((await student.student.take('game')).game).toBeNull();
+    tutor.ws.close();
+    student.student.ws.close();
+  });
+});
+
+describe('Phoneme Pop in a room', () => {
+  const word = { word: 'sun', phonemes: ['s', 'u', 'n'] };
+  const game = { kind: 'phoneme', level: 1, solved: [], word, phase: 'tiles', tiles: [{ id: 'sun-0', sound: 's', index: 0 }], selected: [], feedback: null, score: 0, streak: 0, total: 3 };
+
+  it("a student's taps reach the tutor, and only the taps the game knows", async () => {
+    const { tutor, code, key } = await openRoom();
+    const student = await joinRoom(code, key);
+    tutor.send({ t: 'game', game });
+    expect((await student.student.take('game')).game.kind).toBe('phoneme');
+
+    student.student.send({ t: 'game:act', act: { type: 'toggleTile', id: 'sun-0' } });
+    expect((await tutor.take('game:act')).act).toEqual({ type: 'toggleTile', id: 'sun-0' });
+
+    student.student.send({ t: 'game:act', act: { type: 'nuke' } }); // refused
+    student.student.send({ t: 'game:act', act: { a: 'place', slot: 1, letter: 'K' } }); // a bridge move: refused in this game
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await expect(tutor.take('game:act', 150)).rejects.toThrow();
+
     tutor.ws.close();
     student.student.ws.close();
   });

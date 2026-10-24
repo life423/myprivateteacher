@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import BridgeControls from '../bridge/BridgeControls.jsx';
-import GameCarousel from './GameCarousel.jsx';
+import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
+import { usePhonemeTutor } from '../phoneme-pop/game/usePhonemeTutor.js';
 import { useTutorBridge } from '../bridge/useTutorBridge.js';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
@@ -105,7 +106,7 @@ export default function TutorRoom() {
   const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
   const bridge = useTutorBridge((msg) => sendRef.current(msg));
-  const [gameIndex, setGameIndex] = useState(0); // which game is at the front of the carousel
+  const phoneme = usePhonemeTutor((msg) => sendRef.current(msg));
 
   const { status, send } = useRealtime({
     // Asking for the saved code again lets a refresh or a deploy keep the same room.
@@ -113,6 +114,7 @@ export default function TutorRoom() {
     onMessage: (msg) => {
       if (call.handle(msg)) return;
       bridge.handle(msg);
+      phoneme.handle(msg);
       if (msg.t === 'board') setStudentTools(Boolean(msg.tools));
       if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
@@ -218,6 +220,21 @@ export default function TutorRoom() {
   const onLeave = () => {
     setMyMarker(null);
     wb.sendPointer({ t: 'p', m: 'none' });
+  };
+
+  // One game at a time: starting one puts the other away
+  const gameOn = bridge.game !== null || phoneme.active;
+  const putGameAway = () => {
+    if (bridge.game) bridge.stop();
+    if (phoneme.active) phoneme.stop();
+  };
+  const startBridge = () => {
+    if (phoneme.active) phoneme.stop();
+    bridge.start();
+  };
+  const startPhoneme = () => {
+    if (bridge.game) bridge.stop();
+    phoneme.start();
   };
 
   let pill = <StatusPill tone='wait'>Waiting for student</StatusPill>;
@@ -336,12 +353,7 @@ export default function TutorRoom() {
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
           <LinesButton size={wb.lines} onChoose={chooseLines} />
-          <ToolButton
-            icon={Milestone}
-            label='Bridge'
-            pressed={bridge.game !== null}
-            onClick={() => (bridge.game ? bridge.stop() : bridge.start())}
-          />
+          <ToolButton icon={Milestone} label='Games' pressed={gameOn} onClick={() => (gameOn ? putGameAway() : layout.current?.show('games'))} />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
         </ToolRail>
@@ -350,6 +362,10 @@ export default function TutorRoom() {
         bridge.game ? (
           <div className='h-full overflow-auto p-2'>
             <BridgeBoard game={bridge.game} selected={bridge.selected} onSelect={bridge.setSelected} onPlace={bridge.place} />
+          </div>
+        ) : phoneme.active ? (
+          <div className='h-full'>
+            <PhonemeBoard state={phoneme.state} total={phoneme.bank.words[phoneme.state.level]?.length ?? 0} onIntent={phoneme.act} />
           </div>
         ) : (
         <>
@@ -425,14 +441,25 @@ export default function TutorRoom() {
           label: 'Games',
           icon: Milestone,
           content: (
-            <GameCarousel
-              games={[
-                { id: 'bridge', title: 'Alphabet Bridge', content: <BridgeControls bridge={bridge} /> },
-                { id: 'phoneme-pop', title: 'Phoneme Pop', content: <p className='text-base text-slate-600'>Coming to the whiteboard next.</p> },
-              ]}
-              active={gameIndex}
-              onTurn={setGameIndex}
-            />
+            <div className='flex flex-col gap-4 p-3'>
+              <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
+                <h3 className='mb-3 text-lg font-bold text-slate-900'>Alphabet Bridge</h3>
+                <BridgeControls bridge={{ ...bridge, start: startBridge }} />
+              </section>
+              <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
+                <h3 className='mb-2 text-lg font-bold text-slate-900'>Phoneme Pop</h3>
+                <div className='flex flex-col items-start gap-3'>
+                  <p className='text-base text-slate-700'>Hear the word, split it into its sounds, and put them back in order.</p>
+                  <button
+                    type='button'
+                    onClick={phoneme.active ? phoneme.stop : startPhoneme}
+                    className='rounded-full bg-violet-600 px-5 py-2 font-bold text-white shadow hover:bg-violet-700'
+                  >
+                    {phoneme.active ? 'Put Phoneme Pop away' : 'Start Phoneme Pop'}
+                  </button>
+                </div>
+              </section>
+            </div>
           ),
         },
         {
