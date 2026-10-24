@@ -199,6 +199,7 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SH
         onPointerCancel={() => {
           pull.current = null;
           setDragHeight(null);
+          setSpin(null); // a cancelled spin must not leave the ring stuck between tabs
         }}
       >
         <div

@@ -264,7 +264,7 @@ export default function StudentRoom({ code }) {
             <PhonemeBoard state={fromWire(game)} total={game.total} onIntent={(intent) => send({ t: 'game:act', act: intent })} />
           </div>
         ) : game ? (
-          <div className='h-full overflow-auto p-2'>
+          <div className='flex h-full items-center justify-center overflow-auto p-2'>
             <BridgeBoard game={game} selected={selected} onSelect={setSelected} onPlace={placeLetter} />
           </div>
         ) : (

@@ -360,7 +360,7 @@ export default function TutorRoom() {
       }
       board={
         bridge.game ? (
-          <div className='h-full overflow-auto p-2'>
+          <div className='flex h-full items-center justify-center overflow-auto p-2'>
             <BridgeBoard game={bridge.game} selected={bridge.selected} onSelect={bridge.setSelected} onPlace={bridge.place} />
           </div>
         ) : phoneme.active ? (
