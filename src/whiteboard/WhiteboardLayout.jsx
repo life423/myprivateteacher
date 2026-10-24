@@ -109,8 +109,6 @@ const PULLED = {
 };
 const SHARE = { open: 0.5, full: 0.88 }; // of the screen's height
 const TABLET_SHARE = { open: 0.34, full: 0.88 }; // docked open on upright tablets, leaving the board room
-const SPIN_PX = 70; // how far a finger slides to turn the tabs one place
-const SPREAD = 34; // how far the tabs at the sides sit from the middle, in % of the bar
 const GLIDE = 'transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none';
 
 function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SHARE }) {
@@ -119,9 +117,7 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SH
   const pull = useRef(null);
   const [barHeight, setBarHeight] = useState(78);
   const [dragHeight, setDragHeight] = useState(null); // while a finger is moving it
-  const [spin, setSpin] = useState(null); // the tabs' place on the ring while a finger spins them (tab positions, fractional)
   const open = state !== 'closed';
-  const activeIndex = Math.max(0, panels.findIndex((p) => p.id === active));
   useLayoutEffect(() => {
     if (bar.current) setBarHeight(bar.current.offsetHeight);
   }, []);
@@ -130,13 +126,9 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SH
   const onDown = (event) => {
     pull.current = {
       id: event.pointerId,
-      x: event.clientX,
       y: event.clientY,
       start: sheet.current.offsetHeight,
       moved: false,
-      spinning: false,
-      ring: Boolean(event.target.closest('[role=tablist]')), // the tabs spin sideways; the rest of the bar moves the sheet
-      spinFrom: activeIndex,
       tab: event.target.closest('[role=tab]')?.dataset.panel,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -144,30 +136,15 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SH
   const onMove = (event) => {
     const p = pull.current;
     if (!p || p.id !== event.pointerId) return;
-    const dx = event.clientX - p.x;
     const dy = event.clientY - p.y;
-    if (!p.moved && Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
-    if (!p.moved) {
-      p.moved = true;
-      p.spinning = p.ring && Math.abs(dx) > Math.abs(dy); // sideways over the tabs: spin them
-    }
-    if (p.spinning) {
-      setSpin(p.spinFrom - dx / SPIN_PX); // finger left: the next tab comes round
-      return;
-    }
+    if (!p.moved && Math.abs(dy) < 8) return;
+    p.moved = true;
     const room = sheet.current.parentElement.clientHeight;
     setDragHeight(Math.min(room * 0.92, Math.max(barHeight, p.start - dy)));
   };
   const onUp = (event) => {
     const p = pull.current;
     pull.current = null;
-    if (p?.spinning) {
-      // Let go: the tab nearest the front comes round to it, and that tab opens
-      setSpin(null);
-      const landed = ((Math.round(spin ?? p.spinFrom) % panels.length) + panels.length) % panels.length;
-      if (landed !== activeIndex) onTab(panels[landed].id);
-      return;
-    }
     setDragHeight(null); // glide from wherever the finger left it
     if (!p) return;
     const dy = event.clientY - p.y;
@@ -199,7 +176,6 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SH
         onPointerCancel={() => {
           pull.current = null;
           setDragHeight(null);
-          setSpin(null); // a cancelled spin must not leave the ring stuck between tabs
         }}
       >
         <div
@@ -214,40 +190,30 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SH
         >
           <span className='h-1.5 w-12 rounded-full bg-slate-300' aria-hidden='true' />
         </div>
-        {/* The tabs sit on a ring: the one in front is open, the others turn round to the sides as the finger spins them */}
-        <div role='tablist' aria-label='Things for the board' className='relative mx-3 mb-2 h-14 rounded-2xl bg-slate-100'>
-          {panels.map(({ id, label, icon: Icon }, i) => {
-            const n = panels.length;
-            const f = spin ?? activeIndex;
-            const d = ((((i - f) % n) + n + n / 2) % n) - n / 2; // how far round from the front, -n/2 to n/2
-            const angle = (d * 2 * Math.PI) / n;
-            const depth = (Math.cos(angle) + 1) / 2; // 1 at the front, 0 at the back
-            const isFront = open && active === id;
-            return (
-              <button
-                key={id}
-                type='button'
-                role='tab'
-                aria-selected={isFront}
-                data-panel={id}
-                onClick={(event) => {
-                  if (event.detail === 0) onTab(id); // the keyboard; taps are handled by the bar
-                }}
-                className={`absolute top-1 flex h-12 w-[32%] flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-center text-xs font-bold leading-tight ${
-                  spin === null ? 'transition-[left,transform,opacity] duration-300 ease-out motion-reduce:transition-none' : ''
-                } ${isFront ? 'bg-violet-600 text-white shadow' : 'text-slate-700 hover:bg-white'}`}
-                style={{
-                  left: `${50 + Math.sin(angle) * SPREAD}%`,
-                  transform: `translateX(-50%) scale(${0.8 + 0.2 * depth})`,
-                  opacity: 0.4 + 0.6 * depth,
-                  zIndex: Math.round(depth * 10),
-                }}
-              >
-                {Icon && <Icon className='h-4 w-4' aria-hidden='true' />}
-                {label}
-              </button>
-            );
-          })}
+        <div
+          role='tablist'
+          aria-label='Things for the board'
+          className='mx-3 mb-2 grid gap-1 rounded-2xl bg-slate-100 p-1'
+          style={{ gridTemplateColumns: `repeat(${panels.length}, minmax(0, 1fr))` }}
+        >
+          {panels.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type='button'
+              role='tab'
+              aria-selected={open && active === id}
+              data-panel={id}
+              onClick={(event) => {
+                if (event.detail === 0) onTab(id); // the keyboard; taps are handled by the bar
+              }}
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold ${
+                open && active === id ? 'bg-violet-600 text-white shadow' : 'text-slate-700 hover:bg-white'
+              }`}
+            >
+              {Icon && <Icon className='h-4 w-4' aria-hidden='true' />}
+              {label}
+            </button>
+          ))}
         </div>
       </div>
       {/* The panels stay in place while the sheet slides, so closing it glides rather than emptying first. */}
