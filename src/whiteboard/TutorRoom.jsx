@@ -54,6 +54,7 @@ export default function TutorRoom() {
   const [gated, setGated] = useState(null); // why the server won't start a lesson ('sign-in', 'plan')
   const [tip, setTip] = useState(null);
   const [selectedTileId, setSelectedTileId] = useState(null); // clicked, ready to change
+  const [activePanel, setActivePanel] = useState(null);
   const layout = useRef(null); // the shared layout: open a panel, focus mode
   // Zoom and pan are each screen's own. This outlines what the student's screen shows, and
   // 'Show my view to student' brings their screen to the part of the board shown here.
@@ -223,11 +224,6 @@ export default function TutorRoom() {
   };
 
   // One game at a time: starting one puts the other away
-  const gameOn = bridge.game !== null || phoneme.active;
-  const putGameAway = () => {
-    if (bridge.game) bridge.stop();
-    if (phoneme.active) phoneme.stop();
-  };
   const startBridge = () => {
     if (phoneme.active) phoneme.stop();
     bridge.start();
@@ -353,7 +349,7 @@ export default function TutorRoom() {
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
           <LinesButton size={wb.lines} onChoose={chooseLines} />
-          <ToolButton icon={Milestone} label='Games' pressed={gameOn} onClick={() => (gameOn ? putGameAway() : layout.current?.show('games'))} />
+          <ToolButton icon={Milestone} label='Games' pressed={activePanel === 'games'} expanded={activePanel === 'games'} controls='whiteboard-panel-games' onClick={() => layout.current?.show('games')} />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
         </ToolRail>
@@ -386,6 +382,7 @@ export default function TutorRoom() {
             canEditPieces
             canDeletePieces
             canDuplicatePieces
+            onSelectPiece={() => setTool('none')}
             onView={(rect) => {
               myView.current = rect;
             }}
@@ -413,6 +410,7 @@ export default function TutorRoom() {
       peerName='your student'
       alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold handActions={hands} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
+      onPanelChange={setActivePanel}
       panels={[
         {
           id: 'tiles',
@@ -442,6 +440,10 @@ export default function TutorRoom() {
           icon: Milestone,
           content: (
             <div className='flex flex-col gap-4 p-3'>
+              <div>
+                <h2 className='text-lg font-bold text-slate-900'>Choose a game</h2>
+                <p className='mt-1 text-sm text-slate-600'>Start an activity on both lesson screens.</p>
+              </div>
               <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
                 <h3 className='mb-3 text-lg font-bold text-slate-900'>Alphabet Bridge</h3>
                 <BridgeControls bridge={{ ...bridge, start: startBridge }} />

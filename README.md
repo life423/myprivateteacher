@@ -9,11 +9,13 @@ Reading activities for learners with dyslexia, live at https://myprivateteacher.
 
 ```bash
 npm install
-npm run server   # Node server with the realtime /ws endpoint, http://localhost:8080
-npm run dev      # Vite dev server, http://localhost:3000 (proxies /ws to the Node server)
+npm run server   # Node server, loads .env, http://localhost:8080
+npm run dev      # in a second terminal: http://localhost:3000 (proxies /api and /ws)
 npm run build    # production build in dist/
 npm test         # game logic, whiteboard geometry, realtime rooms, web server (build first)
 ```
+
+For the shared picture library, keep `MONGODB_URI` and `AZURE_STORAGE_ACCOUNT` in the local `.env`, then run `az login`. Blob Storage uses your Azure CLI identity locally; that identity needs Blob data access. Cosmos DB also needs to allow your current public IP. Restart the Node server after changing `.env`. The frontend alone cannot serve picture or account requests.
 
 ## Run the production container locally
 

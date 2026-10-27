@@ -10,7 +10,7 @@ export default function BridgeControls({ bridge }) {
     return (
       <div className='flex flex-col items-start gap-3'>
         <p className='text-base text-slate-700'>
-          The bridge is put away. Turn it on from the tools to show it on your board and your student's.
+          Fill in the missing letters together, one gap at a time.
         </p>
         <button type='button' onClick={start} className='rounded-full bg-violet-600 px-5 py-2 font-bold text-white shadow hover:bg-violet-700'>
           Start the bridge

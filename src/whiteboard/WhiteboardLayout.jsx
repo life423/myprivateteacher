@@ -117,7 +117,7 @@ const SHARE = { open: 0.5, full: 0.88 }; // of the screen's height
 const TABLET_SHARE = { open: 0.34, full: 0.88 }; // docked open on upright tablets, leaving the board room
 const GLIDE = 'transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none';
 
-function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SHARE }) {
+function PanelSheet({ panels, active, state, onState, onTab, hidden, panelNodes, shares = SHARE }) {
   const sheet = useRef(null);
   const bar = useRef(null);
   const pull = useRef(null);
@@ -224,8 +224,8 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, shares = SH
       </div>
       {/* The panels stay in place while the sheet slides, so closing it glides rather than emptying first. */}
       <div aria-hidden={!open} inert={open ? undefined : ''} className='min-h-0 flex-1 overflow-y-auto px-3 pb-3'>
-        {panels.map(({ id, content }) => (
-          <div key={id} className={id === active ? '' : 'hidden'}>
+        {panels.map(({ id, label, content }) => (
+          <div key={id} id={`whiteboard-panel-${id}`} role='tabpanel' aria-label={label} tabIndex={-1} ref={(node) => { panelNodes.current[id] = node; }} className={id === active ? 'outline-none' : 'hidden'}>
             {content}
           </div>
         ))}
@@ -247,7 +247,7 @@ function ExitFocus({ onClick }) {
   );
 }
 
-export default function WhiteboardLayout({ header, banner, tools, board, alphabet, call, peerName, panels = [], controls }) {
+export default function WhiteboardLayout({ header, banner, tools, board, alphabet, call, peerName, panels = [], controls, onPanelChange }) {
   const arrangement = useArrangement();
   const [active, setActive] = useState(panels[0]?.id);
   // The bottom sheet: closed, open or full. Upright tablets have room for it docked open.
@@ -256,13 +256,30 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
     setSheet(arrangement === 'stacked' ? 'open' : 'closed');
   }, [arrangement]);
   const [focus, setFocus] = useState(false);
+  const panelNodes = useRef({});
+  const revealFrame = useRef(null);
   const current = panels.some((p) => p.id === active) ? active : panels[0]?.id;
+  const visiblePanel = !focus && (arrangement === 'side' || sheet !== 'closed') ? current : null;
+  useEffect(() => {
+    onPanelChange?.(visiblePanel);
+  }, [onPanelChange, visiblePanel]);
+  useEffect(() => () => cancelAnimationFrame(revealFrame.current), []);
+  const showPanel = (id) => {
+    if (!panels.some((panel) => panel.id === id)) return;
+    setFocus(false);
+    setActive(id);
+    setSheet((was) => (was === 'closed' ? 'open' : was));
+    // A chooser must become visible even when its column was scrolled or focus mode hid it.
+    cancelAnimationFrame(revealFrame.current);
+    revealFrame.current = requestAnimationFrame(() => {
+      const panel = panelNodes.current[id];
+      panel?.scrollIntoView({ block: 'start' });
+      panel?.focus({ preventScroll: true });
+    });
+  };
   if (controls) {
     controls.current = {
-      show(id) {
-        setActive(id);
-        setSheet((was) => (was === 'closed' ? 'open' : was));
-      },
+      show: showPanel,
       closeSheet() {
         setSheet('closed');
       },
@@ -278,6 +295,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
         state={sheet}
         shares={shares}
         hidden={focus}
+        panelNodes={panelNodes}
         onState={setSheet}
         onTab={(id) => {
           setActive(id);
@@ -326,7 +344,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
           <div className={`-m-1 flex max-h-full w-64 shrink-0 flex-col gap-4 overflow-y-auto p-1 xl:w-72 ${focus ? 'hidden' : ''}`}>
             <VideoPanel call={call} peerName={peerName} fill />
             {panels.length > 1 && (
-              <div role='tablist' aria-label='Things for the board' className='grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow'>
+              <div role='tablist' aria-label='Things for the board' className='sticky top-0 z-10 grid shrink-0 grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow'>
                 {panels.map(({ id, label }) => (
                   <button
                     key={id}
@@ -341,8 +359,8 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
                 ))}
               </div>
             )}
-            {panels.map(({ id, content }) => (
-              <div key={id} className={id === current ? '' : 'hidden'}>
+            {panels.map(({ id, label, content }) => (
+              <div key={id} id={`whiteboard-panel-${id}`} role='tabpanel' aria-label={label} tabIndex={-1} ref={(node) => { panelNodes.current[id] = node; }} className={id === current ? 'scroll-mt-24 outline-none' : 'hidden'}>
                 {content}
               </div>
             ))}

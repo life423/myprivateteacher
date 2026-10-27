@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws';
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
 import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, nextHome, snapTile, tileKind } from '../shared/tiles.js';
-import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isPictureId, pieceSize } from '../shared/pieces.js';
+import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
 import { cleanAct } from '../shared/bridge.js';
 import { cleanIntent } from '../shared/phoneme.js';
 
@@ -345,7 +345,7 @@ export function attachRealtime(server, options = {}) {
     const pic = room.pictures.get(p.pic);
     const crop = cleanCrop(p.crop, pic);
     if (!crop) return null;
-    const size = pieceSize(crop, p.w);
+    const size = pieceSize(crop, Number.isFinite(p.w) ? p.w : startingWidth(crop));
     const pos = clampPiece(size, p.x, p.y);
     if (!pos) return null;
     room.zTop += 1;
@@ -865,8 +865,6 @@ export function attachRealtime(server, options = {}) {
       const piece = role && ws.room.pieces.get(msg.id);
       if (!piece || !allow(ws, 'tile', POINTER_PER_SECOND)) return;
       if (piece.heldBy && piece.heldBy !== role) return send(ws, { t: 'piece:denied', piece });
-      ws.room.zTop += 1;
-      piece.z = ws.room.zTop;
       piece.heldBy = role;
       broadcast(ws.room, { t: 'piece:grab', id: piece.id, by: role, z: piece.z });
     },
@@ -886,8 +884,29 @@ export function attachRealtime(server, options = {}) {
       piece.heldBy = null;
       broadcast(ws.room, { t: 'piece:drop', piece });
     },
+    // Selecting or moving a picture keeps its layer. Only the tutor changes the order.
+    'piece:layer'(ws, msg) {
+      if (!isTutor(ws) || !allow(ws, 'tile', POINTER_PER_SECOND)) return;
+      if (msg.direction !== 'front' && msg.direction !== 'back') return;
+      const piece = ws.room.pieces.get(msg.id);
+      if (!piece) return;
+      if (piece.heldBy && piece.heldBy !== 'tutor') return send(ws, { t: 'piece:denied', piece });
+      const ordered = [...ws.room.pieces.values()].filter((p) => p.id !== piece.id).sort((a, b) => a.z - b.z);
+      if (msg.direction === 'front') ordered.push(piece);
+      else ordered.unshift(piece);
+      const layers = ordered.map((p, i) => {
+        p.z = i + 1;
+        return { id: p.id, z: p.z };
+      });
+      ws.room.zTop = Math.max(ws.room.zTop, layers.length);
+      broadcast(ws.room, { t: 'piece:layer', layers });
+    },
     'piece:delete'(ws, msg) {
-      if (!isTutor(ws) || !ws.room.pieces.delete(msg.id)) return;
+      if (!isTutor(ws)) return;
+      const piece = ws.room.pieces.get(msg.id);
+      if (!piece) return;
+      if (piece.heldBy && piece.heldBy !== 'tutor') return send(ws, { t: 'piece:denied', piece });
+      ws.room.pieces.delete(msg.id);
       broadcast(ws.room, { t: 'piece:delete', id: msg.id });
     },
     // Tutor only: every piece off the board, and the pictures forgotten.

@@ -272,6 +272,7 @@ export default function StudentRoom({ code }) {
             pictureSrc={(id) => pictureUrl(code, id)}
             pieceActions={wb.pieceActions}
             canEditPieces={toolsOn}
+            onSelectPiece={() => chooseTool('none')}
             onView={sendView}
             focus={follow}
             stageApi={stageApi}

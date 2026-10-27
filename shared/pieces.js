@@ -49,8 +49,8 @@ export function clampPiece(size, x, y) {
   };
 }
 
-// How big a new piece starts: about 60% of its size in the picture, long side 120 to 420.
+// How big a new piece starts: about 60% of its size in the picture, long side 120 to 220 so several pictures fit beside the lesson work.
 export function startingWidth(crop) {
-  const long = clamp(Math.max(crop.w, crop.h) * 0.6, 120, 420);
+  const long = clamp(Math.max(crop.w, crop.h) * 0.6, 120, 220);
   return crop.w >= crop.h ? long : (long * crop.w) / crop.h;
 }

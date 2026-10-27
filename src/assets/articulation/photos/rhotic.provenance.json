@@ -1,0 +1,8 @@
+{
+  "mode": "Built-in image_gen with a user-supplied reference photograph",
+  "date": "2026-10-27",
+  "promptSummary": "Match the supplied adult lower-face reference exactly in identity, frontal nose-to-chin framing, skin texture, lighting, and photographic style. Show a natural sustained American English /r/: lips slightly rounded and parted, a small relaxed jaw gap, the tongue bunched back inside without protruding or contacting the front teeth. Less puckered than /oo/. No cutaway, diagram, labels, text, or decoration.",
+  "reference": "User-supplied ChatGPT Image Oct 23, 2026, 04_35_14 PM-6.png",
+  "usage": "Front-view teaching cue for the R Sound card; internal articulation is explained by its existing side-view diagram. The front photo alone does not demonstrate or validate tongue placement.",
+  "sha256": "5455ffe6689156dfcbeb32b86558126114c7fc60d3a3c9fea008e12d53a3e5ce"
+}

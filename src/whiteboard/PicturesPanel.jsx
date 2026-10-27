@@ -3,13 +3,14 @@ import { ArrowLeft, BoxSelect, Check, Eye, Gift, Image as ImageIcon, LayoutGrid,
 import { regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
 import { MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
+import { defaultPictureCrop, picturePlacement } from './picturePlacement.js';
 
 const DRAG_START = 6; // screen pixels a press moves before it becomes a drag
 const card = 'flex flex-col gap-3 rounded-2xl bg-white p-3 shadow';
 const primary =
-  'flex items-center justify-center gap-2 rounded-full bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50';
+  'flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500';
 const secondary =
-  'flex items-center justify-center gap-2 rounded-full border border-violet-300 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50';
+  'flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500';
 
 const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 const partOf = (r) => ({ x: r.x, y: r.y, w: r.w, h: r.h, r: r.r || 0 });
@@ -116,6 +117,9 @@ export default function PicturesPanel({
   const [note, setNote] = useState(null);
   const [armed, setArmed] = useState(false);
   const [libraryNote, setLibraryNote] = useState(null);
+  const [placedNote, setPlacedNote] = useState(null);
+  const busyRef = useRef(false);
+  const copies = useRef(new Map());
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
   useEffect(() => {
@@ -160,35 +164,79 @@ export default function PicturesPanel({
     };
   }, [src, size, student, predefinedKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const working = (value) => {
+    busyRef.current = value;
+    setBusy(value);
+  };
+
+  const placePicture = (picture, title = 'Picture') => {
+    const count = copies.current.get(picture.id) || 0;
+    const placement = picturePlacement(picture, stageApi?.current?.centre?.(), count);
+    if (!placement || !onPlace) return false;
+    const pieceId = onPlace(placement);
+    copies.current.set(picture.id, count + 1);
+    if (pieceId) stageApi?.current?.selectPiece?.(pieceId);
+    setPlacedNote({ id: picture.id, text: `${title} added to the board. Drag to move it, or use a corner to resize.` });
+    setOpenId(null);
+    onPlaced?.();
+    return true;
+  };
+
   const addFile = async (file) => {
-    if (!file || !canAdd) return;
-    setBusy(true);
+    if (!file || !canAdd || !onAddFile || busyRef.current) return;
+    working(true);
     setNote(null);
-    const result = await onAddFile(file);
-    setBusy(false);
-    if (result?.error) setNote(result.error);
-    else if (result?.id) setOpenId(result.id);
+    setPlacedNote(null);
+    try {
+      const result = await onAddFile(file);
+      if (result?.error) setNote(result.error);
+      else if (result?.id) {
+        const picture = { ...pictures.find((p) => p.id === result.id), ...result };
+        if (!placePicture(picture)) {
+          setOpenId(result.id);
+          setNote('Picture uploaded. Add it to the board below, or choose a part.');
+        }
+      }
+    } catch {
+      setNote('The picture couldn’t be uploaded. Please try again.');
+    } finally {
+      working(false);
+    }
   };
 
   // Every library card joins the session, so the student can open any of them.
   const giveAll = async () => {
-    if (!onGiveAll) return;
-    setBusy(true);
+    if (!onGiveAll || busyRef.current) return;
+    working(true);
     setLibraryNote(null);
-    const result = await onGiveAll(library);
-    setBusy(false);
-    setLibraryNote(result?.error || (result?.added ? `${result.added} cards added. Your student can open them from Pictures.` : 'Every library card is already in this session.'));
+    try {
+      const result = await onGiveAll(library);
+      setLibraryNote(result?.error || (result?.added ? `${result.added} cards added. Your student can open them from Pictures.` : 'Every library card is already in this session.'));
+    } catch {
+      setLibraryNote('The library couldn’t be shared. Please try again.');
+    } finally {
+      working(false);
+    }
   };
 
-  // A card from the picture library joins the session and opens, ready for Magic Select.
-  const addCard = async (card) => {
-    if (!canAdd || !onAddFromLibrary) return;
-    setBusy(true);
+  // Add is one step. Choosing a part remains an explicit, separate action.
+  const addCard = async (card, preview = false) => {
+    if (!canAdd || !onAddFromLibrary || busyRef.current) return;
+    working(true);
     setNote(null);
-    const result = await onAddFromLibrary(card);
-    setBusy(false);
-    if (result?.error) setNote(result.error);
-    else if (result?.id) setOpenId(result.id);
+    setPlacedNote(null);
+    try {
+      const result = await onAddFromLibrary(card);
+      if (result?.error) setNote(result.error);
+      else if (result?.id) {
+        const picture = { ...card, ...pictures.find((p) => p.id === result.id), ...result };
+        if (preview || !placePicture(picture, card.title || 'Picture')) setOpenId(result.id);
+      }
+    } catch {
+      setNote('That picture couldn’t be added. Please try again.');
+    } finally {
+      working(false);
+    }
   };
 
   // Pasting an image anywhere on the page adds it (tutor only).
@@ -209,12 +257,14 @@ export default function PicturesPanel({
   const place = (crop, clientX, clientY, offerId, regionId) => {
     const w = startingWidth(crop);
     const h = (w * crop.h) / crop.w;
-    let at = { x: 800, y: 580 };
+    let at = stageApi?.current?.centre?.() || { x: 800, y: 580 };
     if (clientX !== undefined) {
       at = stageApi?.current?.pointAt(clientX, clientY);
       if (!at) return false;
     }
-    onPlace({ offer: offerId, region: regionId, pic: pic.id, crop, x: at.x - w / 2, y: at.y - h / 2, w });
+    const pieceId = onPlace({ offer: offerId, region: regionId, pic: pic.id, crop, x: at.x - w / 2, y: at.y - h / 2, w });
+    if (pieceId) stageApi?.current?.selectPiece?.(pieceId);
+    setNote('Added to the board. Drag to move it, or use a corner to resize.');
     onPlaced?.();
     if (student) setSelection(null);
     return true;
@@ -421,9 +471,10 @@ export default function PicturesPanel({
           </div>
         )}
         <p className='text-xs text-slate-500'>{hint}</p>
-        {selection && (!student || ((chosen || chosenRegion) && canTake)) && (
-          <button type='button' onClick={() => place(selection, undefined, undefined, chosen?.id, chosenRegion?.id)} className={primary}>
-            Add to board
+        {(!student || (selection && (chosen || chosenRegion) && canTake)) && (
+          <button type='button' onClick={() => place(selection || defaultPictureCrop(pic), undefined, undefined, chosen?.id, chosenRegion?.id)} className={primary}>
+            <Plus className='h-4 w-4' aria-hidden='true' />
+            {selection ? 'Add selected part to board' : 'Add picture to board'}
           </button>
         )}
         {!student && selection && !offered && (
@@ -460,7 +511,7 @@ export default function PicturesPanel({
   }
 
   return (
-    <section aria-label='Pictures' className={card}>
+    <section aria-label='Pictures' aria-busy={busy} className={card}>
       <div className={`flex items-center justify-between ${browseOnly ? 'hidden' : ''}`}>
         <h2 className='text-sm font-bold text-slate-700'>Pictures</h2>
         {!student && (
@@ -484,7 +535,7 @@ export default function PicturesPanel({
             className={primary}
           >
             <Plus className='h-4 w-4' aria-hidden='true' />
-            {busy ? 'Adding…' : 'Add picture'}
+            {busy ? 'Adding…' : 'Upload picture'}
           </button>
           <input
             ref={fileRef}
@@ -497,8 +548,16 @@ export default function PicturesPanel({
               addFile(file);
             }}
           />
-          <p className='-mt-1 text-xs text-slate-500'>Or paste an image. Pictures are kept for this session only.</p>
+          <p className='-mt-1 text-xs leading-relaxed text-slate-500'>Upload or paste to add straight to the board. Choose a part afterwards if you need it. Pictures stay for this session only.</p>
         </>
+      )}
+      {placedNote && (
+        <div role='status' className='rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900'>
+          <p className='flex items-start gap-2'><Check className='mt-0.5 h-4 w-4 shrink-0' aria-hidden='true' />{placedNote.text}</p>
+          <button type='button' onClick={() => setOpenId(placedNote.id)} className='mt-1 min-h-10 rounded-lg px-2 text-xs font-bold underline underline-offset-2 hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700'>
+            Choose a part of this picture
+          </button>
+        </div>
       )}
       {note && (
         <p role='status' className='text-xs font-semibold text-amber-700'>
@@ -514,7 +573,7 @@ export default function PicturesPanel({
                 type='button'
                 disabled={busy || library.every(inSession)}
                 onClick={giveAll}
-                className='inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50'
+                className='inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
               >
                 <Gift className='h-3.5 w-3.5' aria-hidden='true' />
                 {busy ? 'Adding…' : 'Give all to student'}
@@ -528,29 +587,32 @@ export default function PicturesPanel({
           )}
           <ul className='flex flex-col gap-1.5'>
             {library.map((card) => (
-              <li key={card.id}>
-                <button
-                  type='button'
-                  disabled={busy || inSession(card)}
-                  onClick={() => addCard(card)}
-                  className='flex w-full items-center gap-3 rounded-xl border-2 border-slate-200 bg-white px-3 py-2 text-left hover:border-violet-400 disabled:opacity-50'
-                >
+              <li key={card.id} className='rounded-xl border border-slate-200 bg-white p-3'>
+                <div className='flex items-start gap-3'>
                   <ImageIcon className='h-5 w-5 shrink-0 text-violet-600' aria-hidden='true' />
                   <span className='min-w-0 flex-1'>
-                    <span className='block truncate text-sm font-bold text-slate-800'>{card.title}</span>
-                    <span className='block truncate text-xs text-slate-500'>
+                    <span className='block text-sm font-bold text-slate-800'>{card.title}</span>
+                    <span className='block text-xs text-slate-500'>
                       {[card.collection, (card.sounds || []).map((s) => `/${s}/`).join(' ')].filter(Boolean).join(' · ')}
                     </span>
                   </span>
                   {inSession(card) ? (
-                    <span className='inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-700'>
+                    <span className='inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-700' title='Ready in this session. Add another copy whenever you need it.'>
                       <Check className='h-4 w-4' aria-hidden='true' />
-                      In session
+                      Ready
                     </span>
-                  ) : (
-                    <Plus className='h-4 w-4 shrink-0 text-violet-600' aria-hidden='true' />
-                  )}
-                </button>
+                  ) : null}
+                </div>
+                <div className='mt-3 flex flex-wrap gap-2'>
+                  <button type='button' disabled={busy} aria-label={`Add ${card.title} to board`} onClick={() => addCard(card)} className={`${primary} flex-1 whitespace-nowrap text-xs`}>
+                    <Plus className='h-4 w-4 shrink-0' aria-hidden='true' />
+                    Add to board
+                  </button>
+                  <button type='button' disabled={busy} aria-label={`Choose a part of ${card.title}`} onClick={() => addCard(card, true)} className={`${secondary} flex-1 whitespace-nowrap text-xs`}>
+                    <BoxSelect className='h-4 w-4 shrink-0' aria-hidden='true' />
+                    Choose a part
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -584,7 +646,7 @@ export default function PicturesPanel({
       )}
       {shown.length === 0 ? (
         <p className='text-sm text-slate-500'>
-          {student ? 'Your tutor hasn’t added any pictures yet.' : 'Add a worksheet or picture, then lift parts out of it with Magic Select.'}
+          {student ? 'Your tutor hasn’t added any pictures yet.' : 'Pick a library picture or upload your own. It appears on the board, ready to move and resize.'}
         </p>
       ) : (
         <ul className={layout === 'drawer' ? 'grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3' : '-mx-1 flex max-h-[45vh] flex-col gap-2 overflow-y-auto px-1'}>
@@ -615,7 +677,7 @@ export default function PicturesPanel({
               )}
               <button
                 type='button'
-                aria-label={`Open ${p.title || `picture ${i + 1}`}`}
+                aria-label={student ? `Open ${p.title || `picture ${i + 1}`}` : `Choose a part of ${p.title || `picture ${i + 1}`}`}
                 onClick={() => {
                   setNote(null);
                   setOpenId(p.id);
@@ -632,6 +694,20 @@ export default function PicturesPanel({
                   <span className='block truncate border-t border-slate-100 px-2 py-1.5 text-left text-sm font-bold text-slate-800'>{p.title}</span>
                 )}
               </button>
+              {!student && (
+                <button
+                  type='button'
+                  aria-label={`Add ${p.title || `picture ${i + 1}`} to board`}
+                  onClick={() => {
+                    setNote(null);
+                    placePicture(p, p.title || `Picture ${i + 1}`);
+                  }}
+                  className='flex min-h-11 items-center justify-center gap-2 border-t border-violet-100 bg-violet-50 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'
+                >
+                  <Plus className='h-4 w-4' aria-hidden='true' />
+                  Add to board
+                </button>
+              )}
               {onGuide && (
                 <button
                   type='button'

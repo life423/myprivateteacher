@@ -30,7 +30,9 @@ describe('picture pieces', () => {
 
   it('starts new pieces at a comfortable size', () => {
     const w = startingWidth({ w: 646, h: 698 });
-    expect(Math.round((w * 698) / 646)).toBe(419);
+    expect(Math.round((w * 698) / 646)).toBe(220);
+    expect(startingWidth({ w: 2400, h: 1200 })).toBe(220);
+    expect(startingWidth({ w: 100, h: 100 })).toBe(120);
   });
 
   it('only accepts random picture ids', () => {

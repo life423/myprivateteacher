@@ -210,17 +210,21 @@ export function useWhiteboard(role, send) {
   const pieceActions = useMemo(
     () => ({
       add({ offer, region, pic, crop, x, y, w }) {
-        sendRef.current({ t: 'piece:add', piece: { id: makeId('piece'), offer, region, pic, crop, x, y, w } });
+        const id = makeId('piece');
+        sendRef.current({ t: 'piece:add', piece: { id, offer, region, pic, crop, x, y, w } });
+        return id;
       },
       duplicate(id) {
         const p = pieces.current.get(id);
-        if (p) sendRef.current({ t: 'piece:add', piece: { id: makeId('piece'), pic: p.pic, crop: p.crop, x: p.x + 32, y: p.y + 32, w: p.w } });
+        if (!p) return;
+        const copyId = makeId('piece');
+        sendRef.current({ t: 'piece:add', piece: { id: copyId, pic: p.pic, crop: p.crop, x: p.x + 32, y: p.y + 32, w: p.w } });
+        return copyId;
       },
       grab(id) {
         const p = pieces.current.get(id);
         if (!p) return;
         p.heldBy = role;
-        p.z = Math.max(0, ...[...pieces.current.values()].map((q) => q.z)) + 1;
         renderTiles();
         sendRef.current({ t: 'piece:grab', id });
       },
@@ -242,6 +246,11 @@ export function useWhiteboard(role, send) {
       remove(id) {
         sendRef.current({ t: 'piece:delete', id });
       },
+      layer(id, direction) {
+        if (role === 'tutor' && (direction === 'front' || direction === 'back')) {
+          sendRef.current({ t: 'piece:layer', id, direction });
+        }
+      },
     }),
     [role, renderTiles, sendThrottled, cancelThrottled],
   );
@@ -260,8 +269,11 @@ export function useWhiteboard(role, send) {
     const id = newPictureId();
     if (!(await sendPicture(room, id, shrunk))) return { error: 'The picture couldn’t be added. Try again.' };
     kept.current.set(id, shrunk);
-    return { id };
-  }, []);
+    const picture = { id, w: shrunk.w, h: shrunk.h };
+    pictures.current.set(id, picture);
+    renderTiles();
+    return picture;
+  }, [renderTiles]);
 
   // Tutor only: which parts the student may take.
   const offerActions = useMemo(
@@ -283,12 +295,15 @@ export function useWhiteboard(role, send) {
   const addLibraryCard = useCallback(async (card, room) => {
     if (!room?.code || !room?.key) return { error: 'Not connected yet. Try again in a moment.' };
     const here = [...pictures.current.values()].find((p) => p.library === card.id);
-    if (here) return { id: here.id, existing: true }; // already in this session
+    if (here) return { id: here.id, w: here.w, h: here.h, regions: here.regions || [], existing: true }; // already in this session
     const id = newPictureId();
     if (!(await sendFromLibrary(room, id, card.id))) return { error: 'That card couldn’t be added. Try again.' };
     kept.current.set(id, { library: card.id });
-    return { id };
-  }, []);
+    const picture = { id, w: card.w, h: card.h, regions: card.regions || [], library: card.id, title: card.title };
+    pictures.current.set(id, picture);
+    renderTiles();
+    return picture;
+  }, [renderTiles]);
 
   // Tutor only: every card of a library list into this session, skipping those already here.
   const addLibraryCards = useCallback(
@@ -440,6 +455,13 @@ export function useWhiteboard(role, send) {
           renderTiles();
           return true;
         }
+        case 'piece:layer':
+          for (const layer of msg.layers || []) {
+            const p = pieces.current.get(layer.id);
+            if (p && Number.isFinite(layer.z)) p.z = layer.z;
+          }
+          renderTiles();
+          return true;
         case 'piece:move': {
           const p = pieces.current.get(msg.id);
           if (p) Object.assign(p, { x: msg.x, y: msg.y, w: msg.w, h: msg.h });

@@ -14,7 +14,7 @@ export function ToolRail({ label, children }) {
   );
 }
 
-export function ToolButton({ icon: Icon, label, pressed, disabled = false, danger = false, swatch, onClick }) {
+export function ToolButton({ icon: Icon, label, pressed, expanded, controls, disabled = false, danger = false, swatch, onClick }) {
   let tone = 'text-slate-700 hover:bg-violet-50';
   if (danger) tone = 'bg-rose-600 text-white';
   else if (pressed) tone = 'bg-violet-600 text-white shadow';
@@ -23,7 +23,9 @@ export function ToolButton({ icon: Icon, label, pressed, disabled = false, dange
       type='button'
       onClick={onClick}
       disabled={disabled}
-      aria-pressed={pressed}
+      aria-pressed={expanded === undefined ? pressed : undefined}
+      aria-expanded={expanded}
+      aria-controls={controls}
       title={label}
       className={`flex min-h-11 w-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-xs font-bold transition-colors disabled:opacity-30 sm:w-14 lg:w-16 ${tone}`}
     >

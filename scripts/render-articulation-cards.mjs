@@ -22,7 +22,7 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: CARD.width, height: CARD.height }, deviceScaleFactor: 1 });
 const m = MOUTH_REGION;
-const rows = [['file', 'order', 'title', 'sounds', 'note', 'collection', 'regions']];
+const rows = [['file', 'order', 'title', 'sounds', 'note', 'collection', 'regions', 'cardid']];
 for (const [i, card] of ARTICULATION_CARDS.entries()) {
   await page.goto(`${site}/dev/articulation-cards/${card.id}`, { waitUntil: 'networkidle' });
   await page.evaluate(() => document.fonts.ready);
@@ -42,7 +42,7 @@ for (const [i, card] of ARTICULATION_CARDS.entries()) {
   const file = `${String(i + 1).padStart(2, '0')}-${card.id}.jpg`;
   const bytes = Buffer.from(jpeg, 'base64');
   writeFileSync(path.join(out, file), bytes);
-  rows.push([file, i + 1, card.title, card.sounds.join(', '), card.instruction, COLLECTION, `mouth:${m.x},${m.y},${m.w},${m.h},${m.r}`]);
+  rows.push([file, i + 1, card.title, card.sounds.join(', '), card.instruction, COLLECTION, `mouth:${m.x},${m.y},${m.w},${m.h},${m.r}`, card.id]);
   console.log(`  ${file}  ${Math.round(bytes.length / 1024)} KB`);
 }
 writeFileSync(path.join(out, 'cards.csv'), rows.map((row) => row.map(cell).join(',')).join(NEWLINE) + NEWLINE);

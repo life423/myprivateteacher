@@ -15,9 +15,11 @@ function Button({ to, kind = 'primary', children, className = '' }) {
   const look =
     kind === 'primary'
       ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25 hover:bg-violet-700'
-      : 'border border-slate-300 bg-white text-slate-800 hover:border-violet-400 hover:text-violet-700';
+      : kind === 'demo'
+        ? 'border border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-400 hover:bg-violet-100'
+        : 'border border-slate-300 bg-white text-slate-800 hover:border-violet-400 hover:text-violet-700';
   return (
-    <Link to={to} className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition-colors ${look} ${className}`}>
+    <Link to={to} className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition-colors focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-violet-500 ${look} ${className}`}>
       {children}
     </Link>
   );
@@ -28,7 +30,7 @@ function Ticks({ items, className = '' }) {
     <ul className={`flex flex-col gap-2.5 ${className}`}>
       {items.map((item) => (
         <li key={item} className='flex items-start gap-3 text-slate-700'>
-          <span className='mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white'>
+          <span className='mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700'>
             <Check className='h-3.5 w-3.5' strokeWidth={3} aria-hidden='true' />
           </span>
           {item}
@@ -230,11 +232,20 @@ export default function LandingPage() {
             </p>
             <Ticks
               className='mt-6'
-              items={['Builds phonemic awareness', 'Every word is read aloud', 'Levels up as students improve', 'Coming soon: launch it during a live lesson']}
+              items={['Builds phonemic awareness', 'Every word is read aloud', 'Levels up as students improve', 'Play together during a live lesson']}
             />
-            <Link to='/phoneme-pop' className='mt-8 inline-flex items-center gap-2 font-semibold text-violet-700 hover:text-violet-800'>
-              Try Phoneme Pop <ArrowRight className='h-4 w-4' aria-hidden='true' />
-            </Link>
+            <div className='mt-8'>
+              <Button
+                to='/phoneme-pop'
+                kind='demo'
+                className='group min-h-14 w-full focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-violet-500 sm:w-auto'
+              >
+                <PlayCircle className='h-6 w-6 shrink-0' aria-hidden='true' />
+                Play Phoneme Pop
+                <ArrowRight className='h-5 w-5 shrink-0 transition-transform motion-safe:group-hover:translate-x-1 motion-reduce:transition-none' aria-hidden='true' />
+              </Button>
+              <p className='mt-3 text-center text-sm text-slate-500 sm:text-left'>Free to play. No sign-up needed.</p>
+            </div>
           </div>
         </section>
 
@@ -267,7 +278,7 @@ export default function LandingPage() {
         <section id='pricing' className='scroll-mt-16 mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24'>
           <div>
             <Eyebrow>Simple pricing</Eyebrow>
-            <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>Simple pricing for tutors</h2>
+            <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>One plan for your live lessons</h2>
             <p className='mt-3 text-lg text-slate-600'>Everything you need to run effective, engaging lessons. Your students join free.</p>
           </div>
           <div className='rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8'>
@@ -280,22 +291,16 @@ export default function LandingPage() {
                 </p>
                 <p className='mt-1 inline-block rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700'>14-day free trial</p>
               </div>
-              <div className='hidden flex-col items-center gap-2 sm:flex'>
-                <Button to={START}>
-                  Start free trial <ArrowRight className='h-5 w-5' aria-hidden='true' />
-                </Button>
-                <span className='text-xs text-slate-500'>No credit card required</span>
-              </div>
             </div>
             <Ticks
               className='mt-6 text-sm'
-              items={['Unlimited lessons', 'All whiteboard tools', 'Phoneme Pop and future activities', 'Use your own materials', 'Students join with a code, no accounts']}
+              items={['Unlimited lessons', 'All whiteboard tools', 'Phoneme Pop and Alphabet Bridge', 'Use your own materials', 'Students join with a code, no accounts']}
             />
-            <div className='mt-6 sm:hidden'>
+            <div className='mt-6'>
               <Button to={START} className='w-full'>
-                Start free trial <ArrowRight className='h-5 w-5' aria-hidden='true' />
+                Start 14-day free trial <ArrowRight className='h-5 w-5' aria-hidden='true' />
               </Button>
-              <p className='mt-2 text-center text-xs text-slate-500'>No credit card required</p>
+              <p className='mt-2 text-center text-sm text-slate-500'>14 days free · No credit card required</p>
             </div>
           </div>
           <div className='rounded-3xl bg-violet-50 p-6 text-center lg:hidden'>

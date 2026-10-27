@@ -560,6 +560,76 @@ describe('pictures and pieces', () => {
     expect((await student.take('piece:drop')).piece).toMatchObject({ x: 160, y: 260, w: 200, heldBy: null });
   });
 
+  it('starts an unsized picture small and keeps its layer when it is picked up', async () => {
+    const { tutor, code, key } = await openRoom();
+    const { student } = await joinRoom(code);
+    addPicture(code, key);
+    tutor.send({ t: 'piece:add', piece: newPiece('small', { w: undefined }) });
+    const first = (await tutor.take('piece:add')).piece;
+    expect(Math.max(first.w, first.h)).toBeCloseTo(220, 1);
+    tutor.send({ t: 'piece:add', piece: newPiece('above') });
+    await tutor.take('piece:add');
+    tutor.send({ t: 'piece:grab', id: 'small' });
+    expect(await tutor.take('piece:grab')).toMatchObject({ id: 'small', z: first.z });
+    tutor.send({ t: 'piece:drop', id: 'small', x: first.x, y: first.y });
+    expect((await student.take('piece:drop')).piece.z).toBe(first.z);
+  });
+
+  it('shares explicit front/back order and keeps it for rejoining and restored boards', async () => {
+    const { tutor, code, key } = await openRoom();
+    const { student } = await joinRoom(code);
+    addPicture(code, key);
+    for (const id of ['p1', 'p2', 'p3']) {
+      tutor.send({ t: 'piece:add', piece: newPiece(id) });
+      await tutor.take('piece:add');
+    }
+    tutor.send({ t: 'piece:layer', id: 'p1', direction: 'front' });
+    const front = await tutor.take('piece:layer');
+    expect(front.layers.map((p) => p.id)).toEqual(['p2', 'p3', 'p1']);
+    expect(await student.take('piece:layer')).toEqual(front);
+    tutor.send({ t: 'piece:layer', id: 'p3', direction: 'back' });
+    const back = await student.take('piece:layer');
+    expect(back.layers).toEqual([{ id: 'p3', z: 1 }, { id: 'p2', z: 2 }, { id: 'p1', z: 3 }]);
+
+    const rejoined = await joinRoom(code, realtime.rooms.get(code).studentKey);
+    const ordered = [...rejoined.board.pieces].sort((a, b) => a.z - b.z);
+    expect(ordered.map((p) => p.id)).toEqual(['p3', 'p2', 'p1']);
+    realtime.rooms.delete(code); // after a restart, the client restores pieces in stacking order
+    tutor.ws.close();
+    rejoined.student.ws.close();
+    const restored = await connect();
+    restored.send({ t: 'create', code, key });
+    await restored.take('room');
+    expect(addPicture(code, key).status).toBe(201);
+    for (const piece of ordered) restored.send({ t: 'rs-piece', piece });
+    restored.send({ t: 'restored', tools: false });
+    const board = await restored.take('board');
+    expect([...board.pieces].sort((a, b) => a.z - b.z).map((p) => p.id)).toEqual(['p3', 'p2', 'p1']);
+  });
+
+  it('only lets the tutor reorder valid pictures that the student is not holding', async () => {
+    const { tutor, code, key } = await openRoom();
+    const { student } = await joinRoom(code);
+    addPicture(code, key);
+    tutor.send({ t: 'piece:add', piece: newPiece('p1') });
+    const original = (await tutor.take('piece:add')).piece;
+    student.send({ t: 'piece:layer', id: 'p1', direction: 'front' });
+    tutor.send({ t: 'piece:layer', id: 'p1', direction: 'sideways' });
+    tutor.send({ t: 'piece:layer', id: 'missing', direction: 'front' });
+    await nothing(tutor, 'piece:layer');
+    student.send({ t: 'piece:grab', id: 'p1' });
+    await tutor.take('piece:grab');
+    tutor.send({ t: 'piece:layer', id: 'p1', direction: 'back' });
+    expect((await tutor.take('piece:denied')).piece).toMatchObject({ id: 'p1', heldBy: 'student', z: original.z });
+    tutor.send({ t: 'piece:delete', id: 'p1' });
+    expect((await tutor.take('piece:denied')).piece.id).toBe('p1');
+    await nothing(student, 'piece:layer');
+    student.send({ t: 'piece:drop', id: 'p1', x: original.x, y: original.y });
+    await tutor.take('piece:drop');
+    tutor.send({ t: 'piece:layer', id: 'p1', direction: 'back' });
+    expect((await student.take('piece:layer')).layers).toEqual([{ id: 'p1', z: 1 }]);
+  });
+
   it('lets the student copy and resize only while their tools are on, and never delete', async () => {
     const { tutor, code, key } = await openRoom();
     const { student } = await joinRoom(code);

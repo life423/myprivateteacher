@@ -5,12 +5,13 @@ import Hand from './Hand.jsx';
 import InkCanvas from './InkCanvas.jsx';
 import Tile from './Tile.jsx';
 import PieceImage from './PieceImage.jsx';
+import PictureLayers from './PictureLayers.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
 import { TILE_HEIGHT, clampTile, soundBoxes, tileWidth } from '../../shared/tiles.js';
 import { clampPiece, pieceSize } from '../../shared/pieces.js';
-import { Copy, Expand, Shrink, Trash2 } from 'lucide-react';
+import { Expand, Shrink } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
 
 const VIEW_BOX = `0 0 ${STAGE.width} ${STAGE.height}`;
@@ -38,23 +39,11 @@ const handlesOf = (piece) =>
     .map(({ hx, hy }) => ({ hx, hy, x: piece.x + ((hx + 1) / 2) * piece.w, y: piece.y + ((hy + 1) / 2) * piece.h }));
 const HANDLE_CURSOR = { '-1,-1': 'nwse', '1,1': 'nwse', '1,-1': 'nesw', '-1,1': 'nesw', '-1,0': 'ew', '1,0': 'ew', '0,-1': 'ns', '0,1': 'ns' };
 const PIECE_CURSORS = {
-  button: 'cursor-pointer',
   nwse: 'cursor-nwse-resize',
   nesw: 'cursor-nesw-resize',
   ew: 'cursor-ew-resize',
   ns: 'cursor-ns-resize',
 };
-// The small toolbar over a selected piece (under it when there's no room above).
-function toolbarOf(piece, actions) {
-  const bw = 128;
-  const w = bw * actions.length;
-  const h = 64;
-  const x = Math.min(STAGE.width - 24 - w, Math.max(24, piece.x + piece.w / 2 - w / 2));
-  const above = piece.y - h - 14;
-  const y = above >= 24 ? above : Math.min(STAGE.height - 24 - h, piece.y + piece.h + 14);
-  return { x, y, w, h, buttons: actions.map((action, i) => ({ action, x: x + i * bw, y, w: bw, h })) };
-}
-
 // Letter highlights: violet under the student's hand, blue under the tutor's.
 // A letter a hand points at lights up in the hands' blue. `pointed` is those letters as one string.
 function letterTone(letter, pointed) {
@@ -144,6 +133,7 @@ export default function Stage({
   canEditPieces = false,
   canDeletePieces = false,
   canDuplicatePieces = false,
+  onSelectPiece = null, // selecting from Layers or adding a picture switches to Watch
   stageApi = null,
   onView = null, // told which part of the board this screen shows
   peerView = null, // the part of the board the other person can see, outlined
@@ -219,8 +209,24 @@ export default function Stage({
   const movable = tool === 'none';
   const stackedPieces = [...pieces].sort((a, b) => a.z - b.z);
   const selectedPiece = movable ? pieces.find((p) => p.id === selectedPieceId) || null : null;
-  const pieceButtons = [canDuplicatePieces && 'duplicate', canDeletePieces && 'delete'].filter(Boolean);
-  const bar = selectedPiece && pieceButtons.length ? toolbarOf(selectedPiece, pieceButtons) : null;
+  const selectPiece = (id) => {
+    setSelectedPieceId(id);
+    onSelectPiece?.(id);
+    const piece = pieces.find((p) => p.id === id);
+    if (piece && seen && (piece.x < seen.x || piece.y < seen.y || piece.x + piece.w > seen.x + seen.w || piece.y + piece.h > seen.y + seen.h)) {
+      autoFill.current = false;
+      const scale = Math.min(layoutRef.current.scale, size.width / (piece.w + 80), size.height / (piece.h + 80));
+      setView({ scale, cx: piece.x + piece.w / 2, cy: piece.y + piece.h / 2 });
+    }
+  };
+  const clearPiece = () => setSelectedPieceId(null);
+  const resizePiece = (factor) => {
+    if (!selectedPiece || !canEditPieces || !pieceActions || (selectedPiece.heldBy && selectedPiece.heldBy !== me)) return;
+    const size = pieceSize(selectedPiece.crop, selectedPiece.w * factor);
+    const at = clampPiece(size, selectedPiece.x + (selectedPiece.w - size.w) / 2, selectedPiece.y + (selectedPiece.h - size.h) / 2);
+    pieceActions.grab(selectedPiece.id);
+    pieceActions.drop(selectedPiece.id, at.x, at.y, size.w);
+  };
 
   // When the tutor switches sound boxes on, a phone showing the board at its screen-filling zoom
   // moves over to them. A view the person zoomed or panned themselves is left where it is.
@@ -336,11 +342,9 @@ export default function Stage({
     return tile ? { tile, remove: false } : null;
   };
 
-  // The selected piece's controls under a point: a toolbar button or a resize handle.
+  // The selected piece's resize handles. Other actions are real HTML buttons below.
   const pieceControl = (p) => {
     if (!selectedPiece) return null;
-    const button = bar?.buttons.find((b) => overRect(p, b));
-    if (button) return { piece: selectedPiece, button: button.action };
     if (!canEditPieces) return null;
     const handle = handlesOf(selectedPiece).find((hd) => Math.abs(p.x - hd.x) <= HANDLE && Math.abs(p.y - hd.y) <= HANDLE);
     return handle ? { piece: selectedPiece, handle } : null;
@@ -348,7 +352,6 @@ export default function Stage({
   const pickPiece = (p) => (movable ? [...stackedPieces].reverse().find((piece) => overRect(p, piece)) || null : null);
   const pieceGrip = (p) => {
     const control = pieceControl(p);
-    if (control?.button) return 'button';
     if (control?.handle) return HANDLE_CURSOR[`${control.handle.hx},${control.handle.hy}`];
     return pickPiece(p) ? 'grab' : null;
   };
@@ -398,11 +401,6 @@ export default function Stage({
     const control = pieceActions ? pieceControl(raw) : null;
     if (control) {
       const { piece } = control;
-      if (control.button === 'duplicate') pieceActions.duplicate(piece.id);
-      if (control.button === 'delete') {
-        pieceActions.remove(piece.id);
-        setSelectedPieceId(null);
-      }
       if (control.handle && !(piece.heldBy && piece.heldBy !== me)) {
         capture(event);
         const { hx, hy } = control.handle;
@@ -451,7 +449,7 @@ export default function Stage({
     }
     const piece = pieceActions ? pickPiece(raw) : null;
     if (piece) {
-      setSelectedPieceId(piece.id);
+      selectPiece(piece.id);
       if (piece.heldBy && piece.heldBy !== me) return; // the other person has it right now
       capture(event);
       pieceDrag.current = { pointerId: event.pointerId, id: piece.id, mode: 'move', dx: piece.x - raw.x, dy: piece.y - raw.y, x: piece.x, y: piece.y, w: piece.w, h: piece.h };
@@ -635,6 +633,17 @@ export default function Stage({
   if (stageApi) {
     stageApi.current = {
       scale: layout.width / STAGE.width,
+      centre() {
+        const board = boardRect(strip);
+        const left = Math.max(board.x, seen?.x ?? board.x);
+        const right = Math.min(board.x + board.width, seen ? seen.x + seen.w : board.x + board.width);
+        const top = Math.max(board.y, seen?.y ?? board.y);
+        const bottom = Math.min(board.y + board.height, seen ? seen.y + seen.h : board.y + board.height);
+        return right > left && bottom > top
+          ? { x: (left + right) / 2, y: (top + bottom) / 2 }
+          : { x: board.x + board.width / 2, y: board.y + board.height / 2 };
+      },
+      selectPiece,
       pointAt(clientX, clientY) {
         const box = wrapRef.current?.getBoundingClientRect();
         if (!box || !layout.width) return null;
@@ -726,29 +735,13 @@ export default function Stage({
             />
           ))}
         {selectedPiece && (
-          <g>
-            <rect x={selectedPiece.x} y={selectedPiece.y} width={selectedPiece.w} height={selectedPiece.h} fill='none' strokeWidth='4' className='stroke-violet-600' />
-            {canEditPieces &&
+          <g className='pointer-events-none'>
+            <rect x={selectedPiece.x} y={selectedPiece.y} width={selectedPiece.w} height={selectedPiece.h} fill='none' stroke='white' strokeWidth='6' vectorEffect='non-scaling-stroke' />
+            <rect x={selectedPiece.x} y={selectedPiece.y} width={selectedPiece.w} height={selectedPiece.h} fill='none' strokeWidth='2.5' vectorEffect='non-scaling-stroke' className='stroke-violet-600' />
+            {canEditPieces && !(selectedPiece.heldBy && selectedPiece.heldBy !== me) &&
               handlesOf(selectedPiece).map((hd) => (
                 <rect key={`${hd.hx},${hd.hy}`} x={hd.x - 11} y={hd.y - 11} width='22' height='22' rx='5' strokeWidth='4' className='fill-white stroke-violet-600' />
               ))}
-            {bar && (
-              <g>
-                <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx='16' strokeWidth='2' className='fill-white stroke-slate-200' />
-                {bar.buttons.map((b) => {
-                  const danger = b.action === 'delete';
-                  const Icon = danger ? Trash2 : Copy;
-                  return (
-                    <g key={b.action} className={danger ? 'text-rose-600' : 'text-slate-700'}>
-                      <Icon x={b.x + b.w / 2 - 14} y={b.y + 8} size={28} />
-                      <text x={b.x + b.w / 2} y={b.y + 54} textAnchor='middle' fill='currentColor' style={{ fontSize: 16, fontWeight: 700 }}>
-                        {danger ? 'Delete' : 'Duplicate'}
-                      </text>
-                    </g>
-                  );
-                })}
-              </g>
-            )}
           </g>
         )}
         {/* With the alphabet in its own bar (phones, upright tablets), a hand pointing above the part
@@ -766,6 +759,25 @@ export default function Stage({
             <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} />
           ))}
       </svg>
+      {pieceActions && <PictureLayers
+        pieces={pieces}
+        pictures={pictures}
+        selected={selectedPiece}
+        me={me}
+        srcFor={pictureSrc}
+        onSelect={selectPiece}
+        onClear={clearPiece}
+        onLayer={pieceActions.layer}
+        onDuplicate={(id) => { const copy = pieceActions.duplicate(id); if (copy) selectPiece(copy); }}
+        onDelete={(id) => { pieceActions.remove(id); clearPiece(); }}
+        onResize={resizePiece}
+        canResize={canEditPieces}
+        canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
+        canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
+        canDuplicate={canDuplicatePieces}
+        canDelete={canDeletePieces}
+        height={size.height}
+      />}
     </div>
   );
 }
