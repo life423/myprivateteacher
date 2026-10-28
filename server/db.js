@@ -4,8 +4,10 @@ import { MongoClient } from 'mongodb';
 // it), opened when the server starts so the first visitor doesn't wait for it.
 const clients = new Map();
 
+// Cosmos discovers a regional endpoint before authentication. Let that initial
+// discovery finish on slower networks, while bounding each individual connection.
 export function mongoClient(uri) {
-  if (!clients.has(uri)) clients.set(uri, new MongoClient(uri, { serverSelectionTimeoutMS: 10000, retryWrites: false }));
+  if (!clients.has(uri)) clients.set(uri, new MongoClient(uri, { serverSelectionTimeoutMS: 45000, connectTimeoutMS: 8000, retryWrites: false }));
   return clients.get(uri);
 }
 

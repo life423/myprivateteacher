@@ -11,7 +11,7 @@ import { DefaultAzureCredential } from '@azure/identity';
 import { imageType } from '../server/index.js';
 import { CARDS, CONTAINER, DATABASE } from '../server/library.js';
 import { MAX_PICTURE_BYTES, MAX_PICTURE_SIDE } from '../shared/pieces.js';
-import { planLibraryImport, readCsv, readRegions } from './library-import.js';
+import { planLibraryImport, readCsv, readRegions, teachingMetadata } from './library-import.js';
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
@@ -53,6 +53,7 @@ function preflight(folder) {
       sounds: (row.sounds || '').split(',').map((s) => s.trim()).filter(Boolean),
       note: row.note || '', regions: readRegions(row.regions, size),
       ...(row.cardid ? { cardId: row.cardid } : {}),
+      ...teachingMetadata(row),
       bytes, type, ...size, sha256: sha256(bytes),
     };
   });
@@ -67,7 +68,7 @@ if (positional.length !== 1 || positional[0].startsWith('-') || !uri || !account
   process.exit(1);
 }
 
-const client = new MongoClient(uri, { serverSelectionTimeoutMS: 15000, retryWrites: false });
+const client = new MongoClient(uri, { serverSelectionTimeoutMS: 30000, connectTimeoutMS: 8000, retryWrites: false });
 try {
   const cards = preflight(path.resolve(positional[0]));
   // Check duplicate input identities/content before connecting to either service.
@@ -75,6 +76,7 @@ try {
   const records = client.db(DATABASE).collection(CARDS);
   const existingCards = await records.find({}, { projection: {
     collection: 1, file: 1, cardId: 1, title: 1, order: 1, sounds: 1, note: 1, regions: 1, image: 1,
+    ipa: 1, keyword: 1, kind: 1, inventory: 1, category: 1,
   } }).toArray();
   const container = new BlobServiceClient(`https://${account}.blob.core.windows.net`, new DefaultAzureCredential()).getContainerClient(CONTAINER);
   // Old imports have no hash. Read their bytes to detect renamed duplicates too; this is read-only.

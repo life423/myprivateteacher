@@ -1,0 +1,13 @@
+/* A short landscape screen gives the complete card one column and keeps its
+   selection tools and Add action visible in the other column. */
+@media (max-height: 500px) and (min-width: 640px) {
+  .picture-library-header { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .picture-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.9fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    column-gap: 1rem;
+  }
+  .picture-editor > [data-editor-preview] { grid-column: 1; grid-row: 1 / span 6; }
+  .picture-editor > [data-editor-control] { grid-column: 2; }
+}

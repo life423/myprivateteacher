@@ -52,6 +52,21 @@ export function readRegions(text, { width, height }) {
 const key = (value) => String(value || '').normalize('NFKC').trim().toLowerCase();
 const sameCollection = (a, b) => key(a.collection) === key(b.collection);
 const digest = (card) => card.sha256 || card.image?.sha256 || card.computedSha256;
+export const TEACHING_FIELDS = ['ipa', 'keyword', 'kind', 'inventory', 'category'];
+
+export function teachingMetadata(row) {
+  const result = {};
+  for (const field of TEACHING_FIELDS) {
+    const value = String(row[field] || '').trim();
+    if (!value) continue;
+    if (value.length > (field === 'keyword' ? 100 : 40)) throw new Error(`Invalid ${field}: too long`);
+    const allowed = { kind: ['phoneme', 'sequence', 'dialect'], inventory: ['core', 'supplemental'], category: ['consonant', 'vowel', 'sequence'] }[field];
+    if (allowed && !allowed.includes(value)) throw new Error(`Invalid ${field}: ${value}`);
+    result[field] = value;
+  }
+  return result;
+}
+
 export const cardMetadata = (card, existing) => ({
   collection: card.collection,
   file: card.file,
@@ -61,6 +76,7 @@ export const cardMetadata = (card, existing) => ({
   note: card.note,
   regions: card.regions,
   ...(card.cardId || existing?.cardId ? { cardId: card.cardId || existing.cardId } : {}),
+  ...Object.fromEntries(TEACHING_FIELDS.filter((field) => card[field] || existing?.[field]).map((field) => [field, card[field] || existing[field]])),
 });
 
 export function planLibraryImport(cards, existingCards) {

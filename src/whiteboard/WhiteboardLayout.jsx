@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Minimize2, Pencil, X } from 'lucide-react';
 import { BOARD_SHAPE } from './stage.js';
 import VideoPanel from './VideoPanel.jsx';
@@ -36,27 +36,60 @@ function useArrangement() {
 function FloatingTools({ tools, focus }) {
   // Open by default on tablets; closed on a phone held sideways, where it would cover the short board
   const [open, setOpen] = useState(() => window.innerWidth >= 640 && window.innerHeight >= 500);
+  const trigger = useRef(null);
+  const panel = useRef(null);
+  const openedByUser = useRef(false);
+  const id = useId();
+  const close = () => {
+    setOpen(false);
+    requestAnimationFrame(() => trigger.current?.focus());
+  };
   useEffect(() => {
     if (focus) setOpen(false);
   }, [focus]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const escape = (event) => {
+      if (event.key === 'Escape' && !event.target.closest?.('[role="dialog"], [role="menu"]')) {
+        event.preventDefault();
+        close();
+      }
+    };
+    if (openedByUser.current) panel.current?.querySelector('button')?.focus({ preventScroll: true });
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [open]);
   return (
-    <div className='pointer-events-none absolute bottom-3 left-3 z-20 flex max-h-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col items-start gap-2 landscape:bottom-auto landscape:top-3 landscape:flex-row'>
+    <div className='pointer-events-none absolute bottom-3 left-3 z-20 flex max-h-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col items-start gap-2 landscape:bottom-auto landscape:top-3'>
       <button
+        ref={trigger}
         type='button'
         aria-expanded={open}
-        aria-label={open ? 'Hide drawing tools' : 'Show drawing tools'}
-        title={open ? 'Hide drawing tools' : 'Show drawing tools'}
-        onClick={() => setOpen((was) => !was)}
-        className='pointer-events-auto flex h-12 shrink-0 items-center gap-2 rounded-full bg-violet-600 px-4 text-sm font-bold text-white shadow-lg hover:bg-violet-700'
+        aria-controls={id}
+        aria-label='Show drawing tools'
+        title='Show drawing tools'
+        onClick={() => {
+          openedByUser.current = true;
+          setOpen((was) => !was);
+        }}
+        className={`pointer-events-auto flex h-12 shrink-0 items-center gap-2 rounded-full bg-violet-600 px-4 text-sm font-bold text-white shadow-lg hover:bg-violet-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${open ? 'hidden' : ''}`}
       >
-        {open ? <X className='h-5 w-5' aria-hidden='true' /> : <Pencil className='h-5 w-5' aria-hidden='true' />}
-        {open ? 'Close' : 'Tools'}
+        <Pencil className='h-5 w-5' aria-hidden='true' />
+        Tools
       </button>
       {/* Held upright, the tools sit in a grid that wraps, so every button stays on the screen */}
       {open && (
-        <div className='pointer-events-auto max-h-full max-w-full overflow-y-auto rounded-2xl portrait:[&_nav]:grid portrait:[&_nav]:grid-cols-3 portrait:[&_nav]:gap-1 portrait:[&_nav>[aria-label=Hands]]:col-span-3 portrait:[&_nav>[aria-label=Hands]]:w-full landscape:[&_nav]:flex-row landscape:[&_nav]:flex-wrap'>
-          {tools}
-        </div>
+        <section ref={panel} id={id} aria-label='Drawing tools' className='pointer-events-auto flex max-h-full max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl portrait:w-56'>
+          <header className='flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 pl-3 pr-1'>
+            <h2 className='text-sm font-bold text-slate-800'>Drawing tools</h2>
+            <button type='button' onClick={close} aria-label='Close drawing tools' className='inline-flex h-11 min-w-11 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
+              <X className='h-5 w-5' aria-hidden='true' />
+            </button>
+          </header>
+          <div className='min-h-0 overflow-y-auto portrait:[&_nav]:grid portrait:[&_nav]:grid-cols-3 portrait:[&_nav]:gap-1 portrait:[&_nav>button]:w-full portrait:[&_nav>[aria-label=Hands]]:col-span-2 portrait:[&_nav>[aria-label=Hands]]:w-full landscape:[&_nav]:flex-row landscape:[&_nav]:flex-wrap landscape:[&_nav>[aria-label=Hands]]:w-auto [&_[aria-label=Hands]_button]:min-w-11 [&_nav]:w-full [&_nav]:rounded-none [&_nav]:shadow-none'>
+            {tools}
+          </div>
+        </section>
       )}
     </div>
   );
@@ -234,12 +267,12 @@ function PanelSheet({ panels, active, state, onState, onTab, hidden, panelNodes,
   );
 }
 
-function ExitFocus({ onClick }) {
+function ExitFocus({ onClick, inline = false }) {
   return (
     <button
       type='button'
       onClick={onClick}
-      className='absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-slate-900/80 px-3 py-1.5 text-sm font-semibold text-white shadow-lg hover:bg-slate-900'
+      className={`${inline ? 'inline-flex min-h-11' : 'absolute left-1/2 top-3 z-30 flex -translate-x-1/2'} items-center gap-1.5 rounded-full bg-slate-900/80 px-3 py-1.5 text-sm font-semibold text-white shadow-lg hover:bg-slate-900`}
     >
       <Minimize2 className='h-4 w-4' aria-hidden='true' />
       Exit focus
@@ -247,7 +280,7 @@ function ExitFocus({ onClick }) {
   );
 }
 
-export default function WhiteboardLayout({ header, banner, tools, board, alphabet, call, peerName, panels = [], controls, onPanelChange }) {
+export default function WhiteboardLayout({ header, banner, tools, board, alphabet, call, peerName, panels = [], controls, onPanelChange, persistentControls }) {
   const arrangement = useArrangement();
   const [active, setActive] = useState(panels[0]?.id);
   // The bottom sheet: closed, open or full. Upright tablets have room for it docked open.
@@ -304,6 +337,15 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
       />
     );
 
+  // The instructor's resource shortcut stays in the same place, outside scrollable panels.
+  // A small dedicated row also keeps it clear of video, Layers and selected-picture controls.
+  const resourceBar = persistentControls && (
+    <div className='relative z-30 flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-1 sm:px-4'>
+      {persistentControls}
+      {focus && <ExitFocus inline onClick={() => setFocus(false)} />}
+    </div>
+  );
+
   // Tablets held upright: the labelled tools beside the board, the alphabet in its own bar, the
   // board filling the room below it (pinch to zoom, two fingers to pan, like phones), the video
   // floating in its corner, and tiles and pictures docked open below.
@@ -311,6 +353,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
     return (
       <div className='relative flex h-dvh flex-col overflow-hidden bg-slate-200'>
         {!focus && header}
+        {resourceBar}
         <div className='relative flex min-h-0 flex-1 gap-3 p-3'>
           {tools && <div className='flex shrink-0 items-center'>{tools}</div>}
           <div className='flex min-w-0 flex-1 flex-col gap-2'>
@@ -322,7 +365,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
               <FloatingVideo place='absolute right-3 top-14 z-20 flex w-52 touch-none justify-end'>
                 <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
               </FloatingVideo>
-              {focus && <ExitFocus onClick={() => setFocus(false)} />}
+              {focus && !persistentControls && <ExitFocus onClick={() => setFocus(false)} />}
             </div>
           </div>
         </div>
@@ -335,6 +378,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
     return (
       <div className='flex h-dvh flex-col bg-slate-200'>
         {!focus && header}
+        {resourceBar}
         {!focus && banner}
         <div className='relative flex min-h-0 flex-1 items-start justify-center gap-4 p-4'>
           {tools}
@@ -365,7 +409,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
               </div>
             ))}
           </div>
-          {focus && <ExitFocus onClick={() => setFocus(false)} />}
+          {focus && !persistentControls && <ExitFocus onClick={() => setFocus(false)} />}
         </div>
       </div>
     );
@@ -374,6 +418,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
   return (
     <div className='relative flex h-dvh flex-col overflow-hidden bg-slate-200'>
       {!focus && header}
+      {resourceBar}
       {!focus && banner}
       <div className='relative min-h-0 flex-1 p-2'>
         {/* The floating tools and video live in the same space as the board, above the bottom bar. */}
@@ -388,7 +433,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
               <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
             </FloatingVideo>
           </main>
-          {focus && <ExitFocus onClick={() => setFocus(false)} />}
+          {focus && !persistentControls && <ExitFocus onClick={() => setFocus(false)} />}
         </div>
       </div>
       {sheetFor(SHARE)}

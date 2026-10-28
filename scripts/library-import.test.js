@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planLibraryImport, readCsv, readRegions } from './library-import.js';
+import { planLibraryImport, readCsv, readRegions, teachingMetadata } from './library-import.js';
 
 const hash = (letter) => letter.repeat(64);
 const card = (fields = {}) => ({
@@ -58,6 +58,17 @@ describe('picture library import plan', () => {
 });
 
 describe('import preflight fields', () => {
+  it('keeps searchable sound metadata on unchanged images and repeat imports', () => {
+    const fields = teachingMetadata({ ipa: 'ʊ', keyword: 'book', kind: 'phoneme', inventory: 'core', category: 'vowel' });
+    const [change] = planLibraryImport([card(fields)], [stored()]);
+    expect(change).toMatchObject({ action: 'update', upload: false, metadata: fields });
+    const existing = stored(fields);
+    expect(planLibraryImport([card(fields)], [existing])[0].action).toBe('skip');
+    expect(planLibraryImport([card()], [existing])[0].metadata).toMatchObject(fields);
+    expect(() => teachingMetadata({ kind: 'unverified' })).toThrow(/Invalid kind/);
+    expect(() => teachingMetadata({ keyword: 'x'.repeat(101) })).toThrow(/too long/);
+  });
+
   it('reads quoted CSV and rejects malformed or empty input', () => {
     expect(readCsv('\uFEFFfile,title\r\nphoto.jpg,"Lip, \"\"Popper\"\""\r\n')).toEqual([{ file: 'photo.jpg', title: 'Lip, "Popper"' }]);
     expect(() => readCsv('file,title\na.jpg,"unfinished')).toThrow(/unclosed/);
