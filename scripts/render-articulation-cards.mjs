@@ -7,6 +7,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { ARTICULATION_CARDS } from '../src/data/articulationCards.js';
 import { CARD, MOUTH_REGION } from '../src/articulation/cardLayout.js';
+import { assertCompleteCard } from './card-export-checks.mjs';
 
 const out = path.resolve(process.argv[2] || 'articulation-cards');
 const site = process.argv[3] || 'http://localhost:8080';
@@ -26,7 +27,9 @@ const rows = [['file', 'order', 'title', 'sounds', 'note', 'collection', 'region
 for (const [i, card] of ARTICULATION_CARDS.entries()) {
   await page.goto(`${site}/dev/articulation-cards/${card.id}`, { waitUntil: 'networkidle' });
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(250);
+  const svg = page.locator(`[data-card="${card.id}"]`);
+  await svg.waitFor();
+  await assertCompleteCard(svg, card.title);
   const png = await page.screenshot({ clip: { x: 0, y: 0, width: CARD.width, height: CARD.height } });
   // JPEG keeps every card well under the 1.5 MB a session picture may be.
   const jpeg = await page.evaluate(async (data) => {

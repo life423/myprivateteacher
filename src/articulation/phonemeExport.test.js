@@ -13,6 +13,8 @@ describe('grouped articulation library additions', () => {
     expect(new Set(GROUPED_ARTICULATION_ADDITION_IDS).size).toBe(12);
     expect(plan.map(({ order }) => order)).toEqual(Array.from({ length: 12 }, (_, i) => i + 17));
     expect(plan.every(({ collection }) => collection === 'Mouth Pictures')).toBe(true);
+    expect(plan.every(({ title, card }) => title === card.title)).toBe(true);
+    expect(plan.every(({ title }) => !/[—–]|---/.test(title))).toBe(true);
     expect(new Set(plan.map(({ cardId }) => cardId)).size).toBe(12);
     expect(ARTICULATION_CARDS).toHaveLength(16);
     expect(plan).toHaveLength(12);

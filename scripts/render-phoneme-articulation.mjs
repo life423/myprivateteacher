@@ -8,6 +8,7 @@ import { chromium } from '@playwright/test';
 import { CARD } from '../src/articulation/cardLayout.js';
 import { phonemeMouthRegions } from '../src/articulation/phonemeCardLayout.js';
 import { phonemeExportPlan } from '../src/articulation/phonemeExport.js';
+import { assertCompleteCard } from './card-export-checks.mjs';
 
 const args = process.argv.slice(2);
 const allSounds = args.includes('--all-sounds');
@@ -23,7 +24,7 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: CARD.width, height: CARD.height }, deviceScaleFactor: 1 });
-  for (const { card, order, collection, cardId } of plan) {
+  for (const { card, title, order, collection, cardId } of plan) {
     await page.goto(`${site}/dev/phoneme-articulation/${card.id}`, { waitUntil: 'networkidle' });
     await page.evaluate(() => document.fonts.ready);
     const svg = page.locator(`[data-phoneme-card="${card.id}"]`);
@@ -32,7 +33,7 @@ try {
     if (missing) throw new Error(`Refusing to export ${card.id}: missing photo ${missing}`);
     const missingDiagram = await svg.getAttribute('data-missing-diagram');
     if (missingDiagram) throw new Error(`Refusing to export ${card.id}: missing diagram ${missingDiagram}`);
-    await page.waitForTimeout(120);
+    await assertCompleteCard(svg, title);
     const png = await page.screenshot({ clip: { x: 0, y: 0, width: CARD.width, height: CARD.height } });
     const encoded = await page.evaluate(async (data) => { const img = new Image(); img.src = 'data:image/png;base64,' + data; await img.decode(); const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; canvas.getContext('2d').drawImage(img, 0, 0); return canvas.toDataURL('image/jpeg', 0.9).split(',')[1]; }, png.toString('base64'));
     const bytes = Buffer.from(encoded, 'base64');
@@ -45,7 +46,7 @@ try {
     const regions = phonemeMouthRegions(card).map((r) => `${r.id}:${r.x},${r.y},${r.w},${r.h},${r.r}`).join(';');
     const note = [`/${card.ipa}/ as in ${card.keyword}.`, card.instruction, card.kind === 'sequence' ? `Sound sequence: /${card.ipa}/.` : '', card.dialectNote || card.note || ''].filter(Boolean).join(' ');
     const sounds = [...new Set(card.soundAliases?.length ? card.soundAliases : [card.displaySound || card.ipa])].filter(Boolean).join(', ');
-    rows.push([file, order, `${card.title} — ${card.keyword}`, sounds, note, collection, regions, cardId, card.keyword, card.ipa, card.kind, card.inventory, card.category]);
+    rows.push([file, order, title, sounds, note, collection, regions, cardId, card.keyword, card.ipa, card.kind, card.inventory, card.category]);
     console.log(`  ${file}  ${Math.round(bytes.length / 1024)} KB`);
   }
   writeFileSync(path.join(out, 'cards.csv'), rows.map((row) => row.map(cell).join(',')).join('\n') + '\n');

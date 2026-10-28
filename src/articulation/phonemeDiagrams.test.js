@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PHONEME_ARTICULATION_CARDS, ARTICULATION_POSE_KEYS, phonemeArticulationById } from '../data/phonemeArticulation.js';
 import { SHARED_PATHS } from '../assets/articulation/anatomy.js';
-import { PHONEME_POSES, phonemeDiagramSvg, phonemeDiagramUrl } from './phonemeDiagrams.js';
+import { PHONEME_POSES, phonemeDiagramSvg, phonemeDiagramUrl, phonemeMovementArrow } from './phonemeDiagrams.js';
 
 describe('sound-specific articulation diagrams', () => {
   it('covers every explicit start and end pose without fallback substitutions', () => {
@@ -25,6 +25,20 @@ describe('sound-specific articulation diagrams', () => {
       expect(svg.includes("data-airflow='release'"), card.id).toBe(card.airflow === 'stop');
     }
     for (const [nasal, stop] of [['m', 'b'], ['n', 'd'], ['ng', 'g']]) expect(phonemeDiagramSvg(phonemeArticulationById(nasal))).not.toBe(phonemeDiagramSvg(phonemeArticulationById(stop)));
+  });
+
+  it('keeps gliding-vowel movement in one anatomy diagram', () => {
+    for (const id of ['long-a', 'long-o', 'long-i', 'oy', 'ow']) {
+      const card = phonemeArticulationById(id);
+      expect(phonemeMovementArrow(card), id).toMatch(/^M /);
+      const svg = phonemeDiagramSvg(card);
+      expect(svg.match(/<svg/g), id).toHaveLength(1);
+      expect(svg.match(/id='tongue'/g), id).toHaveLength(1);
+      expect(svg, id).toContain("data-movement='tongue'");
+      expect(phonemeDiagramSvg(card, 'end'), id).not.toContain("data-movement='tongue'");
+    }
+    expect(phonemeMovementArrow(phonemeArticulationById('short-u'))).toBe(null);
+    expect(phonemeMovementArrow(phonemeArticulationById('ar'))).toBe(null);
   });
 
   it('gives different vowel heights/backness different tongue shapes and valid SVG data URLs', () => {

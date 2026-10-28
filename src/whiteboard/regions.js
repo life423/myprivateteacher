@@ -168,6 +168,18 @@ export function findRegions(image, { minAreaShare = 0.004 } = {}) {
   return [...pictures.map(done('picture')), ...text.map(done('text'))];
 }
 
+// Precise photo crops refine automatic selection, rather than disabling the rest
+// of a teaching card. Remove automatic fragments/frames that cross a known photo,
+// keep the title, instructions, diagram and sound text, then use the exact crop.
+// This is for tutor selection only: student permissions still come from the
+// server's predefined regions and explicit offers.
+export function mergePictureRegions(automatic = [], precise = []) {
+  const valid = (r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0;
+  const photos = precise.filter(valid).map((r) => ({ ...r, kind: 'picture' }));
+  const intersects = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  return [...automatic.filter(valid).filter((region) => !photos.some((photo) => intersects(region, photo))), ...photos];
+}
+
 // The region under a tap: the smallest box containing the point.
 export function regionAt(regions, x, y) {
   let best = null;

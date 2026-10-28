@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import jpeg from 'jpeg-js';
-import { findRegions, regionAt } from './regions.js';
+import { findRegions, mergePictureRegions, regionAt } from './regions.js';
 
 // The first real worksheet: the Lip Biter card, in a small copy (the browser analyses up to 400px).
 const card = jpeg.decode(readFileSync(new URL('./fixtures/lip-biter-240.jpg', import.meta.url)), { useTArray: true });
@@ -73,5 +73,35 @@ describe('Magic Select regions', () => {
 
   it('finds nothing to pick on a blank page', () => {
     expect(findRegions(blank(120, 90))).toEqual([]);
+  });
+});
+
+
+describe('curated photo regions alongside automatic tutor selection', () => {
+  const photo = { id: 'mouth', label: 'Mouth', x: 8, y: 61, w: 159, h: 172, r: 9 };
+  const combined = mergePictureRegions(regions, [photo]);
+
+  it('keeps every other real card part available while using the exact photo crop', () => {
+    expect(regionAt(combined, 81, 138)).toEqual({ ...photo, kind: 'picture' });
+    for (const [x, y] of [[120, 30], [204, 138], [198, 78], [199, 208]]) {
+      const selected = regionAt(combined, x, y);
+      expect(selected).toBeTruthy();
+      expect(selected).toBe(regionAt(regions, x, y));
+      expect(selected.id).not.toBe('mouth');
+    }
+  });
+
+  it('removes photo fragments and enclosing frames so they cannot shadow the curated crop', () => {
+    const title = { x: 0, y: 0, w: 120, h: 20, kind: 'text' };
+    const fragment = { x: 20, y: 80, w: 50, h: 50, kind: 'picture' };
+    const frame = { x: 0, y: 0, w: 240, h: 240, kind: 'picture' };
+    expect(mergePictureRegions([title, fragment, frame], [photo])).toEqual([title, { ...photo, kind: 'picture' }]);
+  });
+
+  it('does not discard adjacent non-photo regions or change uncurated worksheet detection', () => {
+    const adjacent = { x: 167, y: 61, w: 60, h: 100, kind: 'picture' };
+    expect(mergePictureRegions([adjacent], [photo])[0]).toBe(adjacent);
+    expect(mergePictureRegions(regions)).toEqual(regions);
+    expect(mergePictureRegions(regions, [{ x: NaN, y: 0, w: 50, h: 50 }])).toEqual(regions);
   });
 });
