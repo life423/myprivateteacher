@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WORK } from './tiles.js';
-import { cleanCrop, clampPiece, isPictureId, pieceSize, startingWidth } from './pieces.js';
+import { cleanCrop, clampPiece, isFacePiece, isPictureId, pieceSize, startingWidth } from './pieces.js';
 
 const pic = { w: 976, h: 974 };
 
@@ -39,5 +39,34 @@ describe('picture pieces', () => {
     expect(isPictureId('0123456789abcdef0123456789abcdef')).toBe(true);
     expect(isPictureId('../../etc/passwd')).toBe(false);
     expect(isPictureId('0123456789ABCDEF0123456789ABCDEF')).toBe(false);
+  });
+});
+
+
+describe('library face identification', () => {
+  const mouth = { id: 'mouth', x: 48, y: 300, w: 744, h: 852, r: 36 };
+  const picture = { id: 'photo', library: 'card-id', w: 1200, h: 1200, regions: [mouth] };
+
+  it('recognizes direct faces, copies and face subcrops independently of display size or rounding', () => {
+    expect(isFacePiece({ crop: mouth, w: 220 }, picture)).toBe(true);
+    expect(isFacePiece({ id: 'duplicate', crop: { ...mouth, r: 0 }, w: 600 }, picture)).toBe(true);
+    expect(isFacePiece({ crop: { x: 90, y: 400, w: 120, h: 90, r: 4 } }, picture)).toBe(true);
+  });
+
+  it('does not treat uploads, complete cards, titles or diagrams as faces', () => {
+    expect(isFacePiece({ crop: mouth }, { ...picture, library: undefined })).toBe(false);
+    expect(isFacePiece({ crop: mouth }, { ...picture, regions: [{ ...mouth, id: 'diagram' }] })).toBe(false);
+    for (const crop of [
+      { x: 0, y: 0, w: 1200, h: 1200 },
+      { x: 30, y: 30, w: 1140, h: 230 },
+      { x: 845, y: 548, w: 320, h: 320 },
+      { x: 0, y: 300, w: 792, h: 852 },
+    ]) expect(isFacePiece({ crop }, picture)).toBe(false);
+  });
+
+  it('requires valid source bounds and trusted mouth metadata', () => {
+    expect(isFacePiece({ crop: mouth }, undefined)).toBe(false);
+    expect(isFacePiece({ crop: { x: NaN, y: 300, w: 744, h: 852 } }, picture)).toBe(false);
+    expect(isFacePiece({ crop: mouth }, { ...picture, regions: [{ ...mouth, w: 2000 }] })).toBe(false);
   });
 });

@@ -115,10 +115,20 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
     next();
   });
 
+  // Authenticate before an asynchronous copy or request body can outlive a clear/rejoin.
+  // Minimal picture adapters used by embedders/tests can still provide synchronous add.
+  const beginPictureWrite = (req, res, next) => {
+    if (pictures.beginWrite) {
+      req.pictureWriteToken = pictures.beginWrite(req.params.code, req.get('x-room-key'));
+      if (!req.pictureWriteToken) return res.sendStatus(403);
+    }
+    next();
+  };
+
   // Whiteboard pictures: held in memory for one room, never written anywhere. Only the
   // room's tutor can add one; the address has a random 128-bit id, so it can't be guessed.
   if (pictures) {
-    app.post('/api/rooms/:code/pictures/:id', express.raw({ type: () => true, limit: MAX_PICTURE_BYTES }), (req, res) => {
+    app.post('/api/rooms/:code/pictures/:id', beginPictureWrite, express.raw({ type: () => true, limit: MAX_PICTURE_BYTES }), (req, res) => {
       const type = imageType(req.body);
       if (!type) return res.status(415).json({ ok: false });
       const { status } = pictures.add({
@@ -129,6 +139,7 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
         h: Number(req.query.h),
         type,
         bytes: req.body,
+        writeToken: req.pictureWriteToken,
       });
       res.status(status).json({ ok: status < 300 });
     });
@@ -169,7 +180,7 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
         res.sendStatus(503);
       }
     });
-    app.post('/api/rooms/:code/pictures/:id/from-library/:card', tutorOnly, async (req, res) => {
+    app.post('/api/rooms/:code/pictures/:id/from-library/:card', tutorOnly, beginPictureWrite, async (req, res) => {
       try {
         const card = await library.image(req.params.card);
         if (!card) return res.sendStatus(404);
@@ -177,7 +188,7 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
         const type = imageType(card.bytes);
         if (!type) return res.sendStatus(415);
         const key = req.get('x-room-key');
-        const { status } = pictures.add({ code: req.params.code, key, id: req.params.id, w: card.w, h: card.h, type, bytes: card.bytes, regions: card.regions, library: req.params.card, title: card.title });
+        const { status } = pictures.add({ code: req.params.code, key, id: req.params.id, w: card.w, h: card.h, type, bytes: card.bytes, regions: card.regions, library: req.params.card, title: card.title, writeToken: req.pictureWriteToken });
         res.status(status).json({ ok: status < 300 });
       } catch (error) {
         console.warn(`Library copy failed: ${error.message}`);
@@ -326,6 +337,7 @@ export function start(port = PORT) {
   // The picture routes reach the live rooms through this, once the realtime server exists.
   let realtime = null;
   const pictures = {
+    beginWrite: (code, key) => realtime.pictures.beginWrite(code, key),
     add: (upload) => realtime.pictures.add(upload),
     get: (code, id) => realtime.pictures.get(code, id),
     isTutor: (code, key) => realtime.pictures.isTutor(code, key),

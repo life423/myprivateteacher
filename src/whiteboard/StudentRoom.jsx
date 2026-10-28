@@ -316,6 +316,7 @@ export default function StudentRoom({ code }) {
       }
     />
     <PictureDrawer
+      dismissOnEmptyBackground
       open={browsing}
       onClose={() => {
         setBrowsing(false);

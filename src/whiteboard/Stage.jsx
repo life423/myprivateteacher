@@ -10,11 +10,12 @@ import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
 import { TILE_HEIGHT, clampTile, soundBoxes, tileWidth } from '../../shared/tiles.js';
-import { clampPiece, pieceSize } from '../../shared/pieces.js';
+import { clampPiece, isFacePiece, pieceSize } from '../../shared/pieces.js';
 import { Expand, Shrink } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
 import { picturePlacementBounds } from './picturePlacement.js';
 import { pictureOverlapState } from './pictureGeometry.js';
+import { pictureLayersTop } from './pictureLayerPosition.js';
 
 const VIEW_BOX = `0 0 ${STAGE.width} ${STAGE.height}`;
 // Handwriting guides (top line, dashed midline, baseline) stay put even when the board grows.
@@ -213,6 +214,8 @@ export default function Stage({
   const stackedPieces = [...pieces].sort((a, b) => a.z - b.z);
   const overlapState = useMemo(() => pictureOverlapState(pieces), [pieces]);
   const selectedPiece = movable ? pieces.find((p) => p.id === selectedPieceId) || null : null;
+  const selectedFace = Boolean(selectedPiece && isFacePiece(selectedPiece, pictures.find((picture) => picture.id === selectedPiece.pic)));
+  const canResizeSelected = Boolean(selectedPiece && canEditPieces && (me === 'tutor' || !selectedFace));
   const selectPiece = (id) => {
     setSelectedPieceId(id);
     onSelectPiece?.(id);
@@ -245,7 +248,7 @@ export default function Stage({
     selectPiece(copy);
   };
   const resizePiece = (factor) => {
-    if (!selectedPiece || !canEditPieces || !pieceActions || (selectedPiece.heldBy && selectedPiece.heldBy !== me)) return;
+    if (!selectedPiece || !canResizeSelected || !pieceActions || (selectedPiece.heldBy && selectedPiece.heldBy !== me)) return;
     const size = pieceSize(selectedPiece.crop, selectedPiece.w * factor);
     const at = clampPiece(size, selectedPiece.x + (selectedPiece.w - size.w) / 2, selectedPiece.y + (selectedPiece.h - size.h) / 2);
     pieceActions.grab(selectedPiece.id);
@@ -369,7 +372,7 @@ export default function Stage({
   // The selected piece's resize handles. Other actions are real HTML buttons below.
   const pieceControl = (p) => {
     if (!selectedPiece) return null;
-    if (!canEditPieces) return null;
+    if (!canResizeSelected) return null;
     const handle = handlesOf(selectedPiece).find((hd) => Math.abs(p.x - hd.x) <= HANDLE && Math.abs(p.y - hd.y) <= HANDLE);
     return handle ? { piece: selectedPiece, handle } : null;
   };
@@ -759,9 +762,9 @@ export default function Stage({
           <g className='pointer-events-none'>
             <rect x={selectedPiece.x} y={selectedPiece.y} width={selectedPiece.w} height={selectedPiece.h} fill='none' stroke='white' strokeWidth='6' vectorEffect='non-scaling-stroke' />
             <rect x={selectedPiece.x} y={selectedPiece.y} width={selectedPiece.w} height={selectedPiece.h} fill='none' strokeWidth='2.5' vectorEffect='non-scaling-stroke' className='stroke-violet-600' />
-            {canEditPieces && !(selectedPiece.heldBy && selectedPiece.heldBy !== me) &&
+            {canResizeSelected && !(selectedPiece.heldBy && selectedPiece.heldBy !== me) &&
               handlesOf(selectedPiece).map((hd) => (
-                <rect key={`${hd.hx},${hd.hy}`} x={hd.x - 11} y={hd.y - 11} width='22' height='22' rx='5' strokeWidth='4' className='fill-white stroke-violet-600' />
+                <rect data-picture-resize-handle={`${hd.hx},${hd.hy}`} key={`${hd.hx},${hd.hy}`} x={hd.x - 11} y={hd.y - 11} width='22' height='22' rx='5' strokeWidth='4' className='fill-white stroke-violet-600' />
               ))}
           </g>
         )}
@@ -792,12 +795,14 @@ export default function Stage({
         onDuplicate={duplicatePiece}
         onDelete={(id) => { pieceActions.remove(id); clearPiece(); }}
         onResize={resizePiece}
-        canResize={canEditPieces}
+        canResize={canResizeSelected}
+        resizeLocked={me === 'student' && selectedFace}
         canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
         canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
         canDuplicate={canDuplicatePieces}
         canDelete={canDeletePieces}
         height={size.height}
+        topOffset={pictureLayersTop(layout, { strip, externalAlphabet: Boolean(fillTop), floatingTools: fill && canEditPieces && window.matchMedia('(orientation: landscape)').matches })}
         overlapState={overlapState}
         placementNotice={placementNotice}
         onDismissNotice={() => setPlacementNotice('')}

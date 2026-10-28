@@ -4,6 +4,7 @@ import WebSocket from 'ws';
 import { createHmac } from 'node:crypto';
 import { attachRealtime } from './realtime.js';
 import { TILE_HEIGHT, soundBoxes, tileWidth } from '../shared/tiles.js';
+import { pieceSize, startingWidth } from '../shared/pieces.js';
 
 const ORIGIN = 'http://localhost:8080';
 let server;
@@ -758,6 +759,92 @@ describe('library cards with predefined regions', () => {
     await nothing(tutor, 'piece:add');
     student.send({ t: 'piece:add', piece: piece('m4') }); // a crop of their own
     await nothing(tutor, 'piece:add');
+  });
+});
+
+describe('student face sizes', () => {
+  const faceId = 'c'.repeat(32);
+  const mouth = { id: 'mouth', label: 'Mouth', x: 48, y: 300, w: 744, h: 852, r: 36 };
+  const full = { x: 0, y: 0, w: 1200, h: 1200, r: 0 };
+  const addFace = (code, key) => realtime.pictures.add({ code, key, id: faceId, w: 1200, h: 1200, type: 'image/jpeg', bytes: Buffer.alloc(2000), regions: [mouth], library: 'face-card', title: 'Face card' });
+
+  it('lets students move faces but ignores forged move and drop widths even with tools on; tutors retain resize', async () => {
+    const { tutor, code, key } = await openRoom();
+    const { student } = await joinRoom(code);
+    expect(addFace(code, key).status).toBe(201);
+    tutor.send({ t: 'piece:add', piece: { id: 'face', pic: faceId, crop: mouth, x: 100, y: 200, w: 260 } });
+    const original = (await tutor.take('piece:add')).piece;
+    await student.take('piece:add');
+
+    for (const tools of [true, false]) {
+      tutor.send({ t: 'tools', on: tools });
+      await student.take('tools');
+      student.send({ t: 'piece:grab', id: 'face' });
+      await tutor.take('piece:grab');
+      student.send({ t: 'piece:move', id: 'face', x: 300, y: 320, w: 600, h: 600, crop: full, face: false });
+      expect(await tutor.take('piece:move')).toMatchObject({ id: 'face', x: 300, y: 320, w: original.w, h: original.h });
+      student.send({ t: 'piece:drop', id: 'face', x: 340, y: 360, w: 80 });
+      const dropped = (await tutor.take('piece:drop')).piece;
+      expect(dropped).toMatchObject({ x: 340, y: 360, w: original.w, h: original.h, crop: original.crop, heldBy: null });
+      await student.take('piece:drop');
+    }
+
+    tutor.send({ t: 'piece:grab', id: 'face' });
+    await student.take('piece:grab');
+    tutor.send({ t: 'piece:move', id: 'face', x: 240, y: 300, w: 210 });
+    expect(await student.take('piece:move')).toMatchObject({ id: 'face', x: 240, y: 300, ...pieceSize(mouth, 210) });
+    tutor.send({ t: 'piece:drop', id: 'face', x: 250, y: 310, w: 200 });
+    expect((await student.take('piece:drop')).piece).toMatchObject({ x: 250, y: 310, ...pieceSize(mouth, 200) });
+  });
+
+  it('fixes initial student face size and applies the restriction to granted face subcrops', async () => {
+    const { tutor, code, key } = await openRoom();
+    const { student } = await joinRoom(code);
+    addFace(code, key);
+    student.send({ t: 'piece:add', piece: { id: 'face-tools-off', pic: faceId, region: 'mouth', crop: full, x: 100, y: 200, w: 9999 } });
+    await nothing(tutor, 'piece:add');
+    tutor.send({ t: 'tools', on: true });
+    await student.take('tools');
+    student.send({ t: 'piece:add', piece: { id: 'face-copy', pic: faceId, region: 'mouth', crop: full, x: 100, y: 200, w: 9999 } });
+    expect((await tutor.take('piece:add')).piece).toMatchObject({ crop: { x: mouth.x, y: mouth.y, w: mouth.w, h: mouth.h, r: mouth.r }, ...pieceSize(mouth, startingWidth(mouth)) });
+
+    const crop = { x: 100, y: 400, w: 200, h: 120, r: 0 };
+    tutor.send({ t: 'offer:add', offer: { id: 'face-offer', pic: faceId, crop } });
+    await student.take('offer');
+    student.send({ t: 'piece:add', piece: { id: 'face-part', pic: faceId, offer: 'face-offer', crop: full, x: 400, y: 200, w: 700 } });
+    const part = (await tutor.take('piece:add')).piece;
+    expect(part).toMatchObject({ crop, ...pieceSize(crop, startingWidth(crop)) });
+    student.send({ t: 'piece:grab', id: part.id });
+    await tutor.take('piece:grab');
+    student.send({ t: 'piece:drop', id: part.id, x: 500, y: 300, w: 800 });
+    expect((await tutor.take('piece:drop')).piece).toMatchObject({ x: 500, y: 300, w: part.w, h: part.h });
+  });
+
+  it('preserves student resizing for uploads, full cards, titles and diagrams while tools are on', async () => {
+    const { tutor, code, key } = await openRoom();
+    const { student } = await joinRoom(code);
+    addFace(code, key);
+    const upload = 'd'.repeat(32);
+    realtime.pictures.add({ code, key, id: upload, w: 1200, h: 1200, type: 'image/jpeg', bytes: Buffer.alloc(2000), regions: [mouth] });
+    tutor.send({ t: 'tools', on: true });
+    await student.take('tools');
+    const cases = [
+      { id: 'uploaded-photo', pic: upload, crop: mouth },
+      { id: 'complete-card', pic: faceId, crop: full },
+      { id: 'title-part', pic: faceId, crop: { x: 30, y: 30, w: 1140, h: 230, r: 54 } },
+      { id: 'diagram-part', pic: faceId, crop: { x: 845, y: 548, w: 320, h: 320, r: 36 } },
+    ];
+    for (const item of cases) {
+      tutor.send({ t: 'piece:add', piece: { ...item, x: 100, y: 200, w: 300 } });
+      await tutor.take('piece:add');
+      student.send({ t: 'piece:grab', id: item.id });
+      await tutor.take('piece:grab');
+      student.send({ t: 'piece:move', id: item.id, x: 400, y: 300, w: 180 });
+      const size = pieceSize(item.crop, 180);
+      expect(await tutor.take('piece:move')).toMatchObject({ id: item.id, ...size });
+      student.send({ t: 'piece:drop', id: item.id, x: 420, y: 320, w: 190 });
+      expect((await tutor.take('piece:drop')).piece).toMatchObject({ ...pieceSize(item.crop, 190), x: 420, y: 320 });
+    }
   });
 });
 

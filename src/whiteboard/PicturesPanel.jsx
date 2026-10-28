@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BoxSelect, Check, Eye, Gift, Image as ImageIcon, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
 import { mergePictureRegions, regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
-import { MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
+import { isFacePiece, MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
 import { defaultPictureCrop, picturePlacement } from './picturePlacement.js';
 import { catalogCollections, collectionLabel, filterLibraryCards } from './libraryCatalog.js';
 import './pictureLibrary.css';
+import { cleanPictureLibraryView, emptyPictureLibraryView, keepPictureLibraryOpen, libraryFaceCrop } from './pictureLibraryView.js';
 
 const DRAG_START = 6; // screen pixels a press moves before it becomes a drag
 const card = 'flex flex-col gap-3 rounded-2xl bg-white p-3 shadow';
@@ -101,7 +102,7 @@ function LibraryPhoto({ card, loadImage, onOpen, disabled }) {
   }, [card.id, loadImage]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <button ref={button} type='button' onClick={() => state.error ? load() : onOpen()} disabled={disabled || (!state.src && !state.error)}
-      aria-label={state.error ? `Retry picture for ${card.title}` : `Open ${card.title}`}
+      aria-label={state.error ? `Retry picture for ${card.title}` : `Preview ${card.title}`}
       className='relative block aspect-square min-h-11 w-full bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
       {state.src ? <img src={state.src} alt={card.title} width={card.w} height={card.h} loading='lazy' decoding='async' draggable={false} className='block h-full w-full object-contain' /> : (
         <span className='absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-slate-500'>
@@ -126,6 +127,9 @@ export default function PicturesPanel({
   libraryState = { status: 'ready' },
   onRetryLibrary,
   loadLibraryImage,
+  catalogView,
+  onCatalogViewChange,
+  onViewerChange,
   onAddFromLibrary,
   onGiveAll,
   onBrowse,
@@ -149,6 +153,9 @@ export default function PicturesPanel({
 }) {
   const student = !canAdd;
   const [openId, setOpenId] = useState(null);
+  const [previewCardId, setPreviewCardId] = useState(null);
+  const [preview, setPreview] = useState({ status: 'idle', src: null });
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const [regions, setRegions] = useState([]);
   const [findingRegions, setFindingRegions] = useState(false);
   const [mode, setMode] = useState('magic');
@@ -161,8 +168,17 @@ export default function PicturesPanel({
   const [armed, setArmed] = useState(false);
   const [libraryNote, setLibraryNote] = useState(null);
   const [placedNote, setPlacedNote] = useState(null);
-  const [catalogQuery, setCatalogQuery] = useState('');
-  const [catalogCollection, setCatalogCollection] = useState('');
+  const [localView, setLocalView] = useState(emptyPictureLibraryView);
+  const view = catalogView || localView;
+  const updateView = (patch) => onCatalogViewChange ? onCatalogViewChange(patch) : setLocalView((current) => cleanPictureLibraryView({ ...current, ...patch }));
+  const catalogQuery = view.query;
+  const catalogCollection = view.collection;
+  const setCatalogQuery = (query) => updateView({ query, scrollTop: 0 });
+  const setCatalogCollection = (collection) => updateView({ collection, scrollTop: 0 });
+  const [pendingCards, setPendingCards] = useState(new Set());
+  const pendingCardIds = useRef(new Set());
+  const busyCount = useRef(0);
+  const faceGesture = useRef(null);
   const catalogSearch = useRef(null);
   const collections = useMemo(() => catalogCollections(library), [library]);
   const activeCollection = collections.includes(catalogCollection) ? catalogCollection : '';
@@ -184,10 +200,24 @@ export default function PicturesPanel({
   const sessionPictures = catalogVisible ? pictures.filter((item) => !item.library || (catalogReady && !catalogIds.has(item.library))) : pictures;
   const shown = pictures; // both people see every session picture
 
-  const pic = shown.find((p) => p.id === openId) || null;
-  const src = pic ? srcFor(pic.id) : null;
+  const previewCard = library.find((item) => item.id === previewCardId) || null;
+  const pic = previewCard || shown.find((p) => p.id === openId) || null;
+  const sessionPic = previewCard ? pictures.find((item) => item.library === previewCard.id) || null : pic;
+  const src = previewCard ? preview.src : pic ? srcFor(pic.id) : null;
   const size = pic ? `${pic.w}x${pic.h}` : '';
-  const picOffers = pic ? offers.filter((o) => o.pic === pic.id) : [];
+  const picOffers = sessionPic ? offers.filter((o) => o.pic === sessionPic.id) : [];
+  const face = libraryFaceCrop(pic);
+  const guiding = Boolean(sessionPic && guidePic === sessionPic.id);
+  useLayoutEffect(() => { onViewerChange?.(Boolean(pic)); }, [Boolean(pic), onViewerChange]);
+  useEffect(() => {
+    if (!previewCard) { setPreview({ status: 'idle', src: null }); return undefined; }
+    let live = true;
+    setPreview({ status: 'loading', src: null });
+    Promise.resolve().then(() => loadLibraryImage(previewCard.id)).then((image) => {
+      if (live) setPreview({ status: 'ready', src: image });
+    }).catch(() => { if (live) setPreview({ status: 'error', src: null }); });
+    return () => { live = false; };
+  }, [previewCard?.id, loadLibraryImage, previewAttempt]);
   const available = picOffers.filter((o) => !o.taken);
   // First-party cards (the articulation cards) come with predefined regions, like the mouth
   // photo: Magic Select offers exactly those, and a student may take them with tools on.
@@ -238,14 +268,26 @@ export default function PicturesPanel({
   }, [src, size, student, predefinedKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const working = (value) => {
-    busyRef.current = value;
-    setBusy(value);
+    busyCount.current = Math.max(0, busyCount.current + (value ? 1 : -1));
+    busyRef.current = busyCount.current > 0;
+    setBusy(busyRef.current);
   };
 
-  const placePicture = (picture, title = 'Picture') => {
+  const backToCatalog = () => { setOpenId(null); setPreviewCardId(null); };
+  const viewCard = (item) => { setNote(null); setPlacedNote(null); setOpenId(null); setPreview({ status: 'loading', src: null }); setPreviewCardId(item.id); };
+  const ensureSessionPicture = async (picture) => {
+    if (!library.some((item) => item.id === picture.id)) return picture;
+    const existing = pictures.find((item) => item.library === picture.id);
+    if (existing) return existing;
+    const result = await onAddFromLibrary(picture);
+    if (result?.error || !result?.id) throw new Error(result?.error || 'That card could not be added. Please try again.');
+    return { ...picture, ...result, library: picture.id };
+  };
+
+  const placePicture = (picture, title = 'Picture', { crop, keepOpen = false } = {}) => {
     const centre = stageApi?.current?.centre?.();
     const bounds = stageApi?.current?.bounds?.();
-    const placement = picturePlacement(picture, centre, { bounds });
+    const placement = picturePlacement(picture, centre, { bounds, crop });
     if (!placement || !onPlace) return false;
     const pieceId = onPlace({ ...placement, automatic: true, centre, bounds });
     const status = stageApi?.current?.placementStatus?.();
@@ -256,8 +298,8 @@ export default function PicturesPanel({
     stageApi?.current?.selectPiece?.(pieceId);
     stageApi?.current?.reportPlacement?.(status);
     setPlacedNote({ id: picture.id, text: `${title} added to the board. Drag to move it, or use a corner to resize.` });
-    setOpenId(null);
-    onPlaced?.();
+    backToCatalog();
+    onPlaced?.({ keepOpen });
     return true;
   };
 
@@ -298,25 +340,61 @@ export default function PicturesPanel({
     }
   };
 
-  // Add is one step. Choosing a part remains an explicit, separate action.
-  const addCard = async (card, action = 'place') => {
-    if (!canAdd || !onAddFromLibrary || busyRef.current) return;
+  // Adding a face is a mutation; viewing the complete card remains read-only.
+  const addCard = async (item, options = {}) => {
+    if (!canAdd || !onAddFromLibrary || pendingCardIds.current.has(item.id)) return;
+    pendingCardIds.current.add(item.id);
+    setPendingCards(new Set(pendingCardIds.current));
     working(true);
     setNote(null);
     setPlacedNote(null);
     try {
-      const result = await onAddFromLibrary(card);
-      if (result?.error) setNote(result.error);
-      else if (result?.id) {
-        const picture = { ...card, ...pictures.find((p) => p.id === result.id), ...result };
-        if (action === 'show') onGuide?.(guidePic === result.id ? null : result.id);
-        else if (action === 'part' || !placePicture(picture, card.title || 'Picture')) setOpenId(result.id);
-      }
-    } catch {
-      setNote('That picture couldn’t be added. Please try again.');
+      const picture = await ensureSessionPicture(item);
+      placePicture(picture, item.title || 'Picture', { crop: libraryFaceCrop(item) || defaultPictureCrop(item), ...options });
+    } catch (error) {
+      setNote(error.message || 'That picture couldn’t be added. Please try again.');
     } finally {
+      pendingCardIds.current.delete(item.id);
+      setPendingCards(new Set(pendingCardIds.current));
       working(false);
     }
+  };
+
+  // macOS Control-click may dispatch contextmenu as well as click. Each pointer
+  // gesture activates the action once; a new press can add another face normally.
+  const facePointerDown = (event) => { faceGesture.current = { element: event.currentTarget, handled: false }; };
+  const activateFace = (item, event) => {
+    if (event.type === 'contextmenu') {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+    }
+    const gesture = faceGesture.current;
+    if ((event.detail !== 0 || event.type === 'contextmenu') && gesture?.element === event.currentTarget) {
+      if (gesture.handled) return;
+      gesture.handled = true;
+    }
+    addCard(item, { keepOpen: keepPictureLibraryOpen(event, view.keepOpen) });
+  };
+
+  const showCurrentPicture = async () => {
+    if (!pic || !onGuide) return;
+    working(true);
+    setNote(null);
+    try {
+      const picture = await ensureSessionPicture(pic);
+      onGuide(guidePic === picture.id ? null : picture.id);
+    } catch (error) { setNote(error.message || 'That picture could not be shown. Please try again.'); }
+    finally { working(false); }
+  };
+
+  const giveSelection = async () => {
+    if (!pic || !selection || !onOffer) return;
+    const crop = { ...selection };
+    working(true);
+    setNote(null);
+    try { const picture = await ensureSessionPicture(pic); onOffer({ pic: picture.id, crop }); }
+    catch (error) { setNote(error.message || 'That part could not be shared. Please try again.'); }
+    finally { working(false); }
   };
 
   // Pasting an image anywhere on the page adds it (tutor only).
@@ -333,32 +411,48 @@ export default function PicturesPanel({
     return () => window.removeEventListener('paste', onPaste);
   });
 
-  // A deliberate drop keeps its location. Button placement finds open space.
-  const place = (crop, clientX, clientY, offerId, regionId) => {
-    const centre = stageApi?.current?.centre?.();
-    const bounds = stageApi?.current?.bounds?.();
-    let placement = picturePlacement(pic, centre, { bounds, crop });
-    if (!placement) return false;
+  // Capture deliberate drop coordinates before an asynchronous library copy.
+  // Button placement uses the current board and its collision-aware placement.
+  const place = async (crop, clientX, clientY, offerId, regionId, options = {}) => {
+    const sourcePicture = pic;
     const automatic = clientX === undefined;
-    if (!automatic) {
-      const at = stageApi?.current?.pointAt(clientX, clientY);
-      if (!at) return false;
-      const w = startingWidth(crop);
-      placement = { pic: pic.id, crop, x: at.x - w / 2, y: at.y - w * crop.h / crop.w / 2, w };
-    }
-    const pieceId = onPlace({ ...placement, offer: offerId, region: regionId,
-      ...(automatic ? { automatic: true, centre, bounds } : {}) });
-    const status = stageApi?.current?.placementStatus?.();
-    if (!pieceId) {
-      setNote(status?.error || 'This picture could not be added to the board. Please try again.');
+    const dropAt = !automatic ? stageApi?.current?.pointAt(clientX, clientY) : null;
+    if (!sourcePicture || (!automatic && !dropAt)) {
+      if (!automatic) setNote('Drop it on the board to place it.');
       return false;
     }
-    stageApi?.current?.selectPiece?.(pieceId);
-    stageApi?.current?.reportPlacement?.(status);
-    setNote('Added to the board. Drag to move it, or use a corner to resize.');
-    onPlaced?.();
-    if (student) setSelection(null);
-    return true;
+    working(true);
+    setNote(null);
+    try {
+      const picture = await ensureSessionPicture(sourcePicture);
+      const centre = stageApi?.current?.centre?.();
+      const bounds = stageApi?.current?.bounds?.();
+      let placement = picturePlacement(picture, centre, { bounds, crop });
+      if (!placement) return false;
+      if (!automatic) {
+        const w = startingWidth(crop);
+        placement = { pic: picture.id, crop, x: dropAt.x - w / 2, y: dropAt.y - w * crop.h / crop.w / 2, w };
+      }
+      const pieceId = onPlace({ ...placement, offer: offerId, region: regionId,
+        ...(automatic ? { automatic: true, centre, bounds } : {}) });
+      const status = stageApi?.current?.placementStatus?.();
+      if (!pieceId) {
+        setNote(status?.error || 'This picture could not be added to the board. Please try again.');
+        return false;
+      }
+      stageApi?.current?.selectPiece?.(pieceId);
+      stageApi?.current?.reportPlacement?.(status);
+      setNote(student && isFacePiece({ crop }, picture)
+        ? 'Added to the board. Drag to move it. Your tutor controls its size.'
+        : 'Added to the board. Drag to move it, or use a corner to resize.');
+      backToCatalog();
+      onPlaced?.({ keepOpen: Boolean(options.keepOpen) });
+      if (student) setSelection(null);
+      return true;
+    } catch (error) {
+      setNote(error.message || 'This picture could not be added. Please try again.');
+      return false;
+    } finally { working(false); }
   };
 
   const toPic = (event) => {
@@ -375,6 +469,7 @@ export default function PicturesPanel({
 
   // Press on a part to pick it up. The tutor can also press anywhere else to draw a box.
   const onDown = (event) => {
+    if (busyRef.current || !src) return;
     event.preventDefault();
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -433,7 +528,7 @@ export default function PicturesPanel({
     setGhost({ x: event.clientX, y: event.clientY, width: startingWidth(current.part) * scale, part: current.part });
   };
 
-  const onUp = (event) => {
+  const onUp = async (event) => {
     const current = press.current;
     press.current = null;
     if (!current) return;
@@ -445,8 +540,9 @@ export default function PicturesPanel({
       return;
     }
     setGhost(null);
-    if (current.dragging && event.type === 'pointerup' && !place(current.part, event.clientX, event.clientY, current.offer, current.region)) {
-      setNote('Drop it on the board to place it.');
+    if (current.dragging && event.type === 'pointerup') {
+      const x = event.clientX, y = event.clientY;
+      await place(current.part, x, y, current.offer, current.region, { keepOpen: !student && keepPictureLibraryOpen(event, view.keepOpen) });
     }
   };
 
@@ -473,11 +569,11 @@ export default function PicturesPanel({
     const bright = [...available.map((o) => o.crop), ...takeable];
     const dim = `M0 0H${pic.w}V${pic.h}H0Z${bright.map((c) => `M${c.x} ${c.y}h${c.w}v${c.h}h${-c.w}Z`).join('')}`;
     return (
-      <section aria-label='Pictures' className={`${card} ${layout === 'drawer' ? 'picture-editor h-full min-h-0 gap-2 overflow-hidden' : ''}`}>
+      <section aria-label='Pictures' data-library-view='preview' className={`${card} ${layout === 'drawer' ? 'picture-editor h-full min-h-0 gap-2 overflow-hidden' : ''}`}>
         <div data-editor-control className='flex shrink-0 items-center justify-between gap-2'>
         <button
           type='button'
-          onClick={() => setOpenId(null)}
+          onClick={backToCatalog}
           className='flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-sm font-semibold text-violet-700 hover:bg-violet-50'
         >
           <ArrowLeft className='h-4 w-4' aria-hidden='true' />
@@ -493,30 +589,33 @@ export default function PicturesPanel({
           </div>
         )}
         {student && guidePic === pic.id && <p className='text-sm font-semibold text-sky-700'>Your tutor picked this one.</p>}
-        {!student && peerPic === pic.id && <p className='text-sm font-semibold text-violet-700'>Your student is looking at this too.</p>}
+        {!student && peerPic === sessionPic?.id && <p className='text-sm font-semibold text-violet-700'>Your student is looking at this too.</p>}
         {onGuide && (
           <button
             type='button'
-            aria-pressed={guidePic === pic.id}
-            onClick={() => onGuide(guidePic === pic.id ? null : pic.id)}
+            aria-pressed={guiding}
+            disabled={busy || !src}
+            onClick={showCurrentPicture}
             className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${
-              guidePic === pic.id ? 'bg-sky-500 text-white hover:bg-sky-600' : 'bg-sky-50 text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100'
+              guiding ? 'bg-sky-500 text-white hover:bg-sky-600' : 'bg-sky-50 text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100'
             }`}
           >
             <Eye className='h-4 w-4' aria-hidden='true' />
-            {guidePic === pic.id ? 'Showing on your student’s screen · Stop' : 'Show student'}
+            {guiding ? 'Showing on your student’s screen · Stop' : 'Show student'}
           </button>
         )}
         </div>
         <div data-editor-preview ref={previewArea} className={layout === 'drawer' ? 'flex min-h-0 flex-1 items-center justify-center' : ''}>
         <div style={layout === 'drawer' && previewSize ? previewSize : undefined} className='relative max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white'>
-          <img
+          {src ? <img
             src={src}
             alt=''
             draggable={false}
             className={layout === 'drawer' ? 'block h-full w-full select-none object-contain' : 'block w-full select-none'}
-          />
-          <svg
+          /> : <div role='status' className='flex h-full min-h-32 items-center justify-center p-4 text-center text-sm text-slate-600'>
+            {preview.status === 'error' ? <div><p>This card could not be loaded.</p><button type='button' onClick={() => setPreviewAttempt((attempt) => attempt + 1)} className={`${secondary} mt-2`}>Retry card</button></div> : 'Loading card…'}
+          </div>}
+          {src && <svg
             ref={svgRef}
             viewBox={`0 0 ${pic.w} ${pic.h}`}
             preserveAspectRatio='none'
@@ -536,7 +635,7 @@ export default function PicturesPanel({
             {hover && !sameCrop(hover, selection) && <Outline r={hover} dashed className='fill-violet-500/10 stroke-violet-400' />}
             {selection && <Outline r={selection} className='fill-violet-500/15 stroke-violet-600' />}
             {box && <Outline r={box} dashed className='fill-sky-500/10 stroke-sky-600' />}
-          </svg>
+          </svg>}
           {picOffers
             .filter((o) => !student || o.taken)
             .map((o) => (
@@ -556,7 +655,7 @@ export default function PicturesPanel({
                 key={value}
                 type='button'
                 aria-pressed={mode === value}
-                onClick={() => setMode(value)}
+                onClick={() => { setMode(value); setSelection(null); setHover(null); }}
                 className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold ${
                   mode === value ? 'bg-white text-violet-700 shadow' : 'text-slate-600 hover:text-violet-700'
                 }`}
@@ -570,13 +669,14 @@ export default function PicturesPanel({
         <p data-editor-control className='shrink-0 text-xs text-slate-500'>{hint}</p>
         <div data-editor-control className='flex shrink-0 flex-wrap gap-2 [&>button]:min-h-11 [&>button]:flex-1'>
         {(!student || (selection && (chosen || chosenRegion) && canTake)) && (
-          <button type='button' onClick={() => place(selection || defaultPictureCrop(pic), undefined, undefined, chosen?.id, chosenRegion?.id)} className={primary}>
+          <button type='button' disabled={busy || !src} onClick={(event) => place(selection || (!student && face) || defaultPictureCrop(pic), undefined, undefined, chosen?.id, chosenRegion?.id, { keepOpen: !student && keepPictureLibraryOpen(event, view.keepOpen) })} className={primary}>
             <Plus className='h-4 w-4' aria-hidden='true' />
-            {selection ? 'Add selected part to board' : 'Add picture to board'}
+            {selection ? 'Add selected part to board' : face ? 'Add face' : 'Add picture to board'}
           </button>
         )}
+        {!student && face && <button type='button' disabled={busy || !src} onClick={(event) => place(defaultPictureCrop(pic), undefined, undefined, undefined, undefined, { keepOpen: keepPictureLibraryOpen(event, view.keepOpen) })} className={secondary}>Add whole card</button>}
         {!student && selection && !offered && (
-          <button type='button' onClick={() => onOffer({ pic: pic.id, crop: selection })} className={secondary}>
+          <button type='button' disabled={busy || !src} onClick={giveSelection} className={secondary}>
             <Gift className='h-4 w-4' aria-hidden='true' />
             Give to student
           </button>
@@ -610,7 +710,7 @@ export default function PicturesPanel({
   }
 
   return (
-    <section aria-label='Pictures' aria-busy={busy || (catalogVisible && libraryState.status === 'loading')} className={card}>
+    <section aria-label='Pictures' data-library-view='catalog' aria-busy={busy || (catalogVisible && libraryState.status === 'loading')} className={card}>
       <div className={`flex items-center justify-between ${browseOnly ? 'hidden' : ''}`}>
         <h2 className='text-sm font-bold text-slate-700'>Pictures</h2>
         {!student && (
@@ -650,7 +750,7 @@ export default function PicturesPanel({
           <p className='-mt-1 text-xs leading-relaxed text-slate-500'>Upload or paste to add straight to the board. Choose a part afterwards if you need it. Pictures stay for this session only.</p>
         </>
       )}
-      {placedNote && (
+      {placedNote && !catalogVisible && (
         <div role='status' className='rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900'>
           <p className='flex items-start gap-2'><Check className='mt-0.5 h-4 w-4 shrink-0' aria-hidden='true' />{placedNote.text}</p>
           <button type='button' onClick={() => setOpenId(placedNote.id)} className='mt-1 min-h-10 rounded-lg px-2 text-xs font-bold underline underline-offset-2 hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700'>
@@ -665,6 +765,7 @@ export default function PicturesPanel({
       )}
       {catalogVisible && (
         <section aria-label='Picture library catalog' className='flex flex-col gap-1.5'>
+          {placedNote && <p role='status' className='sr-only'>{placedNote.text}</p>}
           {libraryState.status === 'waiting' && <p role='status' className='rounded-xl bg-slate-100 px-3 py-3 text-sm text-slate-700'>Reconnecting to your lesson. The picture library will load automatically.</p>}
           {libraryState.status === 'loading' && <p role='status' className='rounded-xl bg-violet-50 px-3 py-3 text-sm font-semibold text-violet-800'>Loading picture library…</p>}
           {libraryState.status === 'error' && (
@@ -687,6 +788,7 @@ export default function PicturesPanel({
               </button>
             )}
           </div>
+          <div className='flex flex-wrap items-center justify-between gap-x-3'><label className='inline-flex min-h-11 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700'><input type='checkbox' checked={view.keepOpen} onChange={(event) => updateView({ keepOpen: event.target.checked })} className='h-4 w-4 accent-violet-600' />Keep library open</label><span className='text-[11px] text-slate-500'>Ctrl/⌘-click keeps it open</span></div>
           <label className='mt-1 flex min-w-0 flex-col gap-1'>
             <span className='text-xs font-semibold text-slate-600'>Find a card</span>
             <input
@@ -722,23 +824,20 @@ export default function PicturesPanel({
               {libraryNote}
             </p>
           )}
-          <ul aria-label='Library cards' className='grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3'>
+          <ul aria-label='Library cards' className='grid grid-cols-1 gap-3 min-[350px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'>
             {filteredLibrary.map((item) => {
               const existing = pictures.find((picture) => picture.library === item.id);
               const showing = existing?.id === guidePic;
               return (
                 <li key={item.id} data-library-card={item.id} className={`relative flex min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-white ${showing ? 'border-sky-400' : existing?.id === peerPic ? 'border-violet-400 ring-2 ring-violet-200' : 'border-slate-200'}`}>
-                  <LibraryPhoto card={item} loadImage={loadLibraryImage} disabled={busy || !catalogReady} onOpen={() => addCard(item, 'part')} />
-                  <h3 className='border-t border-slate-100 px-2 py-2 text-sm font-bold text-slate-800'>{item.title}</h3>
-                  <button type='button' disabled={busy || !catalogReady} aria-label={`Add ${item.title} to board`} onClick={() => addCard(item)} className='flex min-h-11 items-center justify-center gap-1.5 border-t border-violet-100 bg-violet-50 px-2 py-2 text-xs font-bold text-violet-800 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
-                    <Plus className='h-4 w-4' aria-hidden='true' /> Add to board
-                  </button>
-                  {onGuide && <button type='button' disabled={busy || !catalogReady} aria-label={`Show ${item.title} to student`} aria-pressed={showing} onClick={() => addCard(item, 'show')} className={`flex min-h-11 items-center justify-center gap-1.5 border-t px-2 py-2 text-xs font-bold ${showing ? 'border-sky-500 bg-sky-500 text-white hover:bg-sky-600' : 'border-slate-100 text-sky-700 hover:bg-sky-50'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-sky-500`}>
-                    <Eye className='h-4 w-4' aria-hidden='true' /> {showing ? 'Showing · Stop' : 'Show student'}
-                  </button>}
-                  <button type='button' disabled={busy || !catalogReady} aria-label={`Choose a part of ${item.title}`} onClick={() => addCard(item, 'part')} className='flex min-h-11 items-center justify-center gap-1.5 border-t border-slate-100 px-2 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
-                    <BoxSelect className='h-4 w-4' aria-hidden='true' /> Choose a part
-                  </button>
+                  <LibraryPhoto card={item} loadImage={loadLibraryImage} disabled={!catalogReady} onOpen={() => viewCard(item)} />
+                  <h3 className='border-t border-slate-100 px-2 py-1 text-[13px] font-bold leading-snug text-slate-800'>{item.title}</h3>
+                  <div data-card-actions className='mt-auto grid grid-cols-2 border-t border-slate-100'>
+                    <button type='button' disabled={pendingCards.has(item.id) || !catalogReady} aria-label={`${libraryFaceCrop(item) ? 'Add face from' : 'Add'} ${item.title}`} onPointerDown={facePointerDown} onClick={(event) => activateFace(item, event)} onContextMenu={(event) => activateFace(item, event)} className='flex min-h-11 min-w-0 items-center justify-center gap-1 bg-violet-600 px-1.5 py-2 text-[11px] font-bold text-white hover:bg-violet-700 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-300'>
+                      <Plus className='h-3 w-3 shrink-0' aria-hidden='true' /> {pendingCards.has(item.id) ? 'Adding…' : libraryFaceCrop(item) ? 'Add face' : 'Add'}
+                    </button>
+                    <button type='button' disabled={!catalogReady} aria-label={`View ${item.title}`} onClick={() => viewCard(item)} className='flex min-h-11 min-w-0 items-center justify-center border-l border-slate-200 px-1.5 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>View card</button>
+                  </div>
                 </li>
               );
             })}
@@ -876,9 +975,47 @@ export default function PicturesPanel({
 
 // The picture library slide-out: the session's pictures as a grid, and a big view of the one
 // opened, sliding in over the board from the right (the whole screen on phones).
-export function PictureDrawer({ id, open, onClose, title = 'Picture library', children }) {
+export function PictureDrawer({ id, open, onClose, title = 'Picture library', children, previewOpen = false, catalogReady = true, catalogScrollTop = 0, onCatalogScroll, dismissOnEmptyBackground = false }) {
   const closeButton = useRef(null);
   const dialog = useRef(null);
+  const scrollArea = useRef(null);
+  const restoringScroll = useRef(false);
+  const backgroundPress = useRef(null);
+  const scrollCallback = useRef(onCatalogScroll);
+  scrollCallback.current = onCatalogScroll;
+  useLayoutEffect(() => {
+    if (!open || !scrollArea.current) return undefined;
+    const area = scrollArea.current;
+    if (previewOpen) { area.scrollTop = 0; return undefined; }
+    restoringScroll.current = true;
+    const restore = () => {
+      const max = Math.max(0, area.scrollHeight - area.clientHeight);
+      area.scrollTop = Math.min(catalogScrollTop, max);
+      if (catalogReady || max >= catalogScrollTop) restoringScroll.current = false;
+    };
+    const observer = new ResizeObserver(restore);
+    if (area.firstElementChild) observer.observe(area.firstElementChild);
+    restore();
+    return () => observer.disconnect();
+  }, [open, previewOpen, catalogReady, catalogScrollTop]);
+  const emptyBackground = (event) => {
+    const area = scrollArea.current;
+    const content = area?.firstElementChild;
+    return Boolean(dismissOnEmptyBackground && area && content && event.target === area && event.clientY > content.getBoundingClientRect().bottom);
+  };
+  const backgroundDown = (event) => {
+    backgroundPress.current = event.isPrimary !== false && event.button === 0 && emptyBackground(event)
+      ? { id: event.pointerId, x: event.clientX, y: event.clientY, scroll: scrollArea.current.scrollTop, cancelled: false } : null;
+  };
+  const backgroundMove = (event) => {
+    const start = backgroundPress.current;
+    if (start && (Math.hypot(event.clientX - start.x, event.clientY - start.y) >= DRAG_START || scrollArea.current.scrollTop !== start.scroll)) start.cancelled = true;
+  };
+  const backgroundUp = (event) => {
+    const start = backgroundPress.current;
+    backgroundPress.current = null;
+    if (start && !start.cancelled && start.id === event.pointerId && event.button === 0 && Math.hypot(event.clientX - start.x, event.clientY - start.y) < DRAG_START && scrollArea.current.scrollTop === start.scroll && emptyBackground(event)) closeRef.current();
+  };
   const returnFocus = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -935,7 +1072,11 @@ export function PictureDrawer({ id, open, onClose, title = 'Picture library', ch
             Close
           </button>
         </header>
-        <div className='min-h-0 flex-1 overflow-y-auto p-4'>{open && children}</div>
+        <div ref={scrollArea} data-picture-library-scroll className='min-h-0 flex-1 overflow-y-auto p-4' onPointerDown={backgroundDown} onPointerMove={backgroundMove} onPointerUp={backgroundUp} onPointerCancel={() => { backgroundPress.current = null; }} onScroll={() => {
+          const area = scrollArea.current;
+          if (backgroundPress.current && area.scrollTop !== backgroundPress.current.scroll) backgroundPress.current.cancelled = true;
+          if (open && !previewOpen && !restoringScroll.current) scrollCallback.current?.(area.scrollTop);
+        }}>{open && children}</div>
       </aside>
     </div>
   );
