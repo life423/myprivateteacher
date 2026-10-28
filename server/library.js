@@ -21,7 +21,7 @@ export function connectLibrary({ uri = process.env.MONGODB_URI, account = proces
     // Every card, series by series, in teaching order.
     async list() {
       const docs = await cards
-        .find({}, { projection: { title: 1, sounds: 1, note: 1, collection: 1, order: 1, image: 1, regions: 1 } })
+        .find({}, { projection: { title: 1, sounds: 1, note: 1, collection: 1, order: 1, image: 1, regions: 1, ipa: 1, keyword: 1, kind: 1, inventory: 1, category: 1 } })
         .limit(1000)
         .toArray();
       return docs
@@ -33,6 +33,11 @@ export function connectLibrary({ uri = process.env.MONGODB_URI, account = proces
           note: d.note || '',
           collection: d.collection || '',
           order: d.order ?? 0,
+          ipa: d.ipa || '',
+          keyword: d.keyword || '',
+          kind: d.kind || '',
+          inventory: d.inventory || '',
+          category: d.category || '',
           w: d.image.width,
           h: d.image.height,
           regions: Array.isArray(d.regions) ? d.regions : [],

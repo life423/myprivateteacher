@@ -8,14 +8,17 @@ Reading activities for learners with dyslexia, live at https://myprivateteacher.
 ## Develop
 
 ```bash
-npm install
-npm run server   # Node server, loads .env, http://localhost:8080
-npm run dev      # in a second terminal: http://localhost:3000 (proxies /api and /ws)
+nvm install      # Node 24, matching CI and the production container
+nvm use
+npm ci
+npm run dev      # starts both the .env-aware backend :8080 and Vite :3000
 npm run build    # production build in dist/
 npm test         # game logic, whiteboard geometry, realtime rooms, web server (build first)
 ```
 
-For the shared picture library, keep `MONGODB_URI` and `AZURE_STORAGE_ACCOUNT` in the local `.env`, then run `az login`. Blob Storage uses your Azure CLI identity locally; that identity needs Blob data access. Cosmos DB also needs to allow your current public IP. Restart the Node server after changing `.env`. The frontend alone cannot serve picture or account requests.
+Open http://localhost:3000. `npm run dev` starts the API/WebSocket backend before Vite and stops both on Ctrl+C. It refuses to start if either development port is occupied, so a different app cannot silently receive picture, account, or room requests. For separate terminals, use `npm run server` and `npm run dev:client` instead.
+
+For the shared picture library, keep `MONGODB_URI` and `AZURE_STORAGE_ACCOUNT` in the local `.env`, then run `az login`. Blob Storage uses your Azure CLI identity locally; that identity needs Blob data access. Cosmos DB also needs to allow your current public IP. Restart `npm run dev` after changing `.env`. The frontend alone cannot serve picture or account requests.
 
 ## Run the production container locally
 
@@ -27,6 +30,10 @@ npm run smoke -- http://localhost:8080   # a tutor and a student make a round tr
 The image builds the client, runs the tests (a failing test fails the build), and serves everything from one small Node server, `server/index.js`. It handles long-lived caching for hashed assets, gzip, security headers, redirects from www and the Azure hostname to https://myprivateteacher.com, and the whiteboard's WebSocket endpoint at `/ws`.
 
 ## Alphabet Whiteboard
+
+The shared picture catalog keeps the 16 original mouth-position families and adds 12 missing vowel/sequence cards, for 28 main cards. Moving sounds use separate start/end mouth views. A developer reference inventory tracks individual sounds and optional accent/sequence targets separately; it is not an official Take Flight deck. The source inventory and references are in `src/data/phonemeArticulation.js`.
+
+Render only the 12 additions with `node scripts/render-phoneme-articulation.mjs <output-folder> <local-site-url>`, review the exports, and preview the import with `npm run import-library -- <output-folder> --dry-run`. Each card has a stable ID and image hash. Library search supports sound, IPA and keyword. The optional `--all-sounds` export is a developer reference, not an additional catalog to import alongside the grouped cards. The existing room limit remains 32 library cards plus eight uploads.
 
 Both screens draw the same fixed 1600 x 1000 stage, scaled to fit, so a point on a 27-inch monitor is the same point on an iPad. The student's device works out which letter is under the fingertip and sends it with the position as 0-1 coordinates, about 30 times a second, newest position wins. On touch screens the fingertip sits a little above the finger so the child can still see the letter.
 
@@ -53,11 +60,13 @@ Check the relay: `az vm run-command invoke -g myprivateteacher-turn -n turn --co
 
 ## Pictures and Magic Select
 
-The tutor adds worksheets or pictures in the Pictures tab beside the board (Add picture, or paste an image). The browser shrinks each one to at most 1600px as a JPEG before sending it. Pictures live only in the server's memory, for that room: no database and no disk, and they're gone when the session ends or the tutor removes them. `POST /api/rooms/:code/pictures/:id` needs the tutor's room key, and the server checks the bytes really are a JPEG, PNG or WebP. Limits: 8 pictures per room, 1.5 MB each, 200 MB across all rooms.
+The tutor adds worksheets or pictures in the Pictures tab beside the board (Add picture, or paste an image). The browser shrinks each one to at most 1600px as a JPEG before sending it. Pictures live only in the server's memory, for that room: no database and no disk, and they're gone when the session ends or the tutor removes them. `POST /api/rooms/:code/pictures/:id` needs the tutor's room key, and the server checks the bytes really are a JPEG, PNG or WebP. Limits: eight uploaded pictures plus 32 library cards per room, 1.5 MB each, 200 MB across all rooms.
 
-Opening a picture shows Magic Select: parts glow on hover, a tap selects one, and dragging it drops a copy onto the board (Add to board places it in the middle). The part finder (`src/whiteboard/regions.js`) runs in the browser with no libraries. It takes the most common colour as the paper, groups everything else into pictures (exactly as drawn, so neighbours only merge if they touch) and blocks of text (small gaps bridged), and keeps a photo's rounded corners. Draw a box is the manual fallback.
+The instructor can open the full picture library before sharing any cards. Its private previews show complete teaching cards without adding them to the lesson. Loading failures offer Retry, and the catalog reloads after reconnecting. Add to board places the complete card in clear space near the visible board.
 
-A piece on the board is a window onto its picture (`shared/pieces.js`), so the picture stays whole and the same part can be copied again. With Watch or Hand, click a piece to move it, resize it from its handles (it keeps its shape), duplicate it or delete it. Pieces sit under the ink, so you can write on them, and they sync and lock like letter tiles. The student can always move pieces. The tutor decides what the student may lift out: select a part and tap Give to student. The student sees every picture the tutor adds, with the parts given to them bright and the rest dimmed, and while their tools are on they can take each one once; the server holds them to it and hands over exactly the part given. Let them take it again resets a part. With tools on the student can also resize their pieces. Only the tutor adds pictures, duplicates and deletes pieces. If the server restarts mid-session, the tutor's browser sends its pictures back up before the board.
+Opening a picture keeps Magic Select, Draw a box and Add to board visible beside the complete preview. Parts glow on hover and a tap selects one. Add selected part finds clear space; an explicit drag keeps the chosen drop position. Library cards use their predefined mouth-photo regions. Uploaded pictures use the part finder described below. The part finder (`src/whiteboard/regions.js`) runs in the browser with no libraries. It takes the most common colour as the paper, groups everything else into pictures (exactly as drawn, so neighbours only merge if they touch) and blocks of text (small gaps bridged), and keeps a photo's rounded corners. Draw a box is the manual fallback.
+
+A piece on the board is a window onto its picture (`shared/pieces.js`), so the picture stays whole and the same part can be copied again. With Watch or Hand, click a piece to move it, resize it from its handles (it keeps its shape), duplicate it or delete it. Pieces sit under the ink, so you can write on them, and they sync and lock like letter tiles. New copies reserve clear space even during rapid additions. Amber outlines and the Layers count identify overlaps; the front-to-back list can select covered pictures and move them to Front or Back. The student can always move pieces. The tutor decides what the student may lift out: select a part and tap Give to student. The student sees every picture the tutor adds, with the parts given to them bright and the rest dimmed, and while their tools are on they can take each one once; the server holds them to it and hands over exactly the part given. Let them take it again resets a part. Predefined library regions may be copied repeatedly while student tools are on; explicit tutor offers remain once-only until reset. With tools on the student can also resize their pieces. Only the tutor adds pictures, duplicates and deletes pieces. If the server restarts mid-session, the tutor's browser sends its pictures back up before the board.
 
 ## Content notes
 

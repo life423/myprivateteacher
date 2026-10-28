@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BoxSelect, Check, Eye, Gift, Image as ImageIcon, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
 import { regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
 import { MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
 import { defaultPictureCrop, picturePlacement } from './picturePlacement.js';
+import { catalogCollections, collectionLabel, filterLibraryCards } from './libraryCatalog.js';
+import './pictureLibrary.css';
 
 const DRAG_START = 6; // screen pixels a press moves before it becomes a drag
 const card = 'flex flex-col gap-3 rounded-2xl bg-white p-3 shadow';
@@ -74,6 +76,42 @@ function Badge({ offer, pic, children }) {
   );
 }
 
+// Catalog previews remain private and do not consume session-picture slots.
+function LibraryPhoto({ card, loadImage, onOpen, disabled }) {
+  const button = useRef(null);
+  const [state, setState] = useState({ src: null, error: false, loading: false });
+  const active = useRef(true);
+  const load = () => {
+    if (state.loading) return;
+    setState({ src: null, error: false, loading: true });
+    Promise.resolve().then(() => loadImage(card.id)).then((src) => {
+      if (active.current) setState({ src, error: false, loading: false });
+    }).catch(() => {
+      if (active.current) setState({ src: null, error: true, loading: false });
+    });
+  };
+  useEffect(() => {
+    active.current = true;
+    setState({ src: null, error: false, loading: false });
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) { observer.disconnect(); load(); }
+    }, { rootMargin: '240px' });
+    observer.observe(button.current);
+    return () => { active.current = false; observer.disconnect(); };
+  }, [card.id, loadImage]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <button ref={button} type='button' onClick={() => state.error ? load() : onOpen()} disabled={disabled || (!state.src && !state.error)}
+      aria-label={state.error ? `Retry picture for ${card.title}` : `Open ${card.title}`}
+      className='relative block aspect-square min-h-11 w-full bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
+      {state.src ? <img src={state.src} alt={card.title} width={card.w} height={card.h} loading='lazy' decoding='async' draggable={false} className='block h-full w-full object-contain' /> : (
+        <span className='absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-slate-500'>
+          {state.error ? 'Picture unavailable. Tap to retry.' : <span role='status'>Loading picture…</span>}
+        </span>
+      )}
+    </button>
+  );
+}
+
 // The Pictures tab. The tutor adds pictures (a file, or paste), lifts any part out with Magic
 // Select (or a drawn box), and chooses which parts the student may take: each one once, while
 // the student's tools are on. The student sees only those parts. Parts are copies, so the
@@ -85,11 +123,15 @@ export default function PicturesPanel({
   canAdd = false,
   onAddFile,
   library = [],
+  libraryState = { status: 'ready' },
+  onRetryLibrary,
+  loadLibraryImage,
   onAddFromLibrary,
   onGiveAll,
   onBrowse,
   layout = 'side', // 'side' (the column or sheet) or 'drawer' (the picture library slide-out)
-  browseOnly = false, // just the pictures: no adding, library or paste (the slide-out)
+  browseOnly = false, // session gallery without uploads or paste (the slide-out)
+  showLibrary = false, // a tutor can browse the full resource catalog before adding session pictures
   peerPic = null, // the picture the student is looking at (shown to the tutor, violet)
   guidePic = null, // the picture the tutor is pointing at (blue)
   onGuide, // tutor: show a picture on the student's screen, or stop (null)
@@ -118,8 +160,13 @@ export default function PicturesPanel({
   const [armed, setArmed] = useState(false);
   const [libraryNote, setLibraryNote] = useState(null);
   const [placedNote, setPlacedNote] = useState(null);
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [catalogCollection, setCatalogCollection] = useState('');
+  const catalogSearch = useRef(null);
+  const collections = useMemo(() => catalogCollections(library), [library]);
+  const activeCollection = collections.includes(catalogCollection) ? catalogCollection : '';
+  const filteredLibrary = useMemo(() => filterLibraryCards(library, { collection: activeCollection, query: catalogQuery }), [library, activeCollection, catalogQuery]);
   const busyRef = useRef(false);
-  const copies = useRef(new Map());
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
   useEffect(() => {
@@ -129,7 +176,13 @@ export default function PicturesPanel({
   const svgRef = useRef(null);
   const press = useRef(null);
 
-  const shown = pictures; // both people see every picture
+  const catalogVisible = canAdd && showLibrary;
+  const catalogReady = libraryState.status === 'ready';
+  const catalogIds = useMemo(() => new Set(library.map((item) => item.id)), [library]);
+  // A library card appears once in the tutor's catalog, even after it enters the lesson.
+  const sessionPictures = catalogVisible ? pictures.filter((item) => !item.library || (catalogReady && !catalogIds.has(item.library))) : pictures;
+  const shown = pictures; // both people see every session picture
+
   const pic = shown.find((p) => p.id === openId) || null;
   const src = pic ? srcFor(pic.id) : null;
   const size = pic ? `${pic.w}x${pic.h}` : '';
@@ -142,6 +195,21 @@ export default function PicturesPanel({
   const takeable = student && predefined ? predefined : [];
   const inSession = (card) => pictures.some((p) => p.library === card.id);
   const uploads = pictures.filter((p) => !p.library).length; // library cards have their own limit
+  const previewArea = useRef(null);
+  const [previewSize, setPreviewSize] = useState(null);
+  useLayoutEffect(() => {
+    if (!pic || layout !== 'drawer' || !previewArea.current) return undefined;
+    const area = previewArea.current;
+    const fit = () => {
+      const width = Math.min(area.clientWidth, area.clientHeight * pic.w / pic.h);
+      setPreviewSize({ width: Math.max(1, width), height: Math.max(1, width * pic.h / pic.w) });
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(area);
+    fit();
+    return () => observer.disconnect();
+  }, [pic?.id, pic?.w, pic?.h, layout]);
+
 
   // Each picture's parts are found once, when the tutor first opens it.
   useEffect(() => {
@@ -170,12 +238,18 @@ export default function PicturesPanel({
   };
 
   const placePicture = (picture, title = 'Picture') => {
-    const count = copies.current.get(picture.id) || 0;
-    const placement = picturePlacement(picture, stageApi?.current?.centre?.(), count);
+    const centre = stageApi?.current?.centre?.();
+    const bounds = stageApi?.current?.bounds?.();
+    const placement = picturePlacement(picture, centre, { bounds });
     if (!placement || !onPlace) return false;
-    const pieceId = onPlace(placement);
-    copies.current.set(picture.id, count + 1);
-    if (pieceId) stageApi?.current?.selectPiece?.(pieceId);
+    const pieceId = onPlace({ ...placement, automatic: true, centre, bounds });
+    const status = stageApi?.current?.placementStatus?.();
+    if (!pieceId) {
+      setNote(status?.error || 'This picture could not be added to the board. Please try again.');
+      return false;
+    }
+    stageApi?.current?.selectPiece?.(pieceId);
+    stageApi?.current?.reportPlacement?.(status);
     setPlacedNote({ id: picture.id, text: `${title} added to the board. Drag to move it, or use a corner to resize.` });
     setOpenId(null);
     onPlaced?.();
@@ -204,14 +278,14 @@ export default function PicturesPanel({
     }
   };
 
-  // Every library card joins the session, so the student can open any of them.
+  // Share the catalog selection, so a search or collection filter also limits bulk sharing.
   const giveAll = async () => {
-    if (!onGiveAll || busyRef.current) return;
+    if (!onGiveAll || busyRef.current || !filteredLibrary.length) return;
     working(true);
     setLibraryNote(null);
     try {
-      const result = await onGiveAll(library);
-      setLibraryNote(result?.error || (result?.added ? `${result.added} cards added. Your student can open them from Pictures.` : 'Every library card is already in this session.'));
+      const result = await onGiveAll(filteredLibrary);
+      setLibraryNote(result?.error || (result?.added ? `${result.added} card${result.added === 1 ? '' : 's'} added. Your student can open them from Pictures.` : 'These cards are already in this session.'));
     } catch {
       setLibraryNote('The library couldn’t be shared. Please try again.');
     } finally {
@@ -220,7 +294,7 @@ export default function PicturesPanel({
   };
 
   // Add is one step. Choosing a part remains an explicit, separate action.
-  const addCard = async (card, preview = false) => {
+  const addCard = async (card, action = 'place') => {
     if (!canAdd || !onAddFromLibrary || busyRef.current) return;
     working(true);
     setNote(null);
@@ -230,7 +304,8 @@ export default function PicturesPanel({
       if (result?.error) setNote(result.error);
       else if (result?.id) {
         const picture = { ...card, ...pictures.find((p) => p.id === result.id), ...result };
-        if (preview || !placePicture(picture, card.title || 'Picture')) setOpenId(result.id);
+        if (action === 'show') onGuide?.(guidePic === result.id ? null : result.id);
+        else if (action === 'part' || !placePicture(picture, card.title || 'Picture')) setOpenId(result.id);
       }
     } catch {
       setNote('That picture couldn’t be added. Please try again.');
@@ -253,17 +328,28 @@ export default function PicturesPanel({
     return () => window.removeEventListener('paste', onPaste);
   });
 
-  // Puts a part on the board: where it was dropped, or in the middle of the board.
+  // A deliberate drop keeps its location. Button placement finds open space.
   const place = (crop, clientX, clientY, offerId, regionId) => {
-    const w = startingWidth(crop);
-    const h = (w * crop.h) / crop.w;
-    let at = stageApi?.current?.centre?.() || { x: 800, y: 580 };
-    if (clientX !== undefined) {
-      at = stageApi?.current?.pointAt(clientX, clientY);
+    const centre = stageApi?.current?.centre?.();
+    const bounds = stageApi?.current?.bounds?.();
+    let placement = picturePlacement(pic, centre, { bounds, crop });
+    if (!placement) return false;
+    const automatic = clientX === undefined;
+    if (!automatic) {
+      const at = stageApi?.current?.pointAt(clientX, clientY);
       if (!at) return false;
+      const w = startingWidth(crop);
+      placement = { pic: pic.id, crop, x: at.x - w / 2, y: at.y - w * crop.h / crop.w / 2, w };
     }
-    const pieceId = onPlace({ offer: offerId, region: regionId, pic: pic.id, crop, x: at.x - w / 2, y: at.y - h / 2, w });
-    if (pieceId) stageApi?.current?.selectPiece?.(pieceId);
+    const pieceId = onPlace({ ...placement, offer: offerId, region: regionId,
+      ...(automatic ? { automatic: true, centre, bounds } : {}) });
+    const status = stageApi?.current?.placementStatus?.();
+    if (!pieceId) {
+      setNote(status?.error || 'This picture could not be added to the board. Please try again.');
+      return false;
+    }
+    stageApi?.current?.selectPiece?.(pieceId);
+    stageApi?.current?.reportPlacement?.(status);
     setNote('Added to the board. Drag to move it, or use a corner to resize.');
     onPlaced?.();
     if (student) setSelection(null);
@@ -380,11 +466,12 @@ export default function PicturesPanel({
     const bright = [...available.map((o) => o.crop), ...takeable];
     const dim = `M0 0H${pic.w}V${pic.h}H0Z${bright.map((c) => `M${c.x} ${c.y}h${c.w}v${c.h}h${-c.w}Z`).join('')}`;
     return (
-      <section aria-label='Pictures' className={card}>
+      <section aria-label='Pictures' className={`${card} ${layout === 'drawer' ? 'picture-editor h-full min-h-0 gap-2 overflow-hidden' : ''}`}>
+        <div data-editor-control className='flex shrink-0 items-center justify-between gap-2'>
         <button
           type='button'
           onClick={() => setOpenId(null)}
-          className='flex items-center gap-1 self-start text-sm font-semibold text-violet-700 hover:underline'
+          className='flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-sm font-semibold text-violet-700 hover:bg-violet-50'
         >
           <ArrowLeft className='h-4 w-4' aria-hidden='true' />
           All pictures
@@ -405,7 +492,7 @@ export default function PicturesPanel({
             type='button'
             aria-pressed={guidePic === pic.id}
             onClick={() => onGuide(guidePic === pic.id ? null : pic.id)}
-            className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold ${
+            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${
               guidePic === pic.id ? 'bg-sky-500 text-white hover:bg-sky-600' : 'bg-sky-50 text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100'
             }`}
           >
@@ -413,12 +500,14 @@ export default function PicturesPanel({
             {guidePic === pic.id ? 'Showing on your student’s screen · Stop' : 'Show student'}
           </button>
         )}
-        <div className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white ${layout === 'drawer' ? 'mx-auto w-fit' : ''}`}>
+        </div>
+        <div data-editor-preview ref={previewArea} className={layout === 'drawer' ? 'flex min-h-0 flex-1 items-center justify-center' : ''}>
+        <div style={layout === 'drawer' && previewSize ? previewSize : undefined} className='relative max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white'>
           <img
             src={src}
             alt=''
             draggable={false}
-            className={layout === 'drawer' ? 'block h-auto max-h-[calc(100dvh-15rem)] w-auto max-w-full select-none' : 'block w-full select-none'}
+            className={layout === 'drawer' ? 'block h-full w-full select-none object-contain' : 'block w-full select-none'}
           />
           <svg
             ref={svgRef}
@@ -449,8 +538,9 @@ export default function PicturesPanel({
               </Badge>
             ))}
         </div>
+        </div>
         {!student && (
-          <div role='group' aria-label='How to select' className='grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1'>
+          <div data-editor-control role='group' aria-label='How to select' className='grid shrink-0 grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1'>
             {[
               ['magic', 'Magic select', Wand2],
               ['box', 'Draw a box', BoxSelect],
@@ -460,7 +550,7 @@ export default function PicturesPanel({
                 type='button'
                 aria-pressed={mode === value}
                 onClick={() => setMode(value)}
-                className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold ${
+                className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold ${
                   mode === value ? 'bg-white text-violet-700 shadow' : 'text-slate-600 hover:text-violet-700'
                 }`}
               >
@@ -470,7 +560,8 @@ export default function PicturesPanel({
             ))}
           </div>
         )}
-        <p className='text-xs text-slate-500'>{hint}</p>
+        <p data-editor-control className='shrink-0 text-xs text-slate-500'>{hint}</p>
+        <div data-editor-control className='flex shrink-0 flex-wrap gap-2 [&>button]:min-h-11 [&>button]:flex-1'>
         {(!student || (selection && (chosen || chosenRegion) && canTake)) && (
           <button type='button' onClick={() => place(selection || defaultPictureCrop(pic), undefined, undefined, chosen?.id, chosenRegion?.id)} className={primary}>
             <Plus className='h-4 w-4' aria-hidden='true' />
@@ -493,8 +584,9 @@ export default function PicturesPanel({
             Take it back from your student
           </button>
         )}
+        </div>
         {note && (
-          <p role='status' className='text-xs font-semibold text-amber-700'>
+          <p data-editor-control role='status' className='text-xs font-semibold text-amber-700'>
             {note}
           </p>
         )}
@@ -511,7 +603,7 @@ export default function PicturesPanel({
   }
 
   return (
-    <section aria-label='Pictures' aria-busy={busy} className={card}>
+    <section aria-label='Pictures' aria-busy={busy || (catalogVisible && libraryState.status === 'loading')} className={card}>
       <div className={`flex items-center justify-between ${browseOnly ? 'hidden' : ''}`}>
         <h2 className='text-sm font-bold text-slate-700'>Pictures</h2>
         {!student && (
@@ -520,7 +612,7 @@ export default function PicturesPanel({
           </span>
         )}
       </div>
-      {!student && layout === 'side' && onBrowse && shown.length > 0 && (
+      {!student && layout === 'side' && onBrowse && (
         <button type='button' onClick={onBrowse} className={secondary}>
           <LayoutGrid className='h-4 w-4' aria-hidden='true' />
           Open picture library
@@ -560,63 +652,92 @@ export default function PicturesPanel({
         </div>
       )}
       {note && (
-        <p role='status' className='text-xs font-semibold text-amber-700'>
+        <p data-editor-control role='status' className='text-xs font-semibold text-amber-700'>
           {note}
         </p>
       )}
-      {canAdd && !browseOnly && library.length > 0 && (
-        <div className='flex flex-col gap-1.5'>
+      {catalogVisible && (
+        <section aria-label='Picture library catalog' className='flex flex-col gap-1.5'>
+          {libraryState.status === 'waiting' && <p role='status' className='rounded-xl bg-slate-100 px-3 py-3 text-sm text-slate-700'>Reconnecting to your lesson. The picture library will load automatically.</p>}
+          {libraryState.status === 'loading' && <p role='status' className='rounded-xl bg-violet-50 px-3 py-3 text-sm font-semibold text-violet-800'>Loading picture library…</p>}
+          {libraryState.status === 'error' && (
+            <div role='alert' className='rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900'>
+              <p>{libraryState.message || 'The picture library could not be loaded. Please try again.'}</p>
+              <button type='button' onClick={onRetryLibrary} className='mt-2 inline-flex min-h-11 items-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-bold hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700'>Retry picture library</button>
+            </div>
+          )}
           <div className='flex items-center justify-between gap-2'>
             <h3 className='text-xs font-bold uppercase tracking-wide text-slate-500'>Library</h3>
-            {library.length > 1 && onGiveAll && (
+            {onGiveAll && (
               <button
                 type='button'
-                disabled={busy || library.every(inSession)}
+                disabled={busy || !catalogReady || !filteredLibrary.length || filteredLibrary.every(inSession)}
                 onClick={giveAll}
-                className='inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
+                className='inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
               >
                 <Gift className='h-3.5 w-3.5' aria-hidden='true' />
-                {busy ? 'Adding…' : 'Give all to student'}
+                {busy ? 'Adding…' : `Give all ${filteredLibrary.length} to student`}
               </button>
             )}
+          </div>
+          <label className='mt-1 flex min-w-0 flex-col gap-1'>
+            <span className='text-xs font-semibold text-slate-600'>Find a card</span>
+            <input
+              ref={catalogSearch}
+              type='search'
+              aria-label='Search picture library'
+              placeholder='Sound, keyword or instruction'
+              value={catalogQuery}
+              onChange={(event) => { setCatalogQuery(event.target.value); setLibraryNote(null); }}
+              autoComplete='off'
+              spellCheck={false}
+              className='min-h-11 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
+            />
+          </label>
+          <label className='flex min-w-0 flex-col gap-1'>
+            <span className='text-xs font-semibold text-slate-600'>Collection</span>
+            <select
+              aria-label='Card collection'
+              value={activeCollection}
+              onChange={(event) => { setCatalogCollection(event.target.value); setLibraryNote(null); }}
+              className='min-h-11 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
+            >
+              <option value=''>All collections</option>
+              {collections.map((name) => <option key={name} value={name}>{collectionLabel(name)}</option>)}
+            </select>
+          </label>
+          <div className='flex flex-wrap items-center justify-between gap-x-2'>
+            {catalogReady && <p role='status' className='text-xs text-slate-500'>{filteredLibrary.length} of {library.length} cards</p>}
+            {(catalogQuery || activeCollection) && <button type='button' onClick={() => { setCatalogQuery(''); setCatalogCollection(''); setLibraryNote(null); catalogSearch.current?.focus(); }} className='min-h-11 rounded-lg px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'>Clear filters</button>}
           </div>
           {libraryNote && (
             <p role='status' className='text-xs font-semibold text-slate-600'>
               {libraryNote}
             </p>
           )}
-          <ul className='flex flex-col gap-1.5'>
-            {library.map((card) => (
-              <li key={card.id} className='rounded-xl border border-slate-200 bg-white p-3'>
-                <div className='flex items-start gap-3'>
-                  <ImageIcon className='h-5 w-5 shrink-0 text-violet-600' aria-hidden='true' />
-                  <span className='min-w-0 flex-1'>
-                    <span className='block text-sm font-bold text-slate-800'>{card.title}</span>
-                    <span className='block text-xs text-slate-500'>
-                      {[card.collection, (card.sounds || []).map((s) => `/${s}/`).join(' ')].filter(Boolean).join(' · ')}
-                    </span>
-                  </span>
-                  {inSession(card) ? (
-                    <span className='inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-700' title='Ready in this session. Add another copy whenever you need it.'>
-                      <Check className='h-4 w-4' aria-hidden='true' />
-                      Ready
-                    </span>
-                  ) : null}
-                </div>
-                <div className='mt-3 flex flex-wrap gap-2'>
-                  <button type='button' disabled={busy} aria-label={`Add ${card.title} to board`} onClick={() => addCard(card)} className={`${primary} flex-1 whitespace-nowrap text-xs`}>
-                    <Plus className='h-4 w-4 shrink-0' aria-hidden='true' />
-                    Add to board
+          <ul aria-label='Library cards' className='grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3'>
+            {filteredLibrary.map((item) => {
+              const existing = pictures.find((picture) => picture.library === item.id);
+              const showing = existing?.id === guidePic;
+              return (
+                <li key={item.id} data-library-card={item.id} className={`relative flex min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-white ${showing ? 'border-sky-400' : existing?.id === peerPic ? 'border-violet-400 ring-2 ring-violet-200' : 'border-slate-200'}`}>
+                  <LibraryPhoto card={item} loadImage={loadLibraryImage} disabled={busy || !catalogReady} onOpen={() => addCard(item, 'part')} />
+                  <h3 className='border-t border-slate-100 px-2 py-2 text-sm font-bold text-slate-800'>{item.title}</h3>
+                  <button type='button' disabled={busy || !catalogReady} aria-label={`Add ${item.title} to board`} onClick={() => addCard(item)} className='flex min-h-11 items-center justify-center gap-1.5 border-t border-violet-100 bg-violet-50 px-2 py-2 text-xs font-bold text-violet-800 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
+                    <Plus className='h-4 w-4' aria-hidden='true' /> Add to board
                   </button>
-                  <button type='button' disabled={busy} aria-label={`Choose a part of ${card.title}`} onClick={() => addCard(card, true)} className={`${secondary} flex-1 whitespace-nowrap text-xs`}>
-                    <BoxSelect className='h-4 w-4 shrink-0' aria-hidden='true' />
-                    Choose a part
+                  {onGuide && <button type='button' disabled={busy || !catalogReady} aria-label={`Show ${item.title} to student`} aria-pressed={showing} onClick={() => addCard(item, 'show')} className={`flex min-h-11 items-center justify-center gap-1.5 border-t px-2 py-2 text-xs font-bold ${showing ? 'border-sky-500 bg-sky-500 text-white hover:bg-sky-600' : 'border-slate-100 text-sky-700 hover:bg-sky-50'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-sky-500`}>
+                    <Eye className='h-4 w-4' aria-hidden='true' /> {showing ? 'Showing · Stop' : 'Show student'}
+                  </button>}
+                  <button type='button' disabled={busy || !catalogReady} aria-label={`Choose a part of ${item.title}`} onClick={() => addCard(item, 'part')} className='flex min-h-11 items-center justify-center gap-1.5 border-t border-slate-100 px-2 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
+                    <BoxSelect className='h-4 w-4' aria-hidden='true' /> Choose a part
                   </button>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
-        </div>
+          {catalogReady && !filteredLibrary.length && <p className='rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600'>{library.length ? 'No cards match. Try another sound or keyword, or clear the filters.' : 'No library cards are available yet.'}</p>}
+        </section>
       )}
       {notice && (
         <div
@@ -635,8 +756,8 @@ export default function PicturesPanel({
           )}
         </div>
       )}
-      {!student && layout === 'side' && shown.length > 0 && (
-        <h3 className='mt-1 text-xs font-bold uppercase tracking-wide text-slate-500'>In this session · {shown.length}</h3>
+      {!student && sessionPictures.length > 0 && (
+        <h3 className='mt-1 text-xs font-bold uppercase tracking-wide text-slate-500'>{catalogVisible ? 'Your session uploads' : 'In this session'} · {sessionPictures.length}</h3>
       )}
       {student && layout === 'side' && onBrowse && shown.length > 0 && (
         <button type='button' onClick={onBrowse} className={secondary}>
@@ -644,13 +765,13 @@ export default function PicturesPanel({
           Open picture library
         </button>
       )}
-      {shown.length === 0 ? (
+      {sessionPictures.length === 0 ? (catalogVisible ? null : (
         <p className='text-sm text-slate-500'>
           {student ? 'Your tutor hasn’t added any pictures yet.' : 'Pick a library picture or upload your own. It appears on the board, ready to move and resize.'}
         </p>
-      ) : (
-        <ul className={layout === 'drawer' ? 'grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3' : '-mx-1 flex max-h-[45vh] flex-col gap-2 overflow-y-auto px-1'}>
-          {shown.map((p, i) => (
+      )) : (
+        <ul aria-label='Session pictures' className={layout === 'drawer' ? 'grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3' : '-mx-1 flex max-h-[45vh] flex-col gap-2 overflow-y-auto px-1'}>
+          {sessionPictures.map((p, i) => (
             <li
               key={p.id}
               // shrink-0: in the scrolling column a card keeps its height; without it, many pictures squash flat.
@@ -688,6 +809,8 @@ export default function PicturesPanel({
                   src={srcFor(p.id)}
                   alt=''
                   draggable={false}
+                  loading='lazy'
+                  decoding='async'
                   className={layout === 'drawer' ? 'block aspect-square h-auto w-full object-contain' : 'mx-auto block max-h-40 w-auto'}
                 />
                 {layout === 'drawer' && p.title && (
@@ -714,7 +837,7 @@ export default function PicturesPanel({
                   aria-pressed={p.id === guidePic}
                   title={p.id === guidePic ? 'On your student’s screen now: click to stop' : 'Put this picture on your student’s screen'}
                   onClick={() => onGuide(p.id === guidePic ? null : p.id)}
-                  className={`flex items-center justify-center gap-1.5 border-t px-2 py-2 text-sm font-bold ${
+                  className={`flex min-h-11 items-center justify-center gap-1.5 border-t px-2 py-2 text-sm font-bold ${
                     p.id === guidePic ? 'border-sky-500 bg-sky-500 text-white hover:bg-sky-600' : 'border-slate-100 text-sky-700 hover:bg-sky-50'
                   }`}
                 >
@@ -746,22 +869,43 @@ export default function PicturesPanel({
 
 // The picture library slide-out: the session's pictures as a grid, and a big view of the one
 // opened, sliding in over the board from the right (the whole screen on phones).
-export function PictureDrawer({ open, onClose, title = 'Picture library', children }) {
+export function PictureDrawer({ id, open, onClose, title = 'Picture library', children }) {
+  const closeButton = useRef(null);
+  const dialog = useRef(null);
+  const returnFocus = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return undefined;
+    returnFocus.current = document.activeElement;
+    closeButton.current?.focus({ preventScroll: true });
     const onKey = (event) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRef.current();
+      }
+      if (event.key === 'Tab') {
+        const stops = [...dialog.current.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter((node) => node.getClientRects().length);
+        const first = stops[0], last = stops.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      returnFocus.current?.focus({ preventScroll: true });
+    };
+  }, [open]);
   return (
-    <div className={`fixed inset-0 z-50 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>
+    <div className={`fixed inset-0 z-50 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open} inert={open ? undefined : ''}>
       <div
         className={`absolute inset-0 bg-slate-900/20 transition-opacity duration-300 motion-reduce:transition-none ${open ? 'opacity-100' : 'opacity-0'}`}
         onClick={onClose}
       />
       <aside
+        id={id}
+        ref={dialog}
         role='dialog'
         aria-modal='true'
         aria-label={title}
@@ -769,15 +913,16 @@ export function PictureDrawer({ open, onClose, title = 'Picture library', childr
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        <header className='flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-4'>
+        <header className='picture-library-header flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-4'>
           <span className='flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white'>
             <LayoutGrid className='h-5 w-5' aria-hidden='true' />
           </span>
           <h2 className='text-lg font-extrabold text-slate-900'>{title}</h2>
           <button
+            ref={closeButton}
             type='button'
             onClick={onClose}
-            className='ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50'
+            className='ml-auto inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
           >
             <X className='h-4 w-4' aria-hidden='true' />
             Close

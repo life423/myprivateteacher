@@ -2,7 +2,8 @@ import { DEFAULT_LINES, isLineSize } from '../../shared/lines.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
 import { BOX_COUNTS, MAX_TILES, cleanTileText } from '../../shared/tiles.js';
-import { MAX_PICTURES } from '../../shared/pieces.js';
+import { MAX_PICTURES, MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
+import { findPicturePlacement, picturePlacement, picturePlacementObstacles, PICTURE_RESERVATION_MS } from './picturePlacement.js';
 import { newPictureId, pictureUrl, shrinkPicture } from './pictures.js';
 
 const FLUSH_MS = 40; // stroke points go out about 25 times a second
@@ -72,6 +73,8 @@ export function useWhiteboard(role, send) {
   const channels = useRef({});
   const tiles = useRef(new Map());
   const pieces = useRef(new Map());
+  const pendingPieces = useRef(new Map());
+  const lastPlacement = useRef(null);
   const pictures = useRef(new Map()); // id -> { id, w, h }
   const kept = useRef(new Map()); // the tutor's copies of pictures they added, in case the server restarts
   const offers = useRef(new Map()); // parts the tutor gave the student, each theirs to take once
@@ -209,18 +212,50 @@ export function useWhiteboard(role, send) {
   // Picture pieces work like tiles: shown straight away here, confirmed by the server on drop.
   const pieceActions = useMemo(
     () => ({
-      add({ offer, region, pic, crop, x, y, w }) {
+      add({ offer, region, pic, crop, x, y, w, automatic = false, centre, bounds }) {
+        const obstacles = picturePlacementObstacles([...pieces.current.values()], pendingPieces.current);
+        if (obstacles.length >= MAX_PIECES) {
+          lastPlacement.current = { error: `Up to ${MAX_PIECES} pictures or parts fit in a lesson. Remove one before adding another.` };
+          return null;
+        }
+        const picture = pictures.current.get(pic);
+        const chosen = cleanCrop(crop, picture);
+        if (!chosen) {
+          lastPlacement.current = { error: 'This picture is not available in the lesson yet. Please try again.' };
+          return null;
+        }
+        const size = pieceSize(chosen, w);
+        const placed = automatic
+          ? picturePlacement(picture, centre, { pieces: obstacles, bounds, crop: chosen })
+          : clampPiece(size, x, y);
+        if (!placed) return null;
         const id = makeId('piece');
-        sendRef.current({ t: 'piece:add', piece: { id, offer, region, pic, crop, x, y, w } });
+        const piece = { id, offer, region, pic, crop: chosen, x: placed.x, y: placed.y, w: automatic ? placed.w : size.w };
+        const reserved = { ...piece, h: piece.w * chosen.h / chosen.w };
+        pendingPieces.current.set(id, { piece: reserved, expiresAt: Date.now() + PICTURE_RESERVATION_MS });
+        lastPlacement.current = placed.placement || { crowded: false, visible: true, overlaps: 0 };
+        sendRef.current({ t: 'piece:add', piece });
         return id;
       },
-      duplicate(id) {
+      duplicate(id, { bounds, centre } = {}) {
         const p = pieces.current.get(id);
-        if (!p) return;
+        if (!p) return null;
+        const obstacles = picturePlacementObstacles([...pieces.current.values()], pendingPieces.current);
+        if (obstacles.length >= MAX_PIECES) {
+          lastPlacement.current = { error: `Up to ${MAX_PIECES} pictures or parts fit in a lesson. Remove one before adding another.` };
+          return null;
+        }
+        const size = pieceSize(p.crop, p.w);
+        const at = findPicturePlacement(size, centre || { x: p.x + p.w / 2, y: p.y + p.h / 2 }, { pieces: obstacles, bounds });
+        if (!at) return null;
         const copyId = makeId('piece');
-        sendRef.current({ t: 'piece:add', piece: { id: copyId, pic: p.pic, crop: p.crop, x: p.x + 32, y: p.y + 32, w: p.w } });
+        const piece = { id: copyId, pic: p.pic, crop: p.crop, x: at.x, y: at.y, w: p.w };
+        pendingPieces.current.set(copyId, { piece: { ...piece, h: size.h }, expiresAt: Date.now() + PICTURE_RESERVATION_MS });
+        lastPlacement.current = at;
+        sendRef.current({ t: 'piece:add', piece });
         return copyId;
       },
+      placementStatus() { return lastPlacement.current; },
       grab(id) {
         const p = pieces.current.get(id);
         if (!p) return;
@@ -379,6 +414,8 @@ export function useWhiteboard(role, send) {
       switch (msg.t) {
         case 'board':
           active.current = null;
+          pendingPieces.current.clear();
+          lastPlacement.current = null;
           board.replace(Array.isArray(msg.strokes) ? msg.strokes : []);
           tiles.current = new Map((Array.isArray(msg.tiles) ? msg.tiles : []).map((t) => [t.id, t]));
           pictures.current = new Map((Array.isArray(msg.pictures) ? msg.pictures : []).map((p) => [p.id, p]));
@@ -446,6 +483,7 @@ export function useWhiteboard(role, send) {
         case 'piece:add':
         case 'piece:drop':
         case 'piece:denied':
+          if (msg.piece?.id) pendingPieces.current.delete(msg.piece.id);
           if (msg.piece?.id) pieces.current.set(msg.piece.id, msg.piece);
           renderTiles();
           return true;
@@ -477,10 +515,13 @@ export function useWhiteboard(role, send) {
           renderTiles();
           return true;
         case 'piece:delete':
+          pendingPieces.current.delete(msg.id);
           pieces.current.delete(msg.id);
           renderTiles();
           return true;
         case 'pieces':
+          pendingPieces.current.clear();
+          lastPlacement.current = null;
           pieces.current = new Map((msg.pieces || []).map((p) => [p.id, p]));
           pictures.current = new Map((msg.pictures || []).map((p) => [p.id, p]));
           offers.current = new Map((msg.offers || []).map((o) => [o.id, o]));

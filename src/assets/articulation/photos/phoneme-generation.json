@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-27",
+  "assets": [
+    {
+      "key": "short-i",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep the full portrait framing as the reference; do not crop to lips alone. No text, symbols, arrows, diagram, labels, makeup, smiling for the camera, hands, or decorative elements. Teeth and tongue must be anatomically natural. Only change the speech mouth posture described next. The photo is a visible posture cue; do not fabricate visible internal anatomy. Target American English /ɪ/, short i as in SIT and FISH, held naturally in mid-vowel. Lips unrounded and relaxed, gently spread but clearly less tense/wide than long /i/ in SEE. Jaw slightly open, small horizontal oval gap; upper incisor edges can be visible. Tongue relaxed near-high/front and inside the mouth, lower and less tense than /i/. No puckering, no exaggerated grin, no tongue between teeth. Show a clear natural vowel opening.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "a40e5ccca4072c6bf95e9c9e02d079fb5f31a96754429e8a8b386036a65b3dd7"
+    },
+    {
+      "key": "short-e",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep the full portrait framing as the reference; do not crop to lips alone. No text, symbols, arrows, diagram, labels, makeup, smiling for the camera, hands, or decorative elements. Teeth and tongue must be anatomically natural. Only change the speech mouth posture described next. The photo is a visible posture cue; do not fabricate visible internal anatomy. Target American English /ɛ/, short e as in BED, held naturally. Lips unrounded, modestly spread and relaxed. Jaw moderately open, visibly more open than /ɪ/ in SIT and close-mid /e/ at start of SAY, but less open than /æ/ in CAT. Mouth opening is a horizontally elongated oval with a moderate vertical gap; upper front teeth visible, tongue stays inside front-middle mouth and is not protruding. No round O lips and no broad grin.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "ce3d47940859d1a861c8050e9576799e4519d8586ad95f8690ce275980718dc1"
+    },
+    {
+      "key": "short-a",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep the full portrait framing as the reference; do not crop to lips alone. No text, symbols, arrows, diagram, labels, makeup, smiling for the camera, hands, or decorative elements. Teeth and tongue must be anatomically natural. Only change the speech mouth posture described next. The photo is a visible posture cue; do not fabricate visible internal anatomy. Target American English /æ/, short a as in CAT and APPLE, held naturally. Lips unrounded and slightly spread, corners gently back. Jaw low and mouth open broadly with a wide horizontal oval opening, clearly more vertically open than /ɛ/ in BED. Upper front teeth and some lower teeth naturally visible; tongue low and forward inside mouth, tip behind lower incisors, not sticking out. Do not round/pucker into an O, do not turn it into a smile or an exaggerated scream.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "db5502e3d31069c2586477e861af367c4fce39c0fe5e2e5b224e9103dbab7ee2"
+    },
+    {
+      "key": "central-relaxed",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin portrait crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep reference framing, not a lips-only crop. No text, symbols, arrows, diagram, labels, makeup, camera smile, hands, or decoration. Natural teeth and tongue anatomy. Only change the speech mouth posture described next. This photo is a visible posture cue, so keep internal anatomy naturally hidden rather than inventing a cutaway. Target a relaxed American English central unrounded vowel: the UH posture in CUP and a gently unstressed schwa as in the first syllable of ABOUT. Lips are neutral, soft, unrounded and not smiling or puckered. Jaw moderately and comfortably open, with a small-to-medium natural oval opening. Tongue relaxed central and inside mouth, tip resting behind lower teeth; it is not stuck out or raised to touch upper teeth. Upper incisor edges may be visible. Do not make it an O, a wide open AH or EE grin.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "baee62a9016f4a3dd3b25105d4b569cb1faa33b096accee8b8f0a0ce0416da8a"
+    },
+    {
+      "key": "book-oo",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin portrait crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep reference framing, not a lips-only crop. No text, symbols, arrows, diagram, labels, makeup, camera smile, hands, or decoration. Natural teeth and tongue anatomy. Only change the speech mouth posture described next. This photo is a visible posture cue, so keep internal anatomy naturally hidden rather than inventing a cutaway. Target American English /ʊ/, the vowel in BOOK and FOOT (distinct from tense /u/ in MOON). Lips gently rounded with a loose oval opening, with little forward protrusion: distinctly less puckered and tightly pursed than MOON/OO. Jaw slightly open, tongue near-high/back and relaxed inside mouth. A small natural view of upper incisors is acceptable. No wide O/AH and no tooth biting. The corners remain relaxed, no tense kiss-like pucker.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "9e7cfec5640c597e01e2255d9ce302e4a87ffc31f4c5ddffbf7c9455797823a6"
+    },
+    {
+      "key": "aw-rounded",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin portrait crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep reference framing, not a lips-only crop. No text, symbols, arrows, diagram, labels, makeup, camera smile, hands, or decoration. Natural teeth and tongue anatomy. Only change the speech mouth posture described next. This photo is a visible posture cue, so keep internal anatomy naturally hidden rather than inventing a cutaway. Target /ɔ/, the AW vowel in SAW and CAUGHT for an American English speaker who keeps CAUGHT and COT distinct. Jaw lowered with a medium-large vertical opening, lips gently rounded into an open oval, much more open and less protruded than OO/MOON. Tongue toward the back and lower than high back vowels, remains naturally inside. Upper teeth and some tongue can be naturally visible through the opening. Do not pucker into a tiny /u/ hole and do not flatten into an unrounded CAT smile.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "4bf4512a84be16a4def30c293968892fb3ad6782d5a6fe897f911c220a9894f9"
+    },
+    {
+      "key": "long-o-start",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin portrait crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep reference framing, not a lips-only crop. No text, symbols, arrows, diagram, labels, makeup, camera smile, hands, or decoration. Natural teeth and tongue anatomy. Only change the speech mouth posture described next. This photo is a visible posture cue, so keep internal anatomy naturally hidden rather than inventing a cutaway. Target the initial close-mid back rounded /o/ posture at the start of American English GO /oʊ/. Single still beginning posture ONLY, not two pictures. Lips rounded with a medium-small oval opening and mild forward projection, jaw less open than AW/SAW but less closed/tightly puckered than OO/MOON. Tongue back and mid-high inside, tip behind lower teeth. Natural slight upper incisor visibility allowed. Distinctly rounded, not an unrounded UH or a wide AH.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "7fc8d9e2bbc9d32be9a9f2c2850fee151740265b6f58255d5a1b60897a0847da"
+    },
+    {
+      "key": "long-a-start",
+      "mode": "Built-in image_gen",
+      "prompt": "Scientific educational articulation-reference photograph. Create ONE new lower-face photograph matching the attached reference's EXACT same adult identity, nose, skin color/texture, natural pink lips, chin, centered straight-on nose-to-chin portrait crop, soft even lighting and realism. This is a coordinated phoneme mouth-picture set for structured literacy tutoring. Keep reference framing, not a lips-only crop. No text, symbols, arrows, diagram, labels, makeup, camera smile, hands, or decoration. Natural teeth and tongue anatomy. Only change the speech mouth posture described next. This photo is a visible posture cue, so keep internal anatomy naturally hidden rather than inventing a cutaway. Target initial close-mid front UNROUNDED /e/ posture at the start of American English SAY /eɪ/. Single still beginning posture ONLY. Lips gently spread without a grin, unrounded. Jaw between high /ɪ/ SIT and open-mid /ɛ/ BED: a modest horizontal oval opening with a small natural gap and upper incisor edges visible. Tongue front and close-mid, naturally inside. Mouth must be less vertically open than short-e BED and far less than CAT, with no O rounding or puckering. This is not a clenched tooth smile.",
+      "referenceFilename": "ChatGPT Image Oct 3, 2026, 02_55_19 PM-3.png",
+      "usage": "Original front-view teaching posture cue. It does not demonstrate hidden internal tongue placement; the associated schematic and text supply those cues.",
+      "sha256": "f8bfba18ca35fec312cd32982e4f2bf28893fdc8ba0642ba2d0712c859a7109e"
+    }
+  ]
+}

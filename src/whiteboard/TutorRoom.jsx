@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, LayoutGrid, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import BridgeControls from '../bridge/BridgeControls.jsx';
 import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
@@ -72,19 +72,42 @@ export default function TutorRoom() {
   const [guidePic, setGuidePic] = useState(null); // the picture this tutor is pointing at
   // The picture library, which this tutor's live room can draw from.
   const [library, setLibrary] = useState([]);
-  useEffect(() => {
-    if (!room.code || !room.key) return undefined;
-    let live = true;
-    fetch(`/api/rooms/${room.code}/library`, { headers: { 'X-Room-Key': room.key } })
-      .then((res) => (res.ok ? res.json() : { cards: [] }))
-      .then((data) => {
-        if (live) setLibrary(Array.isArray(data.cards) ? data.cards : []);
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [room]);
+  const [libraryState, setLibraryState] = useState({ status: 'waiting' });
+  // Saved room credentials are not authorized until this connection's room reply.
+  const [confirmedRoom, setConfirmedRoom] = useState(null);
+  const [libraryAttempt, setLibraryAttempt] = useState(0);
+  const retryLibrary = useCallback(() => setLibraryAttempt((attempt) => attempt + 1), []);
+  // One private object URL per image per room, shared by the panel and drawer.
+  // Lazy thumbnail components request an image only when it approaches the viewport.
+  const libraryPreviews = useMemo(() => new Map(), [room.code, room.key]);
+  useEffect(() => () => {
+    for (const preview of libraryPreviews.values()) {
+      preview.cancelled = true;
+      preview.controller.abort();
+      if (preview.url) URL.revokeObjectURL(preview.url);
+    }
+    libraryPreviews.clear();
+  }, [libraryPreviews]);
+  const loadLibraryImage = useCallback((id) => {
+    if (!room.code || !room.key) return Promise.reject(new Error('The lesson is reconnecting.'));
+    if (libraryPreviews.has(id)) return libraryPreviews.get(id).promise;
+    const preview = { controller: new AbortController(), cancelled: false, url: null };
+    preview.promise = fetch(`/api/rooms/${room.code}/library/${encodeURIComponent(id)}/image`, {
+      headers: { 'X-Room-Key': room.key }, signal: preview.controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('The picture could not be loaded.');
+      const blob = await response.blob();
+      if (preview.cancelled) throw new Error('The lesson changed.');
+      preview.url = URL.createObjectURL(blob);
+      return preview.url;
+    }).catch((error) => {
+      if (libraryPreviews.get(id) === preview) libraryPreviews.delete(id);
+      throw error;
+    });
+    libraryPreviews.set(id, preview);
+    return preview.promise;
+  }, [libraryPreviews, room.code, room.key]);
+
   const [studentMarker, setStudentMarker] = useFrameState(null);
   const [myMarker, setMyMarker] = useFrameState(null);
   const roomRef = useRef(room);
@@ -126,6 +149,7 @@ export default function TutorRoom() {
         const saved = { code: msg.code, key: msg.key };
         sessionStorage.setItem(SAVED, JSON.stringify(saved));
         setRoom(saved);
+        setConfirmedRoom(saved);
         // The server restarted and forgot this room: hand it our copy of the board.
         if (msg.fresh) {
           wb.restore(studentToolsRef.current, saved);
@@ -165,6 +189,44 @@ export default function TutorRoom() {
     },
   });
   sendRef.current = send;
+
+  useEffect(() => {
+    if (status !== 'open') setConfirmedRoom(null);
+  }, [status]);
+
+  // A WebSocket opening is not enough: wait for the server to confirm the room.
+  // Rejoining after a restart gets a new confirmation and reloads the catalog.
+  useEffect(() => {
+    if (status !== 'open' || !confirmedRoom?.code || !confirmedRoom?.key) {
+      setLibraryState({ status: 'waiting' });
+      return undefined;
+    }
+    const controller = new AbortController();
+    let live = true;
+    let timedOut = false;
+    setLibraryState({ status: 'loading' });
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 50000);
+    fetch(`/api/rooms/${confirmedRoom.code}/library`, {
+      headers: { 'X-Room-Key': confirmedRoom.key }, signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('The picture library could not be loaded.');
+      const data = await response.json();
+      if (!Array.isArray(data.cards)) throw new Error('The picture library could not be loaded.');
+      if (live) {
+        setLibrary(data.cards);
+        setLibraryState({ status: 'ready' });
+      }
+    }).catch(() => {
+      if (live) setLibraryState({ status: 'error', message: timedOut
+        ? 'The picture library is taking too long to respond. Please try again.'
+        : 'The picture library could not be loaded. Please try again.' });
+    }).finally(() => clearTimeout(timeout));
+    return () => {
+      live = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [confirmedRoom, status, libraryAttempt]);
 
   useEffect(() => {
     if (!tip) return undefined;
@@ -249,6 +311,9 @@ export default function TutorRoom() {
     onAddFile: (file) => wb.addPicture(file, room),
     onClear: wb.clearPictures,
     library,
+    libraryState,
+    onRetryLibrary: retryLibrary,
+    loadLibraryImage,
     onAddFromLibrary: (card) => wb.addLibraryCard(card, room),
     onGiveAll: (cards) => wb.addLibraryCards(cards, room),
     offers: wb.offers,
@@ -271,6 +336,19 @@ export default function TutorRoom() {
   return (
     <>
     <WhiteboardLayout
+      persistentControls={
+        <button
+          type='button'
+          aria-haspopup='dialog'
+          aria-expanded={browsing}
+          aria-controls='tutor-picture-library'
+          onClick={() => setBrowsing(true)}
+          className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-800 hover:border-violet-400 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
+        >
+          <LayoutGrid className='h-5 w-5' aria-hidden='true' />
+          Picture library
+        </button>
+      }
       header={
         <TopBar
           title='Alphabet Whiteboard'
@@ -501,12 +579,13 @@ export default function TutorRoom() {
         },
       ]}
     />
-    <PictureDrawer open={browsing} onClose={() => setBrowsing(false)}>
+    <PictureDrawer id='tutor-picture-library' open={browsing} onClose={() => setBrowsing(false)}>
       <PicturesPanel
         {...pictureProps}
         layout='drawer'
         browseOnly
-        notice={studentBrowsing ? { text: browseText, tone: 'violet' } : { text: 'Choose Show student on a picture to put it on your student’s screen.', tone: 'sky' }}
+        showLibrary
+        notice={studentBrowsing ? { text: browseText, tone: 'violet' } : { text: 'Add a library card to the board, or open a session picture to show your student.', tone: 'sky' }}
         onPlaced={() => setBrowsing(false)}
       />
     </PictureDrawer>

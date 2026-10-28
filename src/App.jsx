@@ -18,6 +18,10 @@ const TermsPage = lazyPage(() => import('./legal/TermsPage.jsx'));
 const PrivacyPage = lazyPage(() => import('./legal/PrivacyPage.jsx'));
 const ArticulationGallery = lazyPage(() => import('./dev/ArticulationGallery.jsx'));
 const ArticulationCardsGallery = lazyPage(() => import('./dev/ArticulationCardsGallery.jsx'));
+const PhonemeArticulationGallery = lazyPage(() => import('./dev/PhonemeArticulationGallery.jsx'));
+const PhonemeArticulationPage = lazyPage(() =>
+  import('./dev/PhonemeArticulationGallery.jsx').then((m) => ({ default: m.PhonemeArticulationPage })),
+);
 const ArticulationCardPage = lazyPage(() =>
   import('./dev/ArticulationCardsGallery.jsx').then((m) => ({ default: m.ArticulationCardPage })),
 );
@@ -30,6 +34,8 @@ const StudentRoom = lazyPage(() => import('./whiteboard/StudentRoom.jsx'));
 // The page for a path: its title, what to show, and the code it needs (fetched together, not one after another).
 function page(path) {
   const one = (title, Page, props = {}) => ({ title, needs: [Page], element: <Page {...props} /> });
+  if (path.startsWith('/dev/phoneme-articulation/')) return one('Phoneme articulation card', PhonemeArticulationPage, { id: path.split('/').pop() });
+  if (path === '/dev/phoneme-articulation') return one('Phoneme articulation cards', PhonemeArticulationGallery);
   if (path.startsWith('/dev/articulation-cards/')) return one('Articulation card', ArticulationCardPage, { id: path.split('/').pop() });
   if (path === '/dev/articulation-cards') return one('Articulation cards', ArticulationCardsGallery);
   if (path === '/dev/articulation') return one('Articulation gallery', ArticulationGallery);

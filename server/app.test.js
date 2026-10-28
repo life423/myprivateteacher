@@ -44,6 +44,7 @@ describe('web server', () => {
       expect(res.body).toContain('root');
       expect(res.headers['cache-control']).toBe('no-cache');
       expect(res.headers['content-security-policy']).toContain(`default-src 'self'`);
+      expect(res.headers['content-security-policy']).toContain("img-src 'self' data: blob:");
       expect(res.headers['x-powered-by']).toBeUndefined();
     }
   });
@@ -157,7 +158,7 @@ describe('the picture library routes', () => {
       const req = http.request({ port: libPort, method, path, headers: { host: 'localhost', ...headers } }, (res) => {
         const chunks = [];
         res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString(), bytes: Buffer.concat(chunks), headers: res.headers }));
       });
       req.on('error', reject);
       req.end();
@@ -170,6 +171,20 @@ describe('the picture library routes', () => {
     const ok = await call('GET', '/api/rooms/1234/library', { 'x-room-key': key });
     expect(ok.status).toBe(200);
     expect(JSON.parse(ok.body).cards[0].title).toBe('Lip Biter');
+  });
+
+  it('previews private card images for the live-room tutor without adding session pictures', async () => {
+    const before = added.length;
+    expect((await call('GET', '/api/rooms/1234/library/c1/image')).status).toBe(403);
+    expect((await call('GET', '/api/rooms/1234/library/c1/image', { 'x-room-key': 'nope' })).status).toBe(403);
+    expect((await call('GET', '/api/rooms/9999/library/c1/image', { 'x-room-key': key })).status).toBe(403);
+    expect((await call('GET', '/api/rooms/1234/library/nope/image', { 'x-room-key': key })).status).toBe(404);
+    const preview = await call('GET', '/api/rooms/1234/library/c1/image', { 'x-room-key': key });
+    expect(preview.status).toBe(200);
+    expect(preview.headers['content-type']).toContain('image/jpeg');
+    expect(preview.headers['cache-control']).toBe('private, no-store');
+    expect(preview.bytes.equals(jpeg)).toBe(true);
+    expect(added.length).toBe(before);
   });
 
   it('copies a card into the room as one of its pictures, for its tutor only', async () => {

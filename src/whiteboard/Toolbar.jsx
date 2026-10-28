@@ -203,7 +203,7 @@ export function LinesButton({ size, onChoose }) {
         aria-haspopup='menu'
         aria-expanded={open}
         title='Writing lines'
-        className={`flex w-11 flex-col items-center gap-1 rounded-xl px-1 py-2 text-xs font-bold transition-colors sm:w-14 lg:w-16 ${
+        className={`flex min-h-11 w-11 flex-col items-center gap-1 rounded-xl px-1 py-2 text-xs font-bold transition-colors sm:w-14 lg:w-16 ${
           open ? 'bg-violet-600 text-white shadow' : 'text-slate-700 hover:bg-violet-50'
         }`}
       >

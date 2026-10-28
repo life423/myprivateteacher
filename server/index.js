@@ -28,7 +28,7 @@ const SECURITY_HEADERS = {
   // Google's sign-in button loads its own script, style and frame from accounts.google.com/gsi,
   // and styles itself inline (hence 'unsafe-inline' for styles only; scripts stay locked to
   // this site and Google sign-in). Profile pictures come from googleusercontent.com.
-  'Content-Security-Policy': `default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; connect-src 'self' wss://${CANONICAL_HOST} https://accounts.google.com/gsi/; img-src 'self' data: https://*.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`,
+  'Content-Security-Policy': `default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; connect-src 'self' wss://${CANONICAL_HOST} https://accounts.google.com/gsi/; img-src 'self' data: blob: https://*.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`,
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=()', // camera and mic for video calls, this site only
@@ -151,6 +151,22 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
       } catch (error) {
         console.warn(`Library list failed: ${error.message}`);
         res.status(503).json({ cards: [] });
+      }
+    });
+    // Preview a private catalog image without copying it into the live lesson.
+    // The room key travels in a header, never in a URL or public Blob link.
+    app.get('/api/rooms/:code/library/:card/image', tutorOnly, async (req, res) => {
+      try {
+        const card = await library.image(req.params.card);
+        if (!card) return res.sendStatus(404);
+        if (card.bytes.length > MAX_PICTURE_BYTES) return res.sendStatus(413);
+        const type = imageType(card.bytes);
+        if (!type) return res.sendStatus(415);
+        res.set({ 'Content-Type': type, 'Cache-Control': 'private, no-store', 'Content-Security-Policy': `default-src 'none'` });
+        res.send(card.bytes);
+      } catch (error) {
+        console.warn(`Library preview failed: ${error.message}`);
+        res.sendStatus(503);
       }
     });
     app.post('/api/rooms/:code/pictures/:id/from-library/:card', tutorOnly, async (req, res) => {

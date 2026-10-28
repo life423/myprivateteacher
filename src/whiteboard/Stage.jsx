@@ -1,6 +1,6 @@
 import { DEFAULT_LINES } from '../../shared/lines.js';
 import { guideRows } from './guides.js';
-import { memo, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Hand from './Hand.jsx';
 import InkCanvas from './InkCanvas.jsx';
 import Tile from './Tile.jsx';
@@ -13,6 +13,8 @@ import { TILE_HEIGHT, clampTile, soundBoxes, tileWidth } from '../../shared/tile
 import { clampPiece, pieceSize } from '../../shared/pieces.js';
 import { Expand, Shrink } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
+import { picturePlacementBounds } from './picturePlacement.js';
+import { pictureOverlapState } from './pictureGeometry.js';
 
 const VIEW_BOX = `0 0 ${STAGE.width} ${STAGE.height}`;
 // Handwriting guides (top line, dashed midline, baseline) stay put even when the board grows.
@@ -205,9 +207,11 @@ export default function Stage({
   }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const [grip, setGrip] = useState(null); // 'grab', 'grabbing' or 'remove', for the cursor
   const [selectedPieceId, setSelectedPieceId] = useState(null);
+  const [placementNotice, setPlacementNotice] = useState('');
   // Pieces are handled with the pointer tools (Watch, Hand), never the pen or eraser.
   const movable = tool === 'none';
   const stackedPieces = [...pieces].sort((a, b) => a.z - b.z);
+  const overlapState = useMemo(() => pictureOverlapState(pieces), [pieces]);
   const selectedPiece = movable ? pieces.find((p) => p.id === selectedPieceId) || null : null;
   const selectPiece = (id) => {
     setSelectedPieceId(id);
@@ -220,6 +224,26 @@ export default function Stage({
     }
   };
   const clearPiece = () => setSelectedPieceId(null);
+  const visibleBounds = () => {
+    const board = boardRect(strip);
+    const left = Math.max(board.x, seen?.x ?? board.x);
+    const right = Math.min(board.x + board.width, seen ? seen.x + seen.w : board.x + board.width);
+    const top = Math.max(board.y, seen?.y ?? board.y);
+    const bottom = Math.min(board.y + board.height, seen ? seen.y + seen.h : board.y + board.height);
+    return picturePlacementBounds({ x: left, y: top, w: right - left, h: bottom - top });
+  };
+  const reportPlacement = (status) => setPlacementNotice(status?.error || (status?.crowded
+    ? 'No open space in this view. The picture overlaps another picture; use Layers to separate them.'
+    : status?.visible === false ? 'The picture is larger than this view. Zoom out or resize it.' : ''));
+  const duplicatePiece = (id) => {
+    const bounds = visibleBounds();
+    const original = pieces.find((piece) => piece.id === id);
+    const centre = original ? { x: original.x + original.w / 2, y: original.y + original.h / 2 } : null;
+    const copy = pieceActions.duplicate(id, { bounds, centre });
+    reportPlacement(pieceActions.placementStatus?.());
+    if (!copy) return;
+    selectPiece(copy);
+  };
   const resizePiece = (factor) => {
     if (!selectedPiece || !canEditPieces || !pieceActions || (selectedPiece.heldBy && selectedPiece.heldBy !== me)) return;
     const size = pieceSize(selectedPiece.crop, selectedPiece.w * factor);
@@ -633,15 +657,12 @@ export default function Stage({
   if (stageApi) {
     stageApi.current = {
       scale: layout.width / STAGE.width,
+      bounds: visibleBounds,
+      placementStatus: () => pieceActions?.placementStatus?.(),
+      reportPlacement,
       centre() {
-        const board = boardRect(strip);
-        const left = Math.max(board.x, seen?.x ?? board.x);
-        const right = Math.min(board.x + board.width, seen ? seen.x + seen.w : board.x + board.width);
-        const top = Math.max(board.y, seen?.y ?? board.y);
-        const bottom = Math.min(board.y + board.height, seen ? seen.y + seen.h : board.y + board.height);
-        return right > left && bottom > top
-          ? { x: (left + right) / 2, y: (top + bottom) / 2 }
-          : { x: board.x + board.width / 2, y: board.y + board.height / 2 };
+        const bounds = visibleBounds();
+        return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
       },
       selectPiece,
       pointAt(clientX, clientY) {
@@ -677,7 +698,7 @@ export default function Stage({
       <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
-          <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} />
+          <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} overlap={overlapState.get(piece.id)} />
         ))}
       </svg>
       <InkCanvas board={board} layout={layout} include={TUTOR_LAYER} clip={clip} />
@@ -768,7 +789,7 @@ export default function Stage({
         onSelect={selectPiece}
         onClear={clearPiece}
         onLayer={pieceActions.layer}
-        onDuplicate={(id) => { const copy = pieceActions.duplicate(id); if (copy) selectPiece(copy); }}
+        onDuplicate={duplicatePiece}
         onDelete={(id) => { pieceActions.remove(id); clearPiece(); }}
         onResize={resizePiece}
         canResize={canEditPieces}
@@ -777,6 +798,9 @@ export default function Stage({
         canDuplicate={canDuplicatePieces}
         canDelete={canDeletePieces}
         height={size.height}
+        overlapState={overlapState}
+        placementNotice={placementNotice}
+        onDismissNotice={() => setPlacementNotice('')}
       />}
     </div>
   );
