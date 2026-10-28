@@ -30,6 +30,21 @@ export function cleanCrop(crop, pic) {
   return { x, y, w, h, r };
 }
 
+// A face is a crop inside a library card's trusted mouth-photo region. Display
+// size and corner rounding do not identify the content, so neither can be used
+// to turn a face into a resizable piece. Uploads and other card parts stay separate.
+export function isFacePiece(piece, picture) {
+  if (typeof picture?.library !== 'string' || !picture.library || !Array.isArray(picture.regions)) return false;
+  const crop = cleanCrop(piece?.crop, picture);
+  if (!crop) return false;
+  return picture.regions.some((region) => {
+    if (region?.id !== 'mouth') return false;
+    const face = cleanCrop(region, picture);
+    return Boolean(face && crop.x >= face.x && crop.y >= face.y &&
+      crop.x + crop.w <= face.x + face.w && crop.y + crop.h <= face.y + face.h);
+  });
+}
+
 // A piece keeps its crop's shape: the width is chosen and the height follows. It stays
 // between PIECE_MIN on its short side and the size of the working area.
 export function pieceSize(crop, width) {

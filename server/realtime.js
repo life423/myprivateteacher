@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws';
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
 import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, nextHome, snapTile, tileKind } from '../shared/tiles.js';
-import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
+import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isFacePiece, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
 import { cleanAct } from '../shared/bridge.js';
 import { cleanIntent } from '../shared/phoneme.js';
 
@@ -130,6 +130,8 @@ export function attachRealtime(server, options = {}) {
   } = options;
 
   const rooms = new Map();
+  // Opaque, server-only tickets bind asynchronous picture writes to one lesson state.
+  const pictureWrites = new WeakMap();
   const joinAttempts = new Map();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   let pictureBytes = 0;
@@ -242,6 +244,7 @@ export function attachRealtime(server, options = {}) {
 
   // Pictures only live as long as their room, or until the tutor clears them.
   const forgetPictures = (room) => {
+    room.pictureGeneration += 1;
     for (const pic of room.pictures.values()) pictureBytes -= pic.bytes.length;
     room.pictures.clear();
     room.offers.clear();
@@ -362,7 +365,8 @@ export function attachRealtime(server, options = {}) {
 
   // Moves a piece, and resizes it too when a width comes along and this person may resize.
   const placePiece = (room, role, piece, msg) => {
-    const size = Number.isFinite(msg.w) && canDraw(room, role) ? pieceSize(piece.crop, msg.w) : { w: piece.w, h: piece.h };
+    const canResize = canDraw(room, role) && (role === 'tutor' || !isFacePiece(piece, room.pictures.get(piece.pic)));
+    const size = Number.isFinite(msg.w) && canResize ? pieceSize(piece.crop, msg.w) : { w: piece.w, h: piece.h };
     const pos = clampPiece(size, msg.x, msg.y);
     if (!pos) return false;
     Object.assign(piece, size, pos);
@@ -432,6 +436,7 @@ export function attachRealtime(server, options = {}) {
           hands: freshHands(),
           tiles: new Map(),
           pictures: new Map(), // id -> { id, w, h, type, bytes }, for this session only
+          pictureGeneration: 0,
           pieces: new Map(),
           offers: new Map(), // parts the tutor gave the student: id -> { id, pic, crop, taken }
           zTop: 0, // stacking order: the tile picked up last sits on top
@@ -449,6 +454,7 @@ export function attachRealtime(server, options = {}) {
       clearTimeout(room.closeTimer);
       replace(room, room.tutor, ws);
       room.tutor = ws;
+      room.pictureGeneration += 1;
       ws.room = room;
       send(ws, { t: 'room', role: 'tutor', code: room.code, key: room.key, fresh });
       sendPresence(room);
@@ -824,7 +830,12 @@ export function attachRealtime(server, options = {}) {
         : region
           ? { ...msg.piece, crop: { x: region.x, y: region.y, w: region.w, h: region.h, r: region.r } }
           : msg.piece;
-      const piece = makePiece(room, given);
+      // A student cannot bypass the face-size restriction by forging the width
+      // of a fresh copy. Existing tutor-sized faces keep their current size.
+      const newPiece = role === 'student' && isFacePiece(given, room.pictures.get(given?.pic))
+        ? { ...given, w: startingWidth(given.crop) }
+        : given;
+      const piece = makePiece(room, newPiece);
       if (!piece) return;
       room.pieces.set(piece.id, piece);
       if (offer) {
@@ -1026,8 +1037,22 @@ export function attachRealtime(server, options = {}) {
 
   // Picture uploads arrive over HTTP (see index.js), from the room's tutor only.
   const pictures = {
-    add({ code, key, id, w, h, type, bytes, regions, library, title }) {
+    // Capture before awaiting Blob storage or reading an upload body. These tickets never
+    // leave the server; a clear, tutor reconnect, or reused room code makes them stale.
+    beginWrite(code, key) {
       const room = isCode(code) ? rooms.get(code) : undefined;
+      if (!room || !isKey(key) || room.key !== key) return null;
+      const ticket = {};
+      pictureWrites.set(ticket, { room, tutor: room.tutor, generation: room.pictureGeneration });
+      return ticket;
+    },
+    add({ code, key, id, w, h, type, bytes, regions, library, title, writeToken }) {
+      const room = isCode(code) ? rooms.get(code) : undefined;
+      if (writeToken !== undefined) {
+        const pending = pictureWrites.get(writeToken);
+        pictureWrites.delete(writeToken);
+        if (!pending || room !== pending.room || room.tutor !== pending.tutor || room.pictureGeneration !== pending.generation) return { status: 409 };
+      }
       if (!room || !isKey(key) || room.key !== key) return { status: 403 };
       const sideOk = (n) => Number.isInteger(n) && n >= 1 && n <= MAX_PICTURE_SIDE;
       if (!isPictureId(id) || !sideOk(w) || !sideOk(h)) return { status: 400 };

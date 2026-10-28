@@ -76,6 +76,8 @@ export function useWhiteboard(role, send) {
   const pendingPieces = useRef(new Map());
   const lastPlacement = useRef(null);
   const pictures = useRef(new Map()); // id -> { id, w, h }
+  const libraryRequests = useRef(new Map()); // one in-flight copy per room/card
+  const libraryGeneration = useRef(0); // discard late copies after reset/reconnect
   const kept = useRef(new Map()); // the tutor's copies of pictures they added, in case the server restarts
   const offers = useRef(new Map()); // parts the tutor gave the student, each theirs to take once
 
@@ -326,18 +328,29 @@ export function useWhiteboard(role, send) {
     [],
   );
 
-  // Tutor only: a card from the picture library, into this session.
-  const addLibraryCard = useCallback(async (card, room) => {
-    if (!room?.code || !room?.key) return { error: 'Not connected yet. Try again in a moment.' };
+  // Concurrent face additions share one source image, while each placement remains
+  // a separate board piece. Previewing the catalog never calls this function.
+  const addLibraryCard = useCallback((card, room) => {
+    if (!room?.code || !room?.key) return Promise.resolve({ error: 'Not connected yet. Try again in a moment.' });
     const here = [...pictures.current.values()].find((p) => p.library === card.id);
-    if (here) return { id: here.id, w: here.w, h: here.h, regions: here.regions || [], existing: true }; // already in this session
-    const id = newPictureId();
-    if (!(await sendFromLibrary(room, id, card.id))) return { error: 'That card couldn’t be added. Try again.' };
-    kept.current.set(id, { library: card.id });
-    const picture = { id, w: card.w, h: card.h, regions: card.regions || [], library: card.id, title: card.title };
-    pictures.current.set(id, picture);
-    renderTiles();
-    return picture;
+    if (here) return Promise.resolve({ ...here, existing: true });
+    const requestKey = `${room.code}:${room.key}:${card.id}`;
+    if (libraryRequests.current.has(requestKey)) return libraryRequests.current.get(requestKey);
+    const generation = libraryGeneration.current;
+    const request = (async () => {
+      const id = newPictureId();
+      if (!(await sendFromLibrary(room, id, card.id))) return { error: 'That card couldn’t be added. Try again.' };
+      if (generation !== libraryGeneration.current) return { error: 'The lesson changed. Please try adding the picture again.' };
+      kept.current.set(id, { library: card.id });
+      const picture = { id, w: card.w, h: card.h, regions: card.regions || [], library: card.id, title: card.title };
+      pictures.current.set(id, picture);
+      renderTiles();
+      return picture;
+    })().finally(() => {
+      if (libraryRequests.current.get(requestKey) === request) libraryRequests.current.delete(requestKey);
+    });
+    libraryRequests.current.set(requestKey, request);
+    return request;
   }, [renderTiles]);
 
   // Tutor only: every card of a library list into this session, skipping those already here.
@@ -355,6 +368,8 @@ export function useWhiteboard(role, send) {
   );
 
   const clearPictures = useCallback(() => {
+    libraryGeneration.current += 1;
+    libraryRequests.current.clear();
     kept.current.clear();
     sendRef.current({ t: 'pieces:clear' });
   }, []);
@@ -413,6 +428,8 @@ export function useWhiteboard(role, send) {
       };
       switch (msg.t) {
         case 'board':
+          libraryGeneration.current += 1;
+          libraryRequests.current.clear();
           active.current = null;
           pendingPieces.current.clear();
           lastPlacement.current = null;
@@ -520,6 +537,8 @@ export function useWhiteboard(role, send) {
           renderTiles();
           return true;
         case 'pieces':
+          libraryGeneration.current += 1;
+          libraryRequests.current.clear();
           pendingPieces.current.clear();
           lastPlacement.current = null;
           pieces.current = new Map((msg.pieces || []).map((p) => [p.id, p]));

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, LayoutGrid, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
-import BridgeControls from '../bridge/BridgeControls.jsx';
+import TutorGamesPanel from './TutorGamesPanel.jsx';
 import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
 import { usePhonemeTutor } from '../phoneme-pop/game/usePhonemeTutor.js';
 import { useTutorBridge } from '../bridge/useTutorBridge.js';
@@ -19,6 +19,7 @@ import { isLineSize } from '../../shared/lines.js';
 import TileBar from './TileBar.jsx';
 import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
 import { pictureUrl } from './pictures.js';
+import { cleanPictureLibraryView, loadPictureLibraryView, savePictureLibraryView } from './pictureLibraryView.js';
 import { LessonGate } from '../account/TeachGate.jsx';
 import { useVideoCall } from './useVideoCall.js';
 import { CopyButton, FocusButton, MessageScreen, StageNotice, StatusPill, TopBar } from './ui.jsx';
@@ -68,6 +69,14 @@ export default function TutorRoom() {
   const stageApi = useRef(null);
   const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
+  const [picturePreviewOpen, setPicturePreviewOpen] = useState(false);
+  const [pictureLibraryView, setPictureLibraryView] = useState(loadPictureLibraryView);
+  const updatePictureLibraryView = useCallback((patch) => setPictureLibraryView((current) => {
+    const next = cleanPictureLibraryView({ ...current, ...patch });
+    return Object.keys(next).every((key) => next[key] === current[key]) ? current : next;
+  }), []);
+  useEffect(() => { savePictureLibraryView(pictureLibraryView); }, [pictureLibraryView]);
+  const closePictureLibrary = () => { setBrowsing(false); setPicturePreviewOpen(false); };
   const [studentBrowse, setStudentBrowse] = useState({ open: false, pic: null }); // where the student is browsing
   const [guidePic, setGuidePic] = useState(null); // the picture this tutor is pointing at
   // The picture library, which this tutor's live room can draw from.
@@ -427,7 +436,6 @@ export default function TutorRoom() {
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
           <LinesButton size={wb.lines} onChoose={chooseLines} />
-          <ToolButton icon={Milestone} label='Games' pressed={activePanel === 'games'} expanded={activePanel === 'games'} controls='whiteboard-panel-games' onClick={() => layout.current?.show('games')} />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
         </ToolRail>
@@ -478,7 +486,7 @@ export default function TutorRoom() {
             onStroke={{ start: (p) => wb.stroke.start(tool, p), move: wb.stroke.move, end: wb.stroke.end }}
           />
           {!studentHere && room.code && (
-            <StageNotice>Your student opens myprivateteacher.com/whiteboard and types {room.code}</StageNotice>
+            <StageNotice>Your student opens myprivateteacher.com and enters {room.code} in Join your lesson</StageNotice>
           )}
           {studentHere && tip && <StageNotice>{tip}</StageNotice>}
         </>
@@ -517,56 +525,7 @@ export default function TutorRoom() {
           label: 'Games',
           icon: Milestone,
           content: (
-            <div className='flex flex-col gap-4 p-3'>
-              <div>
-                <h2 className='text-lg font-bold text-slate-900'>Choose a game</h2>
-                <p className='mt-1 text-sm text-slate-600'>Start an activity on both lesson screens.</p>
-              </div>
-              <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
-                <h3 className='mb-3 text-lg font-bold text-slate-900'>Alphabet Bridge</h3>
-                <BridgeControls bridge={{ ...bridge, start: startBridge }} />
-              </section>
-              <section className='rounded-2xl bg-white p-4 shadow ring-1 ring-slate-200'>
-                <h3 className='mb-2 text-lg font-bold text-slate-900'>Phoneme Pop</h3>
-                <div className='flex flex-col items-start gap-4'>
-                  <p className='text-base text-slate-700'>Hear the word, split it into its sounds, and put them back in order.</p>
-                  {phoneme.active && (
-                    <>
-                      <div role='group' aria-label='Level' className='flex flex-wrap gap-2'>
-                        {phoneme.bank.levels.map((l) => (
-                          <button
-                            key={l.level}
-                            type='button'
-                            aria-pressed={phoneme.state.level === l.level}
-                            onClick={() => phoneme.act({ type: 'chooseLevel', level: l.level })}
-                            className={`min-h-11 rounded-full px-4 py-2 text-sm font-bold ${
-                              phoneme.state.level === l.level ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-violet-50'
-                            }`}
-                          >
-                            Level {l.level}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        type='button'
-                        onClick={() => phoneme.act({ type: 'showNext' })}
-                        disabled={phoneme.state.phase !== 'tiles'}
-                        className='min-h-11 rounded-full bg-amber-500 px-5 py-2 font-bold text-white shadow hover:bg-amber-600 disabled:opacity-40'
-                      >
-                        Show me the next sound
-                      </button>
-                    </>
-                  )}
-                  <button
-                    type='button'
-                    onClick={phoneme.active ? phoneme.stop : startPhoneme}
-                    className='min-h-11 rounded-full border-2 border-violet-600 px-5 py-2 font-bold text-violet-700 hover:bg-violet-50'
-                  >
-                    {phoneme.active ? 'Put Phoneme Pop away' : 'Start Phoneme Pop'}
-                  </button>
-                </div>
-              </section>
-            </div>
+            <TutorGamesPanel bridge={bridge} phoneme={phoneme} startBridge={startBridge} startPhoneme={startPhoneme} visible={activePanel === 'games'} />
           ),
         },
         {
@@ -574,19 +533,22 @@ export default function TutorRoom() {
           label: 'Pictures',
           icon: ImageIcon,
           content: (
-            <PicturesPanel {...pictureProps} notice={studentBrowsing ? { text: browseText, tone: 'violet', action: { label: 'View with them', onClick: () => setBrowsing(true) } } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
+            <PicturesPanel {...pictureProps} notice={studentBrowsing ? { text: browseText, tone: 'violet', action: { label: 'View with them', onClick: () => setBrowsing(true) } } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} />
           ),
         },
       ]}
     />
-    <PictureDrawer id='tutor-picture-library' open={browsing} onClose={() => setBrowsing(false)}>
+    <PictureDrawer id='tutor-picture-library' open={browsing} onClose={closePictureLibrary} previewOpen={picturePreviewOpen} catalogReady={libraryState.status === 'ready'} catalogScrollTop={pictureLibraryView.scrollTop} onCatalogScroll={(scrollTop) => updatePictureLibraryView({ scrollTop })}>
       <PicturesPanel
         {...pictureProps}
         layout='drawer'
         browseOnly
+        catalogView={pictureLibraryView}
+        onCatalogViewChange={updatePictureLibraryView}
+        onViewerChange={setPicturePreviewOpen}
         showLibrary
         notice={studentBrowsing ? { text: browseText, tone: 'violet' } : { text: 'Add a library card to the board, or open a session picture to show your student.', tone: 'sky' }}
-        onPlaced={() => setBrowsing(false)}
+        onPlaced={(options) => { if (!options?.keepOpen) closePictureLibrary(); }}
       />
     </PictureDrawer>
     </>

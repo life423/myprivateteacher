@@ -396,7 +396,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
                     role='tab'
                     aria-selected={current === id}
                     onClick={() => setActive(id)}
-                    className={`rounded-xl px-3 py-2 text-sm font-bold ${current === id ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-violet-50'}`}
+                    className={`${panels.length === 3 && id === 'pictures' ? 'col-span-2 ' : ''}rounded-xl px-3 py-2 text-sm font-bold ${current === id ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-violet-50'}`}
                   >
                     {label}
                   </button>
