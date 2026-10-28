@@ -29,12 +29,12 @@ export function photoStatus(key) {
 const centreX = COLUMN.x + COLUMN.width / 2;
 
 // Lines of text centred in an area of the right column.
-function TextBlock({ text, area }) {
-  const { size, lines } = fitText(text, { height: area.height });
+function TextBlock({ text, area, fit, part }) {
+  const { size, lines } = fit || fitText(text, { height: area.height });
   const step = size * 1.2;
   const first = area.y + area.height / 2 - ((lines.length - 1) * step) / 2 + size * 0.35;
   return (
-    <text x={centreX} y={first} textAnchor='middle' fontFamily={FONT} fontSize={size} fontWeight='700' fill={PALETTE.ink}>
+    <text data-card-part={part} x={centreX} y={first} textAnchor='middle' fontFamily={FONT} fontSize={size} fontWeight='700' fill={PALETTE.ink}>
       {lines.map((line, i) => (
         <tspan key={i} x={centreX} dy={i === 0 ? 0 : step}>
           {line}
@@ -73,19 +73,23 @@ function MouthPlaceholder({ id }) {
   );
 }
 
-export default function ArticulationCard({ card, className = '' }) {
+// Both the original families and the new teaching cards use this exact frame.
+// A card has one full-height mouth photograph and one anatomy diagram; movement
+// cues belong in the instruction and diagram rather than additional photo panels.
+export function ArticulationCardFrame({
+  title, instruction, soundText, photo, diagram, instructionFit, soundFit,
+  className = '', svgProps = {},
+}) {
   const uid = useId().replace(/:/g, '');
-  const photo = photoFor(card.frontPhotoKey);
-  const diagram = diagramFor(card.id);
-  const size = titleSize(card.title);
+  const size = titleSize(title);
   const m = MOUTH_REGION;
   return (
     <svg
       viewBox={`0 0 ${CARD.width} ${CARD.height}`}
       className={className}
       role='img'
-      aria-label={`${card.title}: ${card.instruction} ${cardSoundLine(card)}`}
-      data-card={card.id}
+      aria-label={`${title}: ${instruction} ${soundText}`}
+      {...svgProps}
     >
       <defs>
         <clipPath id={`photo-${uid}`}>
@@ -97,29 +101,41 @@ export default function ArticulationCard({ card, className = '' }) {
       </defs>
       <rect x='2' y='2' width={CARD.width - 4} height={CARD.height - 4} rx={CARD.radius} fill={PALETTE.paper} stroke={PALETTE.edge} strokeWidth='4' />
 
-      <rect x={BANNER.x} y={BANNER.y} width={BANNER.width} height={BANNER.height} rx={BANNER.radius} fill={PALETTE.banner} />
-      <text x={BANNER.x + BANNER.width / 2} y={BANNER.y + BANNER.height / 2 + size * 0.36} textAnchor='middle' fontFamily={FONT} fontSize={size} fontWeight='800' fill={PALETTE.ink}>
-        {card.title}
+      <rect data-card-part='banner' x={BANNER.x} y={BANNER.y} width={BANNER.width} height={BANNER.height} rx={BANNER.radius} fill={PALETTE.banner} />
+      <text data-card-part='title' x={BANNER.x + BANNER.width / 2} y={BANNER.y + BANNER.height / 2 + size * 0.36} textAnchor='middle' fontFamily={FONT} fontSize={size} fontWeight='800' fill={PALETTE.ink}>
+        {title}
       </text>
 
       <rect x={PHOTO.x} y={PHOTO.y} width={PHOTO.width} height={PHOTO.height} rx={PHOTO.radius} fill={PALETTE.photoBorder} />
       <g clipPath={`url(#photo-${uid})`}>
         {photo ? (
-          <image href={photo} x={m.x} y={m.y} width={m.w} height={m.h} preserveAspectRatio='xMidYMid slice' />
+          <image data-card-part='photo' href={photo} x={m.x} y={m.y} width={m.w} height={m.h} preserveAspectRatio='xMidYMid slice' />
         ) : (
           <MouthPlaceholder id={uid} />
         )}
       </g>
 
-      <TextBlock text={card.instruction} area={INSTRUCTION} />
+      <TextBlock text={instruction} area={INSTRUCTION} fit={instructionFit} part='instruction' />
 
       <rect x={DIAGRAM.x} y={DIAGRAM.y} width={DIAGRAM.size} height={DIAGRAM.size} rx={DIAGRAM.radius} fill={PALETTE.paper} />
       {diagram && (
-        <image href={diagram} x={DIAGRAM.x} y={DIAGRAM.y} width={DIAGRAM.size} height={DIAGRAM.size} clipPath={`url(#diagram-${uid})`} />
+        <image data-card-part='diagram' href={diagram} x={DIAGRAM.x} y={DIAGRAM.y} width={DIAGRAM.size} height={DIAGRAM.size} clipPath={`url(#diagram-${uid})`} />
       )}
       <rect x={DIAGRAM.x} y={DIAGRAM.y} width={DIAGRAM.size} height={DIAGRAM.size} rx={DIAGRAM.radius} fill='none' stroke={PALETTE.ink} strokeWidth={DIAGRAM.border} />
 
-      <TextBlock text={cardSoundLine(card)} area={SOUND} />
+      <TextBlock text={soundText} area={SOUND} fit={soundFit} part='sound' />
     </svg>
   );
+}
+
+export default function ArticulationCard({ card, className = '' }) {
+  return <ArticulationCardFrame
+    title={card.title}
+    instruction={card.instruction}
+    soundText={cardSoundLine(card)}
+    photo={photoFor(card.frontPhotoKey)}
+    diagram={diagramFor(card.id)}
+    className={className}
+    svgProps={{ 'data-card': card.id }}
+  />;
 }

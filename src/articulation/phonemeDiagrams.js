@@ -44,6 +44,26 @@ const nasalPalate = 'M 336 87 C 350 90 362 102 369 122 C 374 139 377 154 371 164
 // airflow arrow travels through a visible cavity rather than through solid skin.
 const nasalCavity = 'M 410 142 L 381 142 C 394 118 392 96 375 82 C 345 63 267 60 171 61 C 145 61 131 53 130 43 L 132 23 C 144 33 162 34 190 34 C 284 34 362 42 393 61 L 410 73 Z';
 
+// A single diagram shows the starting tongue surface. For a gliding vowel,
+// a blue direction cue shows the relative height/backness change without adding
+// a second anatomy panel. R-colored and consonant/vowel sequences keep their
+// full written instruction because their shape change is not one tongue vector.
+const vowelMotionPoints = {
+  'vowel-low-central': [272, 208],
+  'vowel-close-mid-front': [246, 151],
+  'vowel-near-high-front': [246, 139],
+  'vowel-open-mid-back': [330, 163],
+  'vowel-mid-back': [330, 145],
+  'vowel-near-high-back': [330, 136],
+};
+
+export function phonemeMovementArrow(card) {
+  if (!card.movement || card.category !== 'vowel') return null;
+  const from = vowelMotionPoints[card.poseKey];
+  const to = vowelMotionPoints[card.endPoseKey];
+  return from && to ? arrow(from, to) : null;
+}
+
 export function phonemeDiagramSvg(card, phase = 'start') {
   const key = phase === 'end' ? card.endPoseKey : card.poseKey;
   const pose = PHONEME_POSES[key];
@@ -54,6 +74,7 @@ export function phonemeDiagramSvg(card, phase = 'start') {
   const release = card.airflow === 'stop' && phase === 'start' ? [arrow([96, 155], [56, 155])] : [];
   const oralAir = pose.nasal ? [] : pose.airflow || [];
   const nasal = Boolean(pose.nasal);
+  const movement = phase === 'start' ? phonemeMovementArrow(card) : null;
   return [
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='${A.VIEW_BOX}' width='400' height='400' role='img' aria-label='${safe(card.title)}: ${phase} mouth position'>`,
     `<g transform='${A.FRAMING}'>`,
@@ -69,6 +90,7 @@ export function phonemeDiagramSvg(card, phase = 'start') {
     ...oralAir.map((d) => line(d, A.COLORS.airflow, A.STROKE.airflow)),
     ...(nasal ? [`<g data-airflow='nasal'>${nasalAir.map((d) => line(d, A.COLORS.airflow, A.STROKE.airflow)).join('')}</g>`] : []),
     ...(release.length ? [`<g stroke-dasharray='5 5' data-airflow='release'>${release.map((d) => line(d, A.COLORS.airflow, A.STROKE.airflow)).join('')}</g>`] : []),
+    ...(movement ? [`<g data-movement='tongue'>${line(movement, A.COLORS.airflow, A.STROKE.airflow)}</g>`] : []),
     `</g></svg>`,
   ].join('\n');
 }

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BoxSelect, Check, Eye, Gift, Image as ImageIcon, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
-import { regionAt } from './regions.js';
+import { mergePictureRegions, regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
 import { MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
 import { defaultPictureCrop, picturePlacement } from './picturePlacement.js';
@@ -150,6 +150,7 @@ export default function PicturesPanel({
   const student = !canAdd;
   const [openId, setOpenId] = useState(null);
   const [regions, setRegions] = useState([]);
+  const [findingRegions, setFindingRegions] = useState(false);
   const [mode, setMode] = useState('magic');
   const [hover, setHover] = useState(null);
   const [selection, setSelection] = useState(null);
@@ -214,18 +215,22 @@ export default function PicturesPanel({
   // Each picture's parts are found once, when the tutor first opens it.
   useEffect(() => {
     setRegions([]);
+    setFindingRegions(false);
     setSelection(null);
     setHover(null);
     if (!src) return undefined;
-    if (predefined) {
-      setRegions(predefined); // first-party regions: no detection needed
-      return undefined;
-    }
+    // Keep the curated mouth crop ready immediately, but let the tutor select
+    // every other part too. Students retain only their allowed regions/offers.
+    if (predefined) setRegions(predefined);
     if (student) return undefined;
+    setFindingRegions(true);
     const [w, h] = size.split('x').map(Number);
     let live = true;
     pictureRegions(src, { w, h }).then((found) => {
-      if (live) setRegions(found);
+      if (live) {
+        setRegions(mergePictureRegions(found, predefined || []));
+        setFindingRegions(false);
+      }
     });
     return () => {
       live = false;
@@ -451,7 +456,9 @@ export default function PicturesPanel({
     const chosenRegion = student && selection ? takeable.find((r) => sameCrop(partOf(r), selection)) : null;
     let hint = 'Tap a part to select it, or drag across the picture to draw a box.';
     if (mode === 'box') hint = 'Drag across the picture to draw a box around what you want.';
-    if (predefined && mode === 'magic') hint = `Tap the ${predefined[0].label.toLowerCase()} to select it.`;
+    if (mode === 'magic') hint = findingRegions
+      ? 'Finding selectable parts… You can still draw a box.'
+      : 'Tap a photo, heading, diagram or text to select it. Draw a box for any other area.';
     if (selection) hint = 'Drag the selected part onto the board, or use the buttons below.';
     if (offered) hint = offered.taken ? 'Your student has taken this part.' : 'Your student can take this part once, while their tools are on.';
     if (student && takeable.length) {

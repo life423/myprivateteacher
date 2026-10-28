@@ -15,6 +15,7 @@ export function phonemeExportPlan({ allSounds = false } = {}) {
   });
   return cards.map((card, i) => ({
     card,
+    title: card.title,
     order: allSounds ? i + 1 : i + 17,
     collection: allSounds ? 'Phoneme Articulation Reference' : 'Mouth Pictures',
     cardId: `phoneme-${card.id}`,
