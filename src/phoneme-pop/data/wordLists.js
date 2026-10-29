@@ -27,7 +27,7 @@ export const wordLists = {
     { word: 'phone', phonemes: ['f', 'ō', 'n'], display: '[ph]ōne' }, // ph digraph, silent e
     { word: 'light', phonemes: ['l', 'ī', 't'], display: 'līght' }, // igh = long i
     { word: 'dream', phonemes: ['d', 'r', 'ē', 'm'], display: 'drēam' }, // ea = long e
-    { word: 'think', phonemes: ['th', 'ĭ', 'nk'], display: '[th]ĭ[nk]' }, // th digraph, nk welded sound
+    { word: 'think', phonemes: ['th', 'ĭ', 'ng', 'k'], display: '[th]ĭnk' }, // nk spells /ng/ followed by /k/: four sounds
     { word: 'cloud', phonemes: ['c', 'l', 'ou', 'd'], display: 'cl[ou]d' }, // ou diphthong
     { word: 'sound', phonemes: ['s', 'ou', 'n', 'd'], display: 's[ou]nd' }, // ou diphthong
   ],

@@ -1,11 +1,13 @@
 import { mongoClient } from './db.js';
 import { WORD_BANK, WORD_LEVELS } from './wordBank.js';
+import { reviewedWordCorrectionOperations } from './wordCorrections.js';
 
 const CACHE_MS = 60 * 1000;
 
 // The Phoneme Pop word bank, kept in the database so it can grow without a code change. At start
 // the server adds any starting words (wordBank.js) the database lacks; words already there are
-// left as they are. Words with active: false are kept but not played.
+// left as they are except for exact copies of the five reviewed legacy seeds in
+// wordCorrections.js. Words with active: false are kept but not played.
 export function connectWords({ uri = process.env.MONGODB_URI } = {}) {
   if (!uri) return null;
   const db = mongoClient(uri).db('myprivateteacher');
@@ -30,6 +32,7 @@ export function connectWords({ uri = process.env.MONGODB_URI } = {}) {
         })),
         { ordered: false },
       );
+      await words.bulkWrite(reviewedWordCorrectionOperations(), { ordered: false });
     } catch (error) {
       console.error('Word bank seeding failed:', error.message);
     }

@@ -199,6 +199,13 @@ export default function TutorRoom() {
   });
   sendRef.current = send;
 
+  // Message screens keep this room mounted, so unmount cleanup alone cannot
+  // release a camera or a pending permission request when the seat is replaced.
+  const callEnded = status === 'replaced' || Boolean(gated) || busy;
+  useEffect(() => {
+    if (callEnded) call.stop();
+  }, [callEnded]);
+
   useEffect(() => {
     if (status !== 'open') setConfirmedRoom(null);
   }, [status]);

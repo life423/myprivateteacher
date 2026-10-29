@@ -115,6 +115,16 @@ function clientIp(req) {
   return req.socket.remoteAddress || 'unknown';
 }
 
+function cleanRtcIdentity(msg) {
+  const identity = {};
+  for (const field of ['id', 'to']) {
+    if (msg[field] === undefined) continue;
+    if (typeof msg[field] !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(msg[field])) return null;
+    identity[field] = msg[field];
+  }
+  return identity;
+}
+
 export function attachRealtime(server, options = {}) {
   const {
     allowedOrigins = new Set(),
@@ -997,8 +1007,12 @@ export function attachRealtime(server, options = {}) {
       console.log(`Video ${ws.room.code} ${role}: ${msg.text.replace(/[^ -~’]/g, ' ').slice(0, 200)}`);
     },
 
-    'rtc:ready'(ws) {
-      relayRtc(ws, { t: 'rtc:ready' });
+    'rtc:ready'(ws, msg) {
+      // Optional recovery generation. Older clients still receive/send plain ready;
+      // only a small opaque ID is relayed, never arbitrary user-supplied fields.
+      const id = typeof msg.id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(msg.id) ? msg.id : undefined;
+      if (msg.id !== undefined && !id) return;
+      relayRtc(ws, { t: 'rtc:ready', ...(id ? { id } : {}) });
     },
 
     'rtc:leave'(ws) {
@@ -1007,12 +1021,14 @@ export function attachRealtime(server, options = {}) {
 
     'rtc:description'(ws, msg) {
       const description = cleanDescription(msg.description);
-      if (description) relayRtc(ws, { t: 'rtc:description', description });
+      const identity = cleanRtcIdentity(msg);
+      if (description && identity) relayRtc(ws, { t: 'rtc:description', ...identity, description });
     },
 
     'rtc:candidate'(ws, msg) {
       const candidate = cleanCandidate(msg.candidate);
-      if (candidate !== undefined) relayRtc(ws, { t: 'rtc:candidate', candidate });
+      const identity = cleanRtcIdentity(msg);
+      if (candidate !== undefined && identity) relayRtc(ws, { t: 'rtc:candidate', ...identity, candidate });
     },
 
     end(ws) {

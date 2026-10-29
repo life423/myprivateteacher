@@ -55,6 +55,8 @@ Letter tiles: the tutor can drag a letter from the alphabet onto the board, choo
 
 The whiteboard has a one-to-one video call in a collapsible panel beside the board. Camera and microphone stay off until each person clicks Start video. The room's WebSocket carries only the call setup (`rtc:*` messages, relayed between the two people in a room); audio and video go directly between the browsers, never through the app server. The client uses the perfect-negotiation pattern, with the student as the polite side.
 
+A confirmed room rejoin reannounces active video without requesting camera/microphone permission again or changing mute settings. Readiness generations reject duplicate setup and stale descriptions/candidates while accepting older clients. Ending a lesson or replacing its browser tab stops local media, including a pending camera-start request.
+
 When a direct connection isn't possible (strict school or office networks), the call goes through our own TURN relay on Azure:
 
 - Resource group `myprivateteacher-turn` (South Central US): a Standard_B1ls Ubuntu 24.04 VM running coturn, a static public IP with the free hostname `myprivateteacher-turn.southcentralus.cloudapp.azure.com`, and a network security group that only opens the TURN ports (3478 UDP/TCP, 443 TCP for TURN over TLS, relay ports 49152-49252 UDP, and 80 for certificate renewal). There is no SSH; manage it with `az vm run-command`. Roughly $9-10 a month, with a $15 monthly budget alert on the resource group.
@@ -78,9 +80,11 @@ A piece on the board is a window onto its picture (`shared/pieces.js`), so the p
 
 ## Content notes
 
-- Words live in `src/data/wordLists.js`. In `display`, vowels carry a breve (short) or macron (long), and `[brackets]` mark letters that make one sound together; they render underlined.
-- Keyword pictures live in `src/data/phonemeSymbols.js`. A picture's name should start with its sound, and no picture should stand for two different sounds.
-- Text-to-speech is used for whole words and feedback only. Single sounds need recorded clips, because TTS reads a lone letter by its name.
+Teaching-tool design follows the source-backed requirements and audit backlog in [TEACHING.md](TEACHING.md). Existing activities are tools for tutors; they are not a complete Take Flight curriculum.
+
+- Managed words start in `server/wordBank.js` and live in Cosmos DB; `src/phoneme-pop/data/wordLists.js` is the offline fallback. Startup corrects only exact active copies of five reviewed legacy seeds (box, fox, pink, bank and think), preserving custom or inactive records. In `display`, vowels carry a breve (short) or macron (long), and `[brackets]` mark letters that make one sound together; they render underlined. Sound tokens and written spelling are distinct: x in box represents /k/ followed by /s/.
+- Keyword pictures live in `src/phoneme-pop/data/phonemeSymbols.js`. A picture's name should start with its sound, and no picture should stand for two different sounds.
+- Text-to-speech is used for whole words and feedback only. Tutors can model individual sounds live. Recorded isolated sound examples, if added, need instructional review; letter-name speech from TTS is not a reliable phoneme model.
 
 ## Deploy
 

@@ -134,6 +134,13 @@ export default function StudentRoom({ code }) {
   });
   sendRef.current = send;
 
+  // Ending/replacement screens do not unmount the room. Stop local tracks and
+  // cancel pending camera startup before leaving video hidden behind that screen.
+  const callEnded = status === 'replaced' || Object.hasOwn(ENDINGS, phase);
+  useEffect(() => {
+    if (callEnded) call.stop();
+  }, [callEnded]);
+
   useEffect(() => () => clearTimeout(retryTimer.current), []);
   useEffect(() => () => clearTimeout(viewTimer.current), []);
   // When the tutor arrives (or comes back), tell them what this screen shows.
