@@ -1,0 +1,279 @@
+{
+  "reviewDate": "2026-10-29",
+  "scope": "Focused follow-up on lesson-control discoverability, color, spacing and motion",
+  "distinctPractitioners": 10,
+  "practitionerPages": [
+    {
+      "person": "Don Norman",
+      "url": "https://jnd.org/signifiers-not-affordances/",
+      "title": "Signifiers, not affordances",
+      "keyFinding": "People need perceivable cues that communicate available actions and system state. A capability existing in the product does not ensure users can discover it; deliberately designed labels, indicators, and visible signals make the interaction understandable.",
+      "application": "A chevron alone signals expansion without explaining its contents. Give the session-controls trigger a clear label and leave crucial current states, such as student editing permission, perceivable without opening it.",
+      "access": "read",
+      "limitations": "Foundational design essay from 2008, not a comparative trial of this whiteboard or proof of a universal icon/menu layout."
+    },
+    {
+      "person": "Don Norman",
+      "url": "https://jnd.org/opportunities-and-challenges-for-touch-and-gesture-based-systems/",
+      "title": "Opportunities and Challenges For Touch and Gesture-Based Systems",
+      "keyFinding": "Norman and Bahar Wadia emphasize clear cues for what actions are possible, where and how to act, what happened, and how to recover. Remote interaction particularly needs feedback so people remain aware of the system's response.",
+      "application": "Make shared lesson permissions, pointer activity, and view-sharing effects explicit. Ensure touch targets and state changes are usable without mouse hover, and give clear feedback when a tutor directs the student's view.",
+      "access": "read",
+      "limitations": "Coauthored 2013 conference paper; device examples are historical. It supports visibility/feedback principles, not a particular target-size number or modern product benchmark."
+    },
+    {
+      "person": "Steve Krug",
+      "url": "https://sensible.com/downloads/test-script-web.pdf",
+      "title": "Usability test script — Web sites",
+      "keyFinding": "Krug's script asks participants to explain what a page is for and what they can do, then attempt realistic tasks while thinking aloud. The facilitator avoids teaching the interface during tasks so genuine confusion becomes observable.",
+      "application": "Ask a tutor to enable student editing, change the pointer, reveal handwriting lines, and check what the student sees without naming the menu location. Record missed controls, recovery, and task completion before changing placement again.",
+      "access": "read",
+      "limitations": "This is a research protocol rather than proof that visible controls always win. Its historical instruction to avoid Search should be adapted to the actual task rather than applied mechanically."
+    },
+    {
+      "person": "Steve Krug",
+      "url": "https://sensible.com/you-say-potato-i-say-focus-group/",
+      "title": "You say “potato,” I say “focus group”",
+      "keyFinding": "Krug distinguishes observing people actually use a design from collecting opinions in a focus group. Usability testing reveals confusing or frustrating interactions through behavior, while discussion alone cannot establish whether a control can be found and operated.",
+      "application": "Treat our proposed visible-versus-secondary split as a hypothesis. Validate it with tutor actions during an authentic lesson rather than choosing the menu only because it looks cleaner in a screenshot.",
+      "access": "read",
+      "limitations": "Short practitioner explanation published in 2022; it does not supply a sampling rule, quantitative success threshold, or preferred whiteboard navigation component."
+    },
+    {
+      "person": "Luke Wroblewski",
+      "url": "https://www.lukew.com/ff/1945/obvious-always-wins",
+      "title": "Obvious Always Wins",
+      "keyFinding": "Wroblewski describes product cases where hiding major destinations behind menu controls reduced their use and making key destinations visible improved discoverability. Limited screen space still requires deciding which functions matter most to users rather than displaying everything.",
+      "application": "Do not put all teaching controls behind one unlabeled chevron merely to shorten the navbar. Keep primary tutoring actions and important permission state visible; use a clearly labeled menu for less frequent configuration.",
+      "access": "read",
+      "limitations": "Published 2015. Polar is his direct product experience; other cases cite third-party reports. Engagement effects are context-specific and should not be transferred as numeric forecasts for tutoring."
+    },
+    {
+      "person": "Luke Wroblewski",
+      "url": "https://www.lukew.com/mobilefirst/04-chapter-2/index.html",
+      "title": "Mobile First, Chapter 2 — Constraints",
+      "keyFinding": "Small screens force prioritization of the actions that provide a product's core value. Wroblewski argues that this clarity should benefit desktop too, while preserving useful capabilities on mobile rather than stripping the experience down indiscriminately.",
+      "application": "Create a short, stable set of visible lesson actions across devices. Let narrower layouts reorganize secondary options while preserving clear access to the same teaching capabilities and maintaining board space.",
+      "access": "read",
+      "limitations": "Book chapter copyright 2011. Historical screen-size, network, and implementation examples are not current prescriptions; the relevant principle is task prioritization and capability parity."
+    },
+    {
+      "person": "Jared Spool",
+      "url": "https://archive.uie.com/brainsparks/2005/11/28/the-8-types-of-navigation-pages/",
+      "title": "The 8 Types of Navigation Pages",
+      "keyFinding": "Spool argues that navigation should provide sought content or move people recognizably closer to it. Gallery pages need enough information for choosing the right destination without repeatedly opening items and backing out.",
+      "application": "Use meaningful labels and previews in Materials so tutors can choose the correct teaching card or tool without exploring nested panels. Group session options by the task they affect, rather than one miscellaneous list.",
+      "access": "read",
+      "limitations": "Authored UIE archive article from 2005 focused on content-rich websites. Applying its information-scent ideas to a live whiteboard is an inference rather than direct experimental evidence."
+    },
+    {
+      "person": "Jared Spool",
+      "url": "https://archive.uie.com/brainsparks/2012/12/12/jared-spool-the-secret-lives-of-links/",
+      "title": "Jared Spool — The Secret Lives of Links",
+      "keyFinding": "In the primary transcript Spool describes people seeking recognizable words that suggest the path to their goal. Repeated backtracking can signal weak information scent; it is a diagnostic observation, not a reason to remove recovery controls.",
+      "application": "Replace a mystery chevron with a task-revealing label, and use tutor vocabulary such as Student tools and Board view. Observe repeated opening/closing as a sign that controls may be grouped or labeled poorly.",
+      "access": "read",
+      "limitations": "First-party UIE publication contains Spool's own talk transcript; introductory text is by Sean Carmichael. Historical correlations cited in the talk are not causal estimates or expected gains for this app."
+    },
+    {
+      "person": "Brad Frost",
+      "url": "https://bradfrost.com/blog/post/revisiting-the-priority-pattern/",
+      "title": "Revisiting the Priority+ Pattern",
+      "keyFinding": "Expose the most important or frequent actions and put remaining choices behind a clearly signposted overflow. Visible labels communicate available features better than an opaque icon. The designer's assumed priorities must be checked against users' actual needs.",
+      "application": "Promote frequent teacher controls from the bare chevron into their task areas; give remaining settings an explicit Board options or Lesson controls label.",
+      "access": "read",
+      "limitations": "A 2015 practitioner discussion with historical site examples; it does not establish which tutoring actions are frequent."
+    },
+    {
+      "person": "Brad Frost",
+      "url": "https://atomicdesign.bradfrost.com/chapter-2/",
+      "title": "Atomic Design Methodology",
+      "keyFinding": "Reusable small components promote consistent behavior, but they must also be demonstrated together in templates and representative real pages. Isolated component quality does not prove that the complete interface works.",
+      "application": "Standardize labelled toggles, action buttons and disclosure triggers; verify them together in the actual lesson header, sidebar, board and phone layout.",
+      "access": "read",
+      "limitations": "A composition methodology, not evidence for any single navigation pattern or a requirement to create a large design-system project."
+    },
+    {
+      "person": "Julie Zhuo",
+      "url": "https://lg.substack.com/p/the-looking-glass-the-craft-of-creating",
+      "title": "The Looking Glass: The craft of creating",
+      "keyFinding": "Define the user's journey before proposing features, and state outcomes precisely enough to evaluate. Claims such as a clearer mental model are too vague without describing observable success.",
+      "application": "Test whether a tutor can find and enable Student tools, change Lines, open student preview and resume teaching without menu coaching or lost context.",
+      "access": "read",
+      "limitations": "Read the public sections on unambiguous outcomes, documentation and journeys; paid-only sections were not accessed."
+    },
+    {
+      "person": "Julie Zhuo",
+      "url": "https://lg.substack.com/p/the-looking-glass-higher-level-design",
+      "title": "The Looking Glass: Higher Level Design",
+      "keyFinding": "Design aims to influence an outcome. Better problem framing can move beyond choosing a form, editor or modal to considering the whole system and the user's motivation; domain knowledge matters more than job-title assumptions.",
+      "application": "Frame the problem as teaching without hunting for controls, then choose a grouping that supports that journey rather than starting with a fashionable accordion or dropdown.",
+      "access": "read",
+      "limitations": "The accessible public portion was read; later subscriber-only content was not accessed. This is strategic guidance rather than component-level evidence."
+    },
+    {
+      "person": "Aarron Walter",
+      "url": "https://alistapart.com/article/personality-in-design/",
+      "title": "Personality in Design",
+      "keyFinding": "Emotional design should support human communication while functionality, reliability and usability remain foundational. Walter's Mailchimp example keeps playful greetings outside functional feedback and ensures personality never interferes with the workflow.",
+      "application": "Keep a warm tutoring tone and approachable visuals, while using plain labelled controls and explicit permission, connection and action feedback during lessons.",
+      "access": "read",
+      "limitations": "Author-written excerpt from the 2011 Designing for Emotion book, hosted by its original article publisher; historical examples are not current app evaluations."
+    },
+    {
+      "person": "Aarron Walter",
+      "url": "https://www.smashingmagazine.com/2012/03/redesigning-with-personality/",
+      "title": "Redesigning With Personality",
+      "keyFinding": "A redesign should communicate clearly to a known audience rather than collect fashionable visual effects. Walter uses a calm, focused travel interface to illustrate reducing distractions around the user's immediate goal.",
+      "application": "Make the board and current teaching task dominant; use restrained grouping, readable hierarchy and quiet secondary settings rather than extra decoration or competing action cards.",
+      "access": "read",
+      "limitations": "Read the public author-written chapter excerpt, particularly its user-persona and focused-interface examples. Historical case studies do not prove modern tutoring outcomes."
+    },
+    {
+      "person": "Jenifer Tidwell",
+      "url": "https://www.mit.edu/~jtidwell/common_ground_onefile.html",
+      "title": "Common Ground: A Pattern Language for Human-Computer Interface Design",
+      "keyFinding": "Keep frequently needed actions on the central working surface. Clearly mark nearby optional detail, and avoid forcing extra disclosure on users who need it repeatedly. Group global actions distinctly from object actions and preserve useful working state.",
+      "application": "Keep essential teaching controls discoverable beside the board, reserve labelled disclosure for infrequent settings, retain material state, and separate object crop/delete from lesson permissions and viewport actions.",
+      "access": "read",
+      "limitations": "First-party author-hosted 1999 paper. Read its introduction and relevant patterns, including Optional Detail On Demand, Central Working Surface, Convenient Environment Actions, Localized Object Actions and Remembered State; not every pattern was read."
+    },
+    {
+      "person": "Jakob Nielsen",
+      "url": "https://www.nngroup.com/articles/ten-usability-heuristics/",
+      "title": "10 Usability Heuristics for User Interface Design",
+      "keyFinding": "Visible feedback, familiar language, recognition rather than recall, and a clear exit reduce avoidable work. These are heuristics rather than a prescribed application layout.",
+      "application": "Expose important permission state; label controls by the teaching task; retain explicit Close and Return actions.",
+      "access": "read",
+      "limitations": "General principles. Does not measure which controls tutors use most often."
+    },
+    {
+      "person": "Jonas Schmedtmann",
+      "url": "https://www.udemy.com/course/design-and-develop-a-killer-website-with-html5-and-css3/",
+      "title": "Build Responsive Real-World Websites with HTML and CSS — public course curriculum",
+      "keyFinding": "Public curriculum covers restrained color, typography, whitespace/proximity, visual hierarchy and familiar component patterns. It also teaches accordions and carousels as components, not universal answers.",
+      "application": "Choose one main action hierarchy, consistent spacing and readable labels before adding more containers or hidden menus.",
+      "access": "read",
+      "limitations": "Reviewed the public curriculum, including descriptions of design rules and app layout sections. Paid lectures were not watched."
+    }
+  ],
+  "distinctProducts": 10,
+  "productExamples": [
+    {
+      "product": "Figma FigJam",
+      "url": "https://help.figma.com/hc/en-us/articles/15300412458647-Explore-FigJam-files",
+      "title": "Explore FigJam files",
+      "keyFinding": "FigJam distinguishes the board, file panels, and object toolbar. Its toolbar groups navigation, objects, tools, and inserts; file settings and collaboration controls occupy separate regions.",
+      "application": "Keep Select, Draw, and Erase near the canvas; group teaching materials in a separate panel and put lesson-level preferences behind a distinct control.",
+      "access": "read",
+      "limitations": "Official product documentation, not a measured comparison with dyslexia tutors. I did not sign into or usability-test FigJam."
+    },
+    {
+      "product": "Miro",
+      "url": "https://help.miro.com/hc/en-us/articles/360017730553-Toolbars",
+      "title": "Toolbars",
+      "keyFinding": "Miro separates board settings, content creation, collaboration, and canvas navigation. Select and Hand remain available; adding content supports either dragging or selecting a tool and clicking the board.",
+      "application": "Use stable tool groups and a clear click-to-add path; keep zoom and navigation separate from searching lesson materials.",
+      "access": "read",
+      "limitations": "A feature guide, not experimental evidence of superiority. Its enterprise collaboration density and drag customization should not be copied wholesale for children."
+    },
+    {
+      "product": "Zoom Whiteboard",
+      "url": "https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0061925",
+      "title": "Using the Zoom Whiteboard",
+      "keyFinding": "Zoom places editing tools on the left, changes the cursor to communicate the active tool, and exposes object-specific context menus. Navigation controls include zoom, Fit to screen, and pages.",
+      "application": "Keep tool selection obvious and object actions contextual; reserve persistent space for Fit and zoom rather than mixing them with material searches.",
+      "access": "read",
+      "limitations": "Documents current Zoom functionality; it does not establish which layout is best for structured literacy or prove our app is preferable."
+    },
+    {
+      "product": "Lessonspace",
+      "url": "https://help.thelessonspace.com/en/articles/15655189-whiteboard-tools-and-features",
+      "title": "Whiteboard Tools and Features",
+      "keyFinding": "Lessonspace combines whiteboard tools with resource-library and upload entry points. Selected objects support duplication, locking, and front/back ordering, while zoom-to-fit helps recover the teaching view.",
+      "application": "Make library and upload easy to locate, preserve the board view, and expose layering or locking only when a relevant object is selected.",
+      "access": "read",
+      "limitations": "Vendor feature documentation dated August 12, 2026. I did not test a live lesson or adopt its unsupported learner-readability claims."
+    },
+    {
+      "product": "Explain Everything",
+      "url": "https://help.explaineverything.com/hc/en-us/articles/4402410058642-Customize-your-Project-Editor-s-interface-and-workspace-layout",
+      "title": "Customize your Project Editor's interface and workspace layout",
+      "keyFinding": "Explain Everything offers Standard, Presenter, Simple, and Custom layouts. Simple uses basic tools and larger buttons; Hand, Undo, and layout controls remain available across modes.",
+      "application": "A student view can expose fewer essential actions while tutors retain preparation controls; hiding secondary tools should preserve fundamental navigation and recovery.",
+      "access": "read",
+      "limitations": "The page spans platform variants and explicitly says toolbar-position customization is unavailable in the web version. This is an example, not dyslexia-specific validation."
+    },
+    {
+      "product": "Google Meet",
+      "url": "https://support.google.com/meet/answer/10550593?hl=en",
+      "title": "Learn about the Meet layout for your computer",
+      "keyFinding": "Meet documents an always-visible meeting-control bar. Microphone and camera actions remain available, and the leave action is separated from them to reduce accidental exits.",
+      "application": "When video is minimized, keep mic, camera, and leave controls available; give leaving a lesson distinct placement and visual treatment.",
+      "access": "read",
+      "limitations": "A desktop meeting-layout guide. It supports a product pattern, not a guarantee that the same placement works in a small teaching sidebar."
+    },
+    {
+      "product": "Microsoft Teams",
+      "url": "https://support.microsoft.com/en-us/teams/meetings/use-meeting-controls-in-microsoft-teams",
+      "title": "Use meeting controls in Microsoft Teams",
+      "keyFinding": "Teams keeps core camera, microphone, and sharing actions fixed while allowing other controls to move into overflow. Dropdowns beside media buttons configure devices separately from toggling them.",
+      "application": "Separate an immediate mic/camera action from its device settings, and hide optional controls without burying the essential live-call actions.",
+      "access": "read",
+      "limitations": "Documented desktop and mobile variants differ. The guide describes a customizable meeting system rather than establishing an optimal tutoring sidebar."
+    },
+    {
+      "product": "Canva",
+      "url": "https://www.canva.com/help/tools-tab/",
+      "title": "Design faster with the Tools Tab",
+      "keyFinding": "Canva consolidates shapes, lines, notes, drawing, text, and tables in one Tools tab; choosing a tool reveals its submenu. Drawing lives within that shared tool grouping.",
+      "application": "Use a small number of labeled destinations, then reveal related choices inside them; avoid several separate cards competing for the same sidebar space.",
+      "access": "read",
+      "limitations": "Vendor workflow claims are not measured evidence. The page describes recent-tool preservation as upcoming, so that feature is not counted as implemented."
+    },
+    {
+      "product": "Notion",
+      "url": "https://www.notion.com/help/navigate-with-the-sidebar",
+      "title": "Navigate with the sidebar",
+      "keyFinding": "Notion organizes its sidebar into purpose-specific tabs containing shortcuts and sections. It provides explicit collapse/expand controls, and keeps key global destinations in consistent positions.",
+      "application": "Give Letters, Pictures, and Worksheets distinct labeled views, retain clear navigation back, and use explicit controls to hide or reveal the panel.",
+      "access": "read",
+      "limitations": "A knowledge-work navigation example with greater complexity than a child-facing lesson; no comparative usability or learning-outcome claim is warranted."
+    },
+    {
+      "product": "Linear",
+      "url": "https://linear.app/changelog/2024-12-18-personalized-sidebar",
+      "title": "Personalized sidebar and new settings pages",
+      "keyFinding": "Linear lets people reorder or hide infrequent navigation items and place some behind More. Its settings distinguish account preferences, feature configuration, administration, and team settings.",
+      "application": "Separate daily lesson actions from account and advanced configuration; use optional disclosure for infrequent settings rather than turning the entire sidebar into a long menu.",
+      "access": "read",
+      "limitations": "A dated first-party release note, not an independent study or exhaustive audit of the current app. A professional issue tracker is not a direct learner-interface template."
+    }
+  ],
+  "supportingPages": [
+    {
+      "url": "https://www.nngroup.com/articles/animation-purpose-ux/",
+      "title": "The Role of Animation and Motion in UX",
+      "keyFinding": "Motion should provide brief, unobtrusive feedback or explain a state/navigation change rather than distract.",
+      "access": "read"
+    },
+    {
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html",
+      "title": "Understanding SC 2.3.3: Animation from Interactions",
+      "keyFinding": "Support reduced-motion preferences and allow nonessential interaction motion to be disabled; criterion is Level AAA.",
+      "access": "read"
+    },
+    {
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html",
+      "title": "Understanding SC 1.4.1: Use of Color",
+      "keyFinding": "State and meaning must have a visible cue in addition to color.",
+      "access": "read"
+    }
+  ],
+  "limitations": [
+    "These are selected established practitioners and relevant examples, not an objective worldwide ranking.",
+    "Public pages and documented product patterns were read; paid lectures and private product sessions were not inspected.",
+    "The app-specific grouping and visual timings are design recommendations that require tutor task validation.",
+    "This focused review supplements the earlier 116-source review; counts are not independent experimental evidence."
+  ]
+}

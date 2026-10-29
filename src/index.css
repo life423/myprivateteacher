@@ -45,3 +45,18 @@ html {
     opacity: 1;
   }
 }
+
+
+@keyframes lesson-controls-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes lesson-controls-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+.lesson-controls-enter { animation: lesson-controls-in 160ms ease-out both; }
+.lesson-controls-exit { animation: lesson-controls-out 140ms ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .lesson-controls-enter, .lesson-controls-exit { animation: none; }
+}

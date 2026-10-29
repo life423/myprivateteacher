@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, Eraser, Eye, EyeOff, LayoutGrid, Milestone, MousePointer2, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { Crosshair, Eraser, Eye, EyeOff, LayoutGrid, MousePointer2, Pencil, Trash2, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import TutorGamesPanel from './TutorGamesPanel.jsx';
 import MaterialsWorkspace from './MaterialsWorkspace.jsx';
@@ -27,7 +27,7 @@ import { CopyButton, FocusButton, MessageScreen, StageNotice, StatusPill, TopBar
 
 const SAVED = 'wb-tutor';
 const round4 = (n) => Math.round(n * 10000) / 10000;
-const ACTIVITY = { pen: 'Writing ✏️', eraser: 'Erasing 🧽' };
+const ACTIVITY = { pen: 'Student is writing', eraser: 'Student is erasing' };
 
 function loadSaved() {
   try {
@@ -46,6 +46,81 @@ const rememberedLines = () => {
     return null;
   }
 };
+
+// The controls are grouped by the tutor's task, with current states in plain text.
+// All settings remain in the room; this component only presents the existing actions.
+export function TutorLessonControls({ studentTools, onStudentTools, hands, onHands, lines, onLines, strip, onStrip, pointing, activity, showStudentView, onStudentView, studentHere, onShareView, onFocus }) {
+  const switchRow = 'flex min-h-11 items-center justify-between gap-2 [&>button]:min-h-11 [&>button]:min-w-0 [&>button]:flex-1 [&>button]:rounded-lg';
+  return (
+    <div className='w-full space-y-4'>
+      <section aria-label='Student participation'>
+        <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500'>Student participation</h3>
+        <div className={switchRow}>
+          <Switch checked={studentTools} onChange={onStudentTools} label='Student tools' />
+          <span aria-hidden='true' className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${studentTools ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'}`}>{studentTools ? 'On' : 'Off'}</span>
+        </div>
+      </section>
+      <section aria-label='Board appearance'>
+        <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500'>Board appearance</h3>
+        <div className='space-y-2'>
+          <div className='flex min-h-11 items-center justify-between gap-3'>
+            <div className='min-w-0'>
+              <p className='text-sm font-semibold text-slate-700'>Hands</p>
+              <p role='status' aria-live='off' className='mt-0.5 text-xs leading-5 text-slate-500'>
+                {activity || <>Pointing at <strong className='font-bold text-violet-700'>{pointing || '–'}</strong></>}
+              </p>
+            </div>
+            <div className='shrink-0 [&_[role=group]]:w-24 [&_[role=group]]:p-0 [&_[role=group]>div]:gap-1 [&_[role=group]>span]:hidden [&_button]:min-w-11'>
+              <HandsSwitch hands={hands} onToggle={onHands} />
+            </div>
+          </div>
+          <div className='py-1'>
+            <LinesButton inline size={lines} onChoose={onLines} />
+          </div>
+          <div className={switchRow}>
+            <Switch checked={strip} onChange={onStrip} label='Alphabet strip' />
+            <span aria-hidden='true' className='shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600'>{strip ? 'On' : 'Off'}</span>
+          </div>
+        </div>
+      </section>
+      <section aria-label='View together'>
+        <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500'>View together</h3>
+        <div className='space-y-2'>
+          <button
+            type='button'
+            aria-pressed={showStudentView}
+            aria-label='Outline what the student can see'
+            title={showStudentView ? 'Hide the outline of what the student can see' : 'Outline what the student can see'}
+            onClick={onStudentView}
+            className={`flex min-h-11 w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors duration-150 motion-reduce:transition-none ${showStudentView ? 'border-violet-200 bg-violet-50 text-violet-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            {showStudentView ? <Eye className='h-4 w-4 shrink-0' aria-hidden='true' /> : <EyeOff className='h-4 w-4 shrink-0' aria-hidden='true' />}
+            <span className='min-w-0 flex-1'>Student view outline</span>
+            <span aria-hidden='true' className='text-xs'>{showStudentView ? 'On' : 'Off'}</span>
+          </button>
+          <div>
+            <button
+              type='button'
+              disabled={!studentHere}
+              aria-label='Show my view to student'
+              aria-describedby={!studentHere ? 'student-view-sharing-help' : undefined}
+              title={studentHere ? 'Bring student to my view' : 'Connect a student to share your view'}
+              onClick={onShareView}
+              className='flex min-h-11 w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-700 transition-colors duration-150 hover:bg-violet-50 disabled:cursor-not-allowed disabled:text-slate-400 motion-reduce:transition-none'
+            >
+              <Crosshair className='h-4 w-4 shrink-0' aria-hidden='true' />
+              Bring student to my view
+            </button>
+            {!studentHere && <p id='student-view-sharing-help' className='mt-1 px-3 text-xs leading-5 text-slate-500'>Connect a student to share your view</p>}
+          </div>
+          <div className='[&>button]:min-h-11 [&>button]:w-full [&>button]:justify-start [&>button]:gap-2 [&>button]:rounded-lg [&>button]:border-slate-200 [&>button]:px-3 [&>button]:py-2'>
+            <FocusButton onClick={onFocus} />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 export default function TutorRoom() {
   const [room, setRoom] = useState(loadSaved); // { code, key } once the server hands them out
@@ -370,7 +445,7 @@ export default function TutorRoom() {
       className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-sm font-bold text-violet-800 hover:border-violet-400 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${compact ? 'gap-1.5 px-2' : 'gap-2 px-3'}`}
     >
       <LayoutGrid className='h-5 w-5' aria-hidden='true' />
-      <span className={compact ? 'hidden min-[380px]:inline' : ''}>Pictures</span>
+      <span className={compact ? 'hidden md:inline' : ''}>Pictures</span>
     </button>
   );
 
@@ -381,49 +456,24 @@ export default function TutorRoom() {
       header={
         <TopBar
           title='Alphabet Whiteboard'
-          menu={
-            <>
-              <section aria-label='Board settings' className='flex flex-col items-start gap-2'>
-                <h2 className='text-xs font-bold uppercase tracking-wide text-slate-500'>Board settings</h2>
-                <HandsSwitch hands={hands.hands} onToggle={hands.show} />
-                <LinesButton size={wb.lines} onChoose={chooseLines} />
-              </section>
-              <Switch checked={studentTools} onChange={(on) => send({ t: 'tools', on })} label='Student tools' />
-              <Switch checked={wb.strip} onChange={wb.setStrip} label='Alphabet strip' />
-              <p className='text-base text-slate-700'>
-                {activity || (
-                  <>
-                    Pointing at <strong className='inline-block min-w-8 text-center text-2xl text-blue-700'>{pointing || '–'}</strong>
-                  </>
-                )}
-              </p>
-              <button
-                type='button'
-                aria-pressed={showStudentView}
-                aria-label='Outline what the student can see'
-                title={showStudentView ? 'Hide the outline of what the student can see' : 'Outline what the student can see'}
-                onClick={() => setShowStudentView((was) => !was)}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-sm font-semibold ${
-                  showStudentView ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-slate-300 text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                {showStudentView ? <Eye className='h-4 w-4' aria-hidden='true' /> : <EyeOff className='h-4 w-4' aria-hidden='true' />}
-                <span className='hide-inline'>Student’s view</span>
-              </button>
-              <button
-                type='button'
-                disabled={!studentHere}
-                aria-label='Show my view to student'
-                title='Show my view to student'
-                onClick={() => myView.current && send({ t: 'focus', ...myView.current })}
-                className='inline-flex items-center gap-1.5 rounded-full border border-violet-300 px-2.5 py-1.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40'
-              >
-                <Crosshair className='h-4 w-4' aria-hidden='true' />
-                <span className='hide-inline'>Show my view to student</span>
-              </button>
-              <FocusButton onClick={() => layout.current?.setFocus(true)} />
-            </>
-          }
+          menuSummary={<span className={`rounded-md px-2 py-1 text-xs font-semibold ${studentTools ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'}`}>Student tools {studentTools ? 'on' : 'off'}</span>}
+          menu={<TutorLessonControls
+            studentTools={studentTools}
+            onStudentTools={(on) => send({ t: 'tools', on })}
+            hands={hands.hands}
+            onHands={hands.show}
+            lines={wb.lines}
+            onLines={chooseLines}
+            strip={wb.strip}
+            onStrip={wb.setStrip}
+            pointing={pointing}
+            activity={activity}
+            showStudentView={showStudentView}
+            onStudentView={() => setShowStudentView((was) => !was)}
+            studentHere={studentHere}
+            onShareView={() => myView.current && send({ t: 'focus', ...myView.current })}
+            onFocus={() => layout.current?.setFocus(true)}
+          />}
           end={
             <button
               type='button'
@@ -527,12 +577,20 @@ export default function TutorRoom() {
       controls={layout}
       onPanelChange={setActivePanel}
       panels={[{
-        id: 'materials', label: 'Materials', icon: LayoutGrid,
+        id: 'materials', label: gamesOpen ? 'Games' : 'Materials', icon: LayoutGrid,
         content: <MaterialsWorkspace key={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} scope={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} tabs={[
           { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} boxTaps={wb.boxTaps} onResetSoundBoxes={wb.resetSoundBoxes} onShowSoundBoxes={!bridge.game && !phoneme.active ? () => stageApi.current?.showSoundBoxes() : null} /> },
           { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
           { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
-        ]} supplement={<button type='button' aria-haspopup='dialog' aria-expanded={gamesOpen} aria-controls='tutor-games' onClick={() => setGamesOpen(true)} className='flex min-h-11 shrink-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-violet-50'><span className='flex items-center gap-2'><Milestone className='h-4 w-4' aria-hidden='true' />Games</span>{bridge.game || phoneme.active ? <span className='text-xs font-semibold text-violet-700'>Playing · Open controls</span> : <span className='text-xs font-semibold text-slate-500'>Open</span>}</button>} />,
+        ]} activity={{
+          open: gamesOpen,
+          onOpen: () => setGamesOpen(true),
+          onClose: () => setGamesOpen(false),
+          current: phoneme.active ? 'Phoneme Pop' : bridge.game ? 'Alphabet Bridge' : null,
+          detail: phoneme.active ? `Level ${phoneme.state.level}` : bridge.game ? `${bridge.settings.length} letters` : null,
+          content: <TutorGamesPanel bridge={bridge} phoneme={phoneme} startBridge={startBridge} startPhoneme={startPhoneme} visible={gamesOpen} />,
+          quickAction: phoneme.active ? <button type='button' onClick={() => phoneme.act({ type: 'showNext' })} disabled={phoneme.state.phase !== 'tiles'} className='mt-1 min-h-11 w-full rounded-lg bg-violet-50 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-40'>Next sound</button> : bridge.game ? <button type='button' onClick={bridge.showNext} className='mt-1 min-h-11 w-full rounded-lg bg-violet-50 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-100'>Next gap</button> : null,
+        }} />,
       }]}
 
     />
@@ -551,9 +609,6 @@ export default function TutorRoom() {
         notice={studentBrowsing ? { text: browseText, tone: 'violet' } : { text: 'Add a library card to the board, or open a session picture to show your student.', tone: 'sky' }}
         onPlaced={(options) => { if (!options?.keepOpen) closePictureLibrary(); }}
       />
-    </PictureDrawer>
-    <PictureDrawer id='tutor-games' title='Games' icon={Milestone} open={gamesOpen} onClose={() => setGamesOpen(false)}>
-      <TutorGamesPanel bridge={bridge} phoneme={phoneme} startBridge={startBridge} startPhoneme={startPhoneme} visible={gamesOpen} />
     </PictureDrawer>
     </>
   );

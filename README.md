@@ -16,9 +16,12 @@ npm run build    # production build in dist/
 npm test         # game logic, whiteboard geometry, realtime rooms, web server (build first)
 npm run test:whiteboard # isolated Chrome desktop/phone teaching checks (build first)
 node scripts/check-frame-state.mjs  # actual-hook StrictMode repaint regression on an isolated Vite server
+node scripts/check-lesson-controls.mjs # isolated menu, permissions, keyboard and responsive checks (build first)
 ```
 
-The alphabet regression uses its own ephemeral, in-memory lesson server and no database, accounts, billing, or cloud storage. Use `--browser webkit` for WebKit, `--dev` for Vite/StrictMode, and `--output /path/to/results` to retain its JSON report and screenshots. The frame-state check verifies pending updates survive effect replay, server-added tiles appear without a second click, and unmount cancels outstanding frames.
+The lesson-controls check supports the same `--dev`, `--browser` and `--output` flags; it checks labeled access, inline writing-line changes, role permissions, focus handling, reduced motion and screen bounds.
+
+The whiteboard regression uses its own ephemeral, in-memory lesson server and no database, accounts, billing, or cloud storage. Use `--browser webkit` for WebKit, `--dev` for Vite/StrictMode, and `--output /path/to/results` to retain its JSON report and screenshots. The frame-state check verifies pending updates survive effect replay, server-added tiles appear without a second click, and unmount cancels outstanding frames.
 
 Open http://localhost:3000. `npm run dev` starts the API/WebSocket backend before Vite and stops both on Ctrl+C. It refuses to start if either development port is occupied, so a different app cannot silently receive picture, account, or room requests. For separate terminals, use `npm run server` and `npm run dev:client` instead.
 
@@ -39,7 +42,7 @@ The image builds the client, runs the tests (a failing test fails the build), an
 
 The shared picture catalog keeps the 16 original mouth-position families and adds 12 missing vowel/sequence cards, for 28 main cards. Every card uses one mouth photo and one anatomy diagram in the same layout. Glide instructions and a single-diagram motion cue describe moving sounds. A developer reference inventory tracks individual sounds and optional accent/sequence targets separately; it is not an official Take Flight deck. The source inventory and references are in `src/data/phonemeArticulation.js`.
 
-Materials sits below video with Letters, Pictures and Worksheets tabs. Search is directly below the tabs; each tab remembers its search and scroll position. Letters includes quick letter/team choices and the existing custom tile entry. Worksheets accepts images and PDFs. A private page picker previews a PDF locally; only explicitly selected pages enter the lesson as worksheet images and use the same Magic Select editor. Every imported page consumes one of the eight upload slots shared with ordinary pictures. Games has a separate launcher beside Materials, and its active game's controls stay first.
+Materials sits below video with Letters, Pictures and Worksheets tabs. Search is directly below the tabs; each tab remembers its search and scroll position. Letters includes quick letter/team choices and the existing custom tile entry. Worksheets accepts images and PDFs. A private page picker previews a PDF locally; only explicitly selected pages enter the lesson as worksheet images and use the same Magic Select editor. Every imported page consumes one of the eight upload slots shared with ordinary pictures. Games opens inline in the same side area, with the active game's controls first and a Return to materials action that preserves the previous tab, search, scroll and tile draft. Idle video is a compact start row; an active call keeps its controls available when minimized. On mobile, Materials has explicit open, Close and Expand/Reduce controls.
 
 The landing page has an isolated interactive lesson preview with Letter tiles, Sound boxes and Magic Select modes. It creates no room or lesson writes. Watch a 30-second demo opens a captioned video dialog; Join a lesson remains in navigation and opens the four-digit entry. A three-step walkthrough below the hero shows preparing materials, sharing the code and teaching together.
 
@@ -56,6 +59,8 @@ Tools: the compact rail has Select, Draw, Erase and Undo, with the tutor's two-t
 Letter tiles: the tutor adds letters or letter teams from Materials, or enters custom tiles separated by spaces (so sh stays one tile). The alphabet strip is a pointing reference. Existing tiles can be moved by either person when their tools permit it, and their final drop coordinates are shared with both screens. The tutor can duplicate, delete, edit, return tiles to the tray, and choose 2–5 sound boxes for snapping. Tile rules and geometry live in shared/tiles.js. Hiding the alphabet expands the board without moving its contents.
 
 Sound boxes is at the top of Materials → Letters. Layers shares the existing zoom footer, so no extra control row reduces the board. The tutor chooses Off or 2–5 boxes and can reset counters without moving tiles or erasing ink. With Select active, tap an empty part of a box to mark a sound; tap again to unmark it. Native keyboard counters support Tab, Enter and Space. Tutor and student see the same marks; student taps require Student tools. Drawing, erasing, dragging an object, and two-finger gestures take priority over counter taps. Show boxes in view adjusts only the current viewer’s zoom. The tutor chooses the phoneme count; the app does not derive it from the number of letters. Shared counters survive room reconnect and tutor restoration after a server restart.
+
+The workspace layout follows the recorded [teaching workspace design decisions](docs/teaching-workspace.md), with the complete research ledger retained in the repository.
 
 ## Video calls
 

@@ -154,7 +154,7 @@ const MENU_WIDTH = 248;
 
 // The tutor's handwriting lines: big, medium, small or off. The menu opens beside the rail, or
 // above the tools on a phone, and stays on screen.
-export function LinesButton({ size, onChoose }) {
+export function LinesButton({ size, onChoose, inline = false }) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState(null);
   const button = useRef(null);
@@ -191,6 +191,18 @@ export function LinesButton({ size, onChoose }) {
       window.removeEventListener('resize', close);
     };
   }, [open]);
+
+  if (inline) return (
+    <fieldset className='min-w-0'>
+      <legend className='mb-2 text-sm font-semibold text-slate-700'>Writing lines</legend>
+      <div role='group' aria-label='Writing lines' className='grid grid-cols-4 gap-2'>
+        {LINE_CHOICES.map((choice) => {
+          const on = choice.size === size;
+          return <button key={choice.size} type='button' aria-label={`${choice.label} writing lines`} aria-pressed={on} title={choice.hint} onClick={() => { if (!on) onChoose(choice.size); }} className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-semibold transition-colors duration-150 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-500 ${on ? 'border-violet-400 bg-violet-50 text-violet-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}><LinesPreview rows={choice.rows} />{choice.label}</button>;
+        })}
+      </div>
+    </fieldset>
+  );
 
   return (
     <>

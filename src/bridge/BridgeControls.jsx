@@ -21,7 +21,7 @@ export default function BridgeControls({ bridge, actionsFirst = false }) {
 
   const actions = (
       <div className='flex flex-wrap gap-3'>
-        <button type='button' onClick={showNext} className='min-h-11 rounded-full bg-amber-500 px-5 py-2 font-bold text-white shadow hover:bg-amber-600'>
+        <button type='button' onClick={showNext} className='min-h-11 rounded-full bg-violet-600 px-5 py-2 font-bold text-white hover:bg-violet-700'>
           Show me the next gap
         </button>
         <button type='button' onClick={start} className='min-h-11 rounded-full bg-violet-600 px-5 py-2 font-bold text-white shadow hover:bg-violet-700'>
