@@ -1,7 +1,7 @@
 import { cleanCrop } from '../../shared/pieces.js';
 
 const KEY = 'mpt.picture-library-view';
-export const emptyPictureLibraryView = () => ({ query: '', collection: '', scrollTop: 0, keepOpen: false });
+export const emptyPictureLibraryView = () => ({ query: '', collection: '', scrollTop: 0, keepOpen: false, filtersOpen: false });
 
 export function cleanPictureLibraryView(input) {
   const value = input && typeof input === 'object' ? input : {};
@@ -10,6 +10,7 @@ export function cleanPictureLibraryView(input) {
     collection: typeof value.collection === 'string' ? value.collection.slice(0, 100) : '',
     scrollTop: Number.isFinite(value.scrollTop) ? Math.min(1_000_000, Math.max(0, value.scrollTop)) : 0,
     keepOpen: value.keepOpen === true,
+    filtersOpen: value.filtersOpen === true,
   };
 }
 

@@ -7,11 +7,17 @@ const storage = () => {
 };
 
 describe('picture library view memory', () => {
-  it('preserves the search, collection, catalog scroll and touch preference across reopening', () => {
+  it.each([false, true])('preserves search, collection, scroll, touch preference and disclosure state (%s) across reopening', (filtersOpen) => {
     const target = storage();
-    const view = { query: 'short u', collection: 'Mouth Pictures', scrollTop: 1538, keepOpen: true };
+    const view = { query: 'short u', collection: 'Mouth Pictures', scrollTop: 1538, keepOpen: true, filtersOpen };
     savePictureLibraryView(view, target);
     expect(loadPictureLibraryView(target)).toEqual(view);
+  });
+
+  it('keeps old saved views collapsed and accepts only a boolean disclosure flag', () => {
+    expect(cleanPictureLibraryView({ query: 'vowel' }).filtersOpen).toBe(false);
+    expect(cleanPictureLibraryView({ filtersOpen: 'true' }).filtersOpen).toBe(false);
+    expect(cleanPictureLibraryView({ filtersOpen: true }).filtersOpen).toBe(true);
   });
 
   it('recovers from malformed, unavailable or untrusted browser storage', () => {
