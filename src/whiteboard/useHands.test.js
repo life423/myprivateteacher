@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useHands } from './useHands.js';
-import { STAGE } from './stage.js';
 
 // Exercise the real hook and hand protocol with controlled renders and timers, without
 // requiring a browser or a live room. Queued movement behaves like useWhiteboard's throttle.
@@ -81,309 +80,154 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('borrowing the existing shared glove for an alphabet letter', () => {
-  it('hides one original locally, moves it through the shared protocol, and leaves it at a successful drop', () => {
+describe('shared pointing hands', () => {
+  it('keeps enabled hands visible while they are held and commits the final pose atomically', () => {
     const hook = mountHands();
-    snapshot(hook, hand(true, 0.6, 0.17, 'A'));
-    expect(hook.value.beginLetterPickup('C', { x: 170, y: 75 })).toBe('r');
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.hands.r).toMatchObject({ on: true, by: 'tutor', x: 170, y: 75, letter: 'C' });
-    hook.value.moveLetterPickup({ x: 800, y: 600 });
-    hook.value.restore();
-    expect(hook.messages().at(-1)).toMatchObject({ t: 'hands', r: true, at: { r: { x: 0.5, y: 0.6 } } });
-    hook.value.finishLetterPickup({ x: 820, y: 620 });
-    expect(hook.messages().at(-1)).toEqual(
-      { t: 'hand', side: 'r', a: 'drop', x: 0.5125, y: 0.62, letter: null },
-    );
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ on: true, by: null, x: 820, y: 620 });
-    expect(hook.pending.size).toBe(0);
-    const count = hook.messages().length;
-    vi.advanceTimersByTime(5000);
-    expect(hook.messages()).toHaveLength(count);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('prefers the matching left glove and restores its exact origin on cancellation', () => {
-    const hook = mountHands();
-    snapshot(hook, hand(true, 0.6, 0.17, 'B'), hand(true, 0.2, 0.1, 'A'));
-    expect(hook.value.beginLetterPickup('A', { x: 50, y: 50 })).toBe('l');
-    expect(hook.value.visible.map(({ side }) => side)).toEqual(['r']);
-    hook.value.moveLetterPickup({ x: 900, y: 700 });
-    hook.value.finishLetterPickup();
-    expect(hook.value.hands.l).toEqual({ on: true, by: null, x: 320, y: 100, letter: 'A' });
-    expect(hook.messages().at(-1)).toEqual(
-      { t: 'hand', side: 'l', a: 'drop', x: 0.2, y: 0.1, letter: 'A' },
-    );
-    const count = hook.messages().length;
-    vi.advanceTimersByTime(5000);
-    expect(hook.messages()).toHaveLength(count);
-  });
-
-  it('falls back to the right glove and never takes a peer-held glove, even as tutor', () => {
-    const hook = mountHands();
-    snapshot(hook, hand(true), hand(true));
-    expect(hook.value.beginLetterPickup('Z', { x: 1500, y: 80 })).toBe('r');
-    hook.value.finishLetterPickup();
-    snapshot(hook, hand(true, 0.6, 0.17, 'Z', 'student'), hand(false));
-    hook.send.mockClear();
-    expect(hook.value.beginLetterPickup('Z', { x: 1500, y: 80 })).toBeNull();
-    expect(hook.messages()).toEqual([]);
-    expect(hook.value.visible).toHaveLength(1);
-    snapshot(hook, hand(false), hand(false));
-    hook.send.mockClear();
-    expect(hook.value.beginLetterPickup('Z', { x: 1500, y: 80 })).toBeNull();
-    expect(hook.messages()).toEqual([]);
-    expect(hook.value.hands.r.on).toBe(false);
-  });
-
-  it('can borrow a locally held glove without leaving a second keepalive timer', () => {
-    const hook = mountHands();
+    expect(hook.value.visible.map(hand => hand.side)).toEqual(['r']);
     expect(hook.value.grab('r')).toBe(true);
-    expect(hook.value.beginLetterPickup('A', { x: 50, y: 50 })).toBe('r');
-    vi.advanceTimersByTime(2033);
-    expect(hook.messages().filter((message) => message.a === 'grab')).toHaveLength(3); // two grabs, one keepalive
-    hook.value.finishLetterPickup();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('accepts authoritative takeover without restoring over the new owner', () => {
-    const hook = mountHands('student');
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.moveLetterPickup({ x: 700, y: 600 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.25, 0.3, null, 'tutor') });
-    hook.send.mockClear();
-    hook.value.finishLetterPickup();
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 400, y: 300 });
-    vi.advanceTimersByTime(5000);
-    expect(hook.messages()).toEqual([]);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('keeps optimistic coordinates in an ownership acknowledgement snapshot, then cancels when switched off', () => {
-    const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.moveLetterPickup({ x: 777, y: 555 });
-    snapshot(hook, hand(true, 0.6, 0.17, null, 'tutor'));
-    expect(hook.value.hands.r).toMatchObject({ x: 777, y: 555, by: 'tutor' });
-    expect(hook.value.visible).toEqual([]);
-    snapshot(hook, hand(false));
-    hook.send.mockClear();
-    hook.value.finishLetterPickup();
-    vi.advanceTimersByTime(5000);
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.messages()).toEqual([]);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('restores and releases on unmount with no delayed moves or keepalive left behind', () => {
-    const hook = mountHands();
-    snapshot(hook, hand(true, 0.3, 0.12, 'H'));
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.moveLetterPickup({ x: 500, y: 500 });
-    hook.unmount();
-    expect(hook.messages().at(-1)).toEqual(
-      { t: 'hand', side: 'r', a: 'drop', x: 0.3, y: 0.12, letter: 'H' },
-    );
-    const count = hook.messages().length;
-    vi.advanceTimersByTime(5000);
-    expect(hook.messages()).toHaveLength(count);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('uses mobile row letters when supplied, rather than recalculating them from desktop coordinates', () => {
-    const hook = mountHands();
-    hook.value.beginLetterPickup('P', { x: 50, y: 50 });
-    hook.value.moveLetterPickup({ x: 50, y: 50, letter: 'P' });
-    vi.advanceTimersByTime(33);
-    expect(hook.messages().at(-1)).toMatchObject({ a: 'move', letter: 'P', x: 0.0313, y: 0.05 });
-    hook.value.finishLetterPickup({ x: STAGE.width / 2, y: STAGE.height / 2 });
-  });
-
-  it('keeps a second pickup held when the first drop acknowledgement arrives late', () => {
-    const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.03125, 0.05, 'A', 'tutor') });
-    hook.value.finishLetterPickup({ x: 800, y: 600 });
-    hook.value.beginLetterPickup('B', { x: 110, y: 50 });
-    hook.value.moveLetterPickup({ x: 950, y: 650 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.6, null, null) });
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 950, y: 650 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.06875, 0.05, 'B', 'tutor') });
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 950, y: 650 });
-    hook.value.finishLetterPickup({ x: 1000, y: 700 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.625, 0.7) });
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ by: null, x: 1000, y: 700 });
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('ignores both older grab and drop echoes when a new pickup starts before either arrives', () => {
-    const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.finishLetterPickup({ x: 800, y: 600 });
-    hook.value.beginLetterPickup('B', { x: 110, y: 50 });
-    hook.value.moveLetterPickup({ x: 950, y: 650 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.03125, 0.05, 'A', 'tutor') });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.6) });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.06875, 0.05, 'B', 'tutor') });
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 950, y: 650 });
-    // After the current grab is acknowledged, an unsolicited release is authoritative.
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.4, 0.4) });
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ by: null, x: 640, y: 400 });
-    hook.send.mockClear();
-    hook.value.finishLetterPickup();
-    vi.advanceTimersByTime(5000);
-    expect(hook.messages()).toEqual([]);
-  });
-
-  it('does not reclose or rewind a completed glove on its delayed own grab echo', () => {
-    const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.finishLetterPickup({ x: 800, y: 600 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.6, 0.17, null, 'tutor') });
-    expect(hook.value.hands.r).toMatchObject({ by: null, x: 800, y: 600 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.6) });
-    expect(hook.value.hands.r).toMatchObject({ by: null, x: 800, y: 600 });
-  });
-
-  it('lets peer ownership and reconnect snapshots override pending local echoes', () => {
-    const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.finishLetterPickup({ x: 800, y: 600 });
-    hook.value.beginLetterPickup('B', { x: 110, y: 50 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.3, 0.4, null, 'student') });
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ by: 'student', x: 480, y: 400 });
-    expect(vi.getTimerCount()).toBe(0);
-    snapshot(hook, hand(true));
-    hook.value.beginLetterPickup('C', { x: 170, y: 50 });
-    hook.value.handle({ t: 'board', reason: 'sync', hands: { r: hand(true, 0.2, 0.3), l: hand(false) } });
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ by: null, x: 320, y: 300 });
-    hook.send.mockClear();
-    hook.value.finishLetterPickup();
-    vi.advanceTimersByTime(5000);
-    expect(hook.messages()).toEqual([]);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-
-  it('restores the visible original and reconciles retained React state when effects replay during a carry', () => {
-    const hook = mountHands();
-    snapshot(hook, hand(true, 0.3, 0.12, 'H'));
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.moveLetterPickup({ x: 700, y: 600 });
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 700, y: 600 });
-    hook.replayEffects();
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toEqual({ on: true, by: null, x: 480, y: 120, letter: 'H' });
-    expect(hook.messages().at(-1)).toEqual(
-      { t: 'hand', side: 'r', a: 'drop', x: 0.3, y: 0.12, letter: 'H' },
-    );
+    hook.value.move('r', { x: 800, y: 500, letter: null });
+    expect(hook.value.visible[0]).toMatchObject({ side: 'r', by: 'tutor', x: 800, y: 500 });
+    hook.value.drop('r');
+    expect(hook.messages().at(-1)).toEqual({ t: 'hand', side: 'r', a: 'drop', x: 0.5, y: 0.5, letter: null });
     expect(hook.pending.size).toBe(0);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(hook.value.visible[0]).toMatchObject({ by: null, x: 800, y: 500 });
     const count = hook.messages().length;
     vi.advanceTimersByTime(5000);
     expect(hook.messages()).toHaveLength(count);
-    expect(hook.value.beginLetterPickup('B', { x: 110, y: 50 })).toBe('r');
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.3, 0.12, 'H', 'tutor') });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.3, 0.12, 'H') });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.06875, 0.05, 'B', 'tutor') });
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 110, y: 50 });
-    hook.value.finishLetterPickup();
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ by: null, x: 480, y: 120 });
-  });
-
-  it.each(['clear', 'restore'])('preserves a new carry through a delayed %s snapshot from the previous placement', (reason) => {
-    const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.0313, 0.05, 'A', 'tutor') });
-    hook.value.finishLetterPickup({ x: 400, y: 350 });
-    hook.value.beginLetterPickup('B', { x: 110, y: 50 });
-    hook.value.moveLetterPickup({ x: 1000, y: 650 });
-    const epoch = hook.value.interactionEpoch;
-    hook.value.handle({ t: 'board', reason, hands: { r: hand(true, 0.25, 0.35), l: hand(false) } });
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.interactionEpoch).toBe(epoch);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 1000, y: 650 });
-    // Earlier release and current grab are still acknowledged in their original order.
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.25, 0.35) });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.0688, 0.05, 'B', 'tutor') });
-    hook.value.finishLetterPickup({ x: 1040, y: 680 });
-    expect(hook.messages().at(-1)).toEqual({ t: 'hand', side: 'r', a: 'drop', x: 0.65, y: 0.68, letter: null });
-    expect(hook.value.visible).toHaveLength(1);
-    expect(hook.value.hands.r).toMatchObject({ by: null, x: 1040, y: 680 });
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps an acknowledged locally held pose through a routine snapshot', () => {
+  it('preserves the pointing letter through display, restoration, and release', () => {
     const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.0313, 0.05, 'A', 'tutor') });
-    hook.value.moveLetterPickup({ x: 700, y: 500 });
-    hook.value.handle({ t: 'board', reason: 'clear', hands: { r: hand(true, 0.0313, 0.05, 'A', 'tutor'), l: hand(false) } });
-    expect(hook.value.visible).toEqual([]);
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 700, y: 500 });
-    hook.value.finishLetterPickup({ x: 800, y: 600 });
-    expect(hook.messages().at(-1)).toMatchObject({ a: 'drop', x: 0.5, y: 0.6 });
+    snapshot(hook, hand(true, 0.2, 0.1, 'H'), hand(true, 0.7, 0.2, 'Q'));
+    expect(hook.value.letters).toEqual(['Q', 'H']);
+    hook.value.grab('l');
+    hook.value.move('l', { x: 640, y: 100, letter: 'K' });
+    hook.value.restore();
+    expect(hook.messages().at(-1)).toMatchObject({ t: 'hands', r: true, l: true, at: { l: { x: 0.4, y: 0.1, letter: 'K' } } });
+    hook.value.drop('l');
+    expect(hook.messages().at(-1)).toMatchObject({ a: 'drop', side: 'l', x: 0.4, y: 0.1, letter: 'K' });
   });
 
-  it.each(['sync', undefined])('invalidates active pickup on a synchronization boundary (%s)', (reason) => {
+  it('allows tutor takeover, rejects student takeover, and never grabs a disabled hand', () => {
+    const student = mountHands('student');
+    snapshot(student, hand(true, 0.6, 0.17, null, 'tutor'));
+    expect(student.value.grab('r')).toBe(false);
+    expect(student.value.grab('l')).toBe(false);
+    expect(student.messages()).toEqual([]);
+    const tutor = mountHands();
+    snapshot(tutor, hand(true, 0.6, 0.17, null, 'student'));
+    expect(tutor.value.grab('r')).toBe(true);
+    expect(tutor.messages().at(-1)).toMatchObject({ a: 'grab', side: 'r' });
+  });
+
+  it('keeps only one ownership keepalive timer when regrabbing the same hand', () => {
     const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
+    hook.value.grab('r'); hook.value.grab('r');
+    vi.advanceTimersByTime(2033);
+    expect(hook.messages().filter(message => message.a === 'grab')).toHaveLength(3);
+    hook.value.drop('r');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not let a delayed previous release cancel a new direct hold', () => {
+    const hook = mountHands();
+    hook.value.grab('r');
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.6, 0.17, null, 'tutor') });
+    hook.value.move('r', { x: 800, y: 500 }); hook.value.drop('r');
+    hook.value.grab('r'); hook.value.move('r', { x: 1000, y: 700 });
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.5) });
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.5, null, 'tutor') });
+    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 1000, y: 700 });
+    hook.value.drop('r');
+    expect(hook.messages().at(-1)).toMatchObject({ a: 'drop', x: 0.625, y: 0.7 });
+  });
+
+  it('does not re-hold a completed gesture when its own grab acknowledgement is delayed', () => {
+    const hook = mountHands();
+    hook.value.grab('r'); hook.value.move('r', { x: 800, y: 500 }); hook.value.drop('r');
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.6, 0.17, null, 'tutor') });
+    expect(hook.value.hands.r).toMatchObject({ by: null, x: 800, y: 500 });
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.5) });
+    expect(hook.value.hands.r).toMatchObject({ by: null, x: 800, y: 500 });
+  });
+
+  it.each(['clear', 'restore'])('preserves an ongoing direct hold through a routine %s snapshot', reason => {
+    const hook = mountHands();
+    hook.value.grab('r');
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.6, 0.17, null, 'tutor') });
+    hook.value.move('r', { x: 700, y: 500 });
+    const epoch = hook.value.interactionEpoch;
+    hook.value.handle({ t: 'board', reason, hands: { r: hand(true, 0.6, 0.17, null, 'tutor'), l: hand(false) } });
+    expect(hook.value.interactionEpoch).toBe(epoch);
+    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 700, y: 500 });
+  });
+
+  it.each(['peer', 'disabled'])('stops a direct hold and queued motion when authority changes (%s)', reason => {
+    const hook = mountHands('student');
+    hook.value.grab('r'); hook.value.move('r', { x: 800, y: 600 });
+    const epoch = hook.value.interactionEpoch;
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(reason !== 'disabled', 0.25, 0.3, null, reason === 'peer' ? 'tutor' : null) });
+    expect(hook.value.interactionEpoch).toBeGreaterThan(epoch);
+    hook.send.mockClear(); hook.value.drop('r'); vi.advanceTimersByTime(5000);
+    expect(hook.messages()).toEqual([]);
+    expect(hook.value.hands.r).toMatchObject({ x: 400, y: 300 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['sync', undefined])('ends local gestures at a synchronization boundary (%s)', reason => {
+    const hook = mountHands();
+    hook.value.grab('r'); hook.value.move('r', { x: 800, y: 600 });
     const epoch = hook.value.interactionEpoch;
     hook.value.handle({ t: 'board', reason, hands: { r: hand(true, 0.2, 0.3), l: hand(false) } });
     expect(hook.value.interactionEpoch).toBeGreaterThan(epoch);
-    expect(hook.value.visible).toHaveLength(1);
-    hook.send.mockClear();
-    hook.value.finishLetterPickup({ x: 1000, y: 600 });
-    vi.advanceTimersByTime(5000);
+    hook.send.mockClear(); hook.value.drop('r'); vi.advanceTimersByTime(5000);
     expect(hook.messages()).toEqual([]);
     expect(hook.value.hands.r).toMatchObject({ by: null, x: 320, y: 300 });
   });
 
-  it('invalidates the pickup view when authority disables or takes the borrowed hand', () => {
-    const hook = mountHands('student');
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    const epoch = hook.value.interactionEpoch;
-    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.3, 0.4, null, 'tutor') });
-    expect(hook.value.interactionEpoch).toBeGreaterThan(epoch);
-    hook.value.finishLetterPickup({ x: 1000, y: 600 });
-    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 480, y: 400 });
-  });
-
-  it('cancels timers and pending movement on disconnect without writing restoration to a new socket', () => {
+  it('cancels queued work on disconnect without writing into a replacement connection', () => {
     const hook = mountHands();
-    hook.value.beginLetterPickup('A', { x: 50, y: 50 });
-    hook.value.moveLetterPickup({ x: 1000, y: 600 });
+    hook.value.grab('r'); hook.value.move('r', { x: 800, y: 600 });
     const epoch = hook.value.interactionEpoch;
-    hook.send.mockClear();
-    hook.value.disconnect();
-    expect(hook.value.interactionEpoch).toBeGreaterThan(epoch);
-    expect(hook.value.visible).toHaveLength(1);
-    hook.value.finishLetterPickup();
+    hook.send.mockClear(); hook.value.disconnect(); hook.value.drop('r');
     vi.advanceTimersByTime(5000);
+    expect(hook.value.interactionEpoch).toBeGreaterThan(epoch);
     expect(hook.messages()).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('releases a direct glove hold at its last pose on effect cleanup', () => {
+  it('releases the last displayed pose on effect cleanup and can resume after replay', () => {
     const hook = mountHands();
-    hook.value.grab('r');
-    hook.value.move('r', { x: 800, y: 500, letter: null });
-    hook.unmount();
+    hook.value.grab('r'); hook.value.move('r', { x: 800, y: 500 });
+    hook.replayEffects();
     expect(hook.messages().at(-1)).toEqual({ t: 'hand', side: 'r', a: 'drop', x: 0.5, y: 0.5, letter: null });
-    expect(hook.pending.size).toBe(0);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(hook.value.hands.r).toMatchObject({ by: null, x: 800, y: 500 });
+    expect(hook.pending.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+    hook.value.grab('r'); hook.value.move('r', { x: 960, y: 600 });
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.6, 0.17, null, 'tutor') });
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.5) });
+    hook.value.handle({ t: 'hand', side: 'r', ...hand(true, 0.5, 0.5, null, 'tutor') });
+    expect(hook.value.hands.r).toMatchObject({ by: 'tutor', x: 960, y: 600 });
+    hook.unmount(); expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('turning off a held hand cancels motion and invalidates its local gesture', () => {
+    const hook = mountHands();
+    hook.value.grab('r'); hook.value.move('r', { x: 800, y: 500 });
+    const epoch = hook.value.interactionEpoch;
+    hook.value.show('r', false);
+    expect(hook.value.visible).toEqual([]);
+    expect(hook.value.interactionEpoch).toBeGreaterThan(epoch);
+    const count = hook.messages().length;
+    vi.advanceTimersByTime(5000);
+    expect(hook.messages()).toHaveLength(count);
+    expect(hook.messages().at(-1)).toEqual({ t: 'hands', r: false });
+  });
+
+  it('ignores malformed movement rather than poisoning the final pose', () => {
+    const hook = mountHands();
+    hook.value.grab('r'); hook.value.move('r', { x: NaN, y: 500 }); hook.value.drop('r');
+    expect(hook.messages().at(-1)).toMatchObject({ a: 'drop', x: 0.6, y: 0.17 });
+  });
 });

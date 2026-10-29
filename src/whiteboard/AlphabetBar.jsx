@@ -1,6 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import Hand, { GLOVE_BOX } from './Hand.jsx';
-import AlphabetPickup, { isPickupCancellation, usePickupCancellation } from './AlphabetPickup.jsx';
 import { BOARD, CELL_WIDTH, LETTERS, STRIP } from './stage.js';
 import { usePointerLifecycle } from './pointerLifecycle.js';
 
@@ -23,12 +22,6 @@ function barSpot(hand) {
   return { row, across: (i - row * PER_ROW) / PER_ROW, down: clamp((hand.y - STRIP.y) / STRIP.height, 0, 1) };
 }
 
-// Where a letter sits on the shared board's strip.
-export const letterPoint = (letter) => {
-  const i = LETTERS.indexOf(letter);
-  return { x: STRIP.x + (i + 0.5) * CELL_WIDTH, y: STRIP.y + STRIP.height / 2, letter };
-};
-
 // A glove at the same size next to the letters as on the board, fingertip exactly on its spot.
 // It hangs below the letters, over the board, so when it can be held it catches taps itself,
 // anywhere on it; otherwise taps pass through it to the board.
@@ -49,19 +42,15 @@ function Glove({ hand, grabbable }) {
       }}
       aria-hidden='true'
     >
-      <Hand x={0} y={0} side={hand.side} holder={hand.by} pose={hand.by ? 'grab' : 'point'} />
+      <Hand x={0} y={0} side={hand.side} holder={hand.by} />
     </svg>
   );
 }
 
 const tone = (pointed) => (pointed ? 'border-2 border-blue-500 bg-blue-100 text-blue-800' : 'border-slate-200 bg-white text-slate-800');
 
-export default function AlphabetBar({ hands = [], canHold = false, handActions = null, me = 'student', canAddLetters = false, api = null, stageApi = null }) {
+export default function AlphabetBar({ hands = [], canHold = false, handActions = null, me = 'student', api = null, stageApi = null }) {
   const rows = useRef([]);
-  const letterDrag = useRef(null);
-  const touches = useRef(new Set());
-  const [ghost, setGhost] = useState(null);
-  const canCreate = me === 'tutor' && canAddLetters;
   const held = useRef(new Map()); // pointer id -> the side of the hand it holds
   const pointers = usePointerLifecycle(event => movePointer(event), event => finishPointer(event));
   const handEpoch = handActions?.interactionEpoch;
@@ -90,21 +79,7 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
     return () => { if (api.current === publicApi) api.current = null; };
   });
 
-  const cancelPickup = () => {
-    if (letterDrag.current) pointers.cancel(letterDrag.current.pointerId, 'pickup-cancel');
-  };
-  usePickupCancellation(ghost?.pointerId ?? null, cancelPickup, ghost?.pointerType);
   const finishPointer = (event) => {
-    touches.current.delete(event.pointerId);
-    const drag = letterDrag.current;
-    if (drag?.pointerId === event.pointerId) {
-      letterDrag.current = null; setGhost(null);
-      const moved = drag.moved || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 6;
-      const id = moved && event.type === 'pointerup' ? stageApi?.current?.dropLetter(drag.text, event.clientX, event.clientY) : null;
-      if (!id) stageApi?.current?.clearLetterPreview();
-      handActions?.finishLetterPickup?.(id ? stageApi?.current?.pointAt(event.clientX, event.clientY) : null);
-      return;
-    }
     const side = held.current.get(event.pointerId);
     if (!side) return;
     held.current.delete(event.pointerId);
@@ -115,15 +90,6 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
     handActions?.drop(side);
   };
   const movePointer = (event) => {
-    const drag = letterDrag.current;
-    if (drag?.pointerId === event.pointerId) {
-      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 6) drag.moved = true;
-      const onBoard = drag.moved && stageApi?.current?.previewLetter(drag.text, event.clientX, event.clientY);
-      const point = pointAt(event.clientX, event.clientY) || stageApi?.current?.pointAt(event.clientX, event.clientY);
-      if (point) handActions?.moveLetterPickup?.(point);
-      setGhost({ pointerId: event.pointerId, pointerType: drag.pointerType, text: drag.text, side: drag.side, x: event.clientX, y: event.clientY, onBoard: Boolean(onBoard) });
-      return;
-    }
     const side = held.current.get(event.pointerId);
     if (!side) return;
     const hand = hands.find((h) => h.side === side);
@@ -136,27 +102,14 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
   };
 
   return (
-    <>
     <div
       role='group'
       aria-label='Alphabet'
       className='grid shrink-0 touch-none select-none gap-1 rounded-2xl bg-white p-1.5 shadow'
       onPointerDown={(event) => {
-        if (isPickupCancellation(event) || (!canHold && !canCreate) || event.button !== 0) return;
+        if (!canHold || event.button !== 0) return;
         pointers.start(event);
-        if (event.pointerType === 'touch') {
-          touches.current.add(event.pointerId);
-          if (touches.current.size > 1) { pointers.cancelAll('multitouch'); return; }
-        }
         const p = pointAt(event.clientX, event.clientY);
-        // Direct letter presses win over the pointer glove and its nearby hit area.
-        if (canCreate && p?.letter && !letterDrag.current) {
-          const side = handActions?.beginLetterPickup?.(p.letter, p);
-          letterDrag.current = { pointerId: event.pointerId, pointerType: event.pointerType, text: p.letter, side: side || null, x: event.clientX, y: event.clientY, moved: false };
-          setGhost({ pointerId: event.pointerId, pointerType: event.pointerType, text: p.letter, side: side || null, x: event.clientX, y: event.clientY, onBoard: false });
-          pointers.capture(event);
-          return;
-        }
         const taken = new Set(held.current.values());
         // A press on a glove holds that hand; otherwise the hand nearest the finger, within
         // about a letter's width of it.
@@ -192,15 +145,9 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
           {row.map((letter) => (
             <span
               key={letter}
-              role={canCreate ? 'button' : undefined}
-              tabIndex={canCreate ? 0 : undefined}
-              aria-label={canCreate ? `Add letter ${letter} to board` : undefined}
-              title={canCreate ? 'Drag onto the board, or press Enter to add' : undefined}
-              onClick={event => { if (canCreate && event.detail === 0) stageApi?.current?.addLetter(letter); }}
-              onKeyDown={event => { if (canCreate && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); stageApi?.current?.addLetter(letter); } }}
               data-letter={letter}
               className={`flex h-9 items-center justify-center rounded-lg border text-lg font-extrabold sm:h-12 sm:rounded-xl sm:text-2xl ${tone(
-                ghost?.text === letter || hands.some((h) => h.letter === letter),
+                hands.some((h) => h.letter === letter),
               )}`}
             >
               {letter}
@@ -214,7 +161,5 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
         </div>
       ))}
     </div>
-    <AlphabetPickup pickup={ghost} />
-    </>
   );
 }

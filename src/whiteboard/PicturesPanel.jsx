@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BoxSelect, Check, ChevronDown, Eye, Gift, Image as ImageIcon, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
+import { ArrowLeft, BoxSelect, Check, ChevronDown, Eye, Gift, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
 import { mergePictureRegions, regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
 import PdfWorksheetImport from './PdfWorksheetImport.jsx';

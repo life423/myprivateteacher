@@ -9,7 +9,8 @@ function reloadOnce() {
     if (Date.now() - Number(window.sessionStorage.getItem(RELOADED_AT) || 0) < 60 * 1000) return false;
     window.sessionStorage.setItem(RELOADED_AT, String(Date.now()));
   } catch {
-    // storage blocked: still try the one reload
+    // Without a saved marker, another failed load could keep reloading forever.
+    return false;
   }
   window.location.reload();
   return true;

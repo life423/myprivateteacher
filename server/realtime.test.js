@@ -85,6 +85,25 @@ describe('whiteboard rooms', () => {
     await expect(connect('https://somewhere-else.example')).rejects.toThrow('403');
   });
 
+  it('rejects a malformed upgrade target without interrupting later valid connections', async () => {
+    const status = await new Promise((resolve, reject) => {
+      const req = http.request({
+        hostname: 'localhost', port: server.address().port, path: '//[',
+        headers: { Connection: 'Upgrade', Upgrade: 'websocket', Origin: ORIGIN },
+      }, (response) => {
+        response.resume();
+        response.once('end', () => resolve(response.statusCode));
+        response.once('error', reject);
+      });
+      req.once('error', reject);
+      req.end();
+    });
+    expect(status).toBe(403);
+    const { tutor } = await openRoom();
+    tutor.send({ t: 'end' });
+    expect((await tutor.take('closed')).reason).toBe('ended');
+  });
+
   it('relays pointers both ways, clamped, with the tool', async () => {
     const { tutor, code } = await openRoom();
     expect(code).toMatch(/^[0-9]{4}$/);
@@ -120,6 +139,53 @@ describe('whiteboard rooms', () => {
     const student = await connect();
     student.send({ t: 'join', code: '0000' });
     expect((await student.take('error')).reason).toBe('no-room');
+  });
+
+  it('does not leak an ended room’s held-hand timeout into a new lesson on the same socket', async () => {
+    const { tutor, code } = await openRoom();
+    const oldRoom = realtime.rooms.get(code);
+    tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+    expect(await tutor.take('hand')).toMatchObject({ side: 'r', by: 'tutor' });
+    tutor.send({ t: 'end' });
+    await tutor.take('closed');
+
+    tutor.send({ t: 'create' });
+    const next = await tutor.take('room');
+    expect(realtime.rooms.get(next.code)).not.toBe(oldRoom);
+    tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+    await tutor.take('hand');
+    tutor.send({ t: 'hand', side: 'r', a: 'drop', x: 0.8, y: 0.6 });
+    expect(await tutor.take('hand')).toMatchObject({ x: 0.8, y: 0.6, by: null });
+
+    // Wait through the old ownership timeout: a callback from the ended lesson
+    // must not tell this browser to put the new lesson’s hand back at its old home.
+    await expect(tutor.take('hand', 6250)).rejects.toThrow("no 'hand' message");
+    expect(oldRoom.hands.r).toMatchObject({ by: null, timer: null });
+    expect(realtime.rooms.get(next.code).hands.r).toMatchObject({ x: 0.8, y: 0.6, by: null });
+  }, 10_000);
+
+  it('clears shared-hand ownership timers when the realtime server shuts down', async () => {
+    const local = http.createServer();
+    const rt = attachRealtime(local, { allowedOrigins: new Set([ORIGIN]), tutorGraceMs: 10 });
+    await new Promise(resolve => local.listen(0, resolve));
+    let stopped = false;
+    try {
+      const tutor = await connect(ORIGIN, `ws://localhost:${local.address().port}/ws`);
+      tutor.send({ t: 'create' });
+      const { code } = await tutor.take('room');
+      tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+      await tutor.take('hand');
+      const room = rt.rooms.get(code);
+      expect(room.hands.r.timer).not.toBeNull();
+      const closed = new Promise(resolve => tutor.ws.once('close', resolve));
+      rt.close();
+      stopped = true;
+      expect(room.hands.r).toMatchObject({ by: null, timer: null });
+      await closed;
+    } finally {
+      if (!stopped) rt.close();
+      await new Promise(resolve => local.close(resolve));
+    }
   });
 
   it('closes the room when the tutor ends it, or leaves and does not come back', async () => {
@@ -440,29 +506,21 @@ describe('letter tiles', () => {
     expect((await student.take('tile:add')).tiles).toHaveLength(3);
   });
 
-  it('allows only tutors to create alphabet drops and copies, validates positions and caps the room', async () => {
+  it('allows only tutors to copy tiles, rejects duplicate ids and caps additions and copies', async () => {
     const { tutor, code } = await openRoom();
     const { student } = await joinRoom(code);
-    student.send({ t: 'tile:add-at', tile: { id: 'forged-add', text: 'a', x: 200, y: 300 } });
-    await nothing(tutor, 'tile:add');
-    tutor.send({ t: 'boxes:set', count: 3 });
-    await tutor.take('boxes:set');
-    const box = soundBoxes(3)[0];
-    tutor.send({ t: 'tile:add-at', tile: { id: 'from-alphabet', text: 'c', x: box.x, y: box.y } });
-    const original = (await tutor.take('tile:add')).tiles[0];
-    expect(original.x + tileWidth('c') / 2).toBe(box.x + box.width / 2);
-    expect(original.y + TILE_HEIGHT / 2).toBe(box.y + box.height / 2);
+    const [original] = await addTiles(tutor, ['c']);
     student.send({ t: 'tile:duplicate', id: original.id, copyId: 'forged-copy' });
     await nothing(tutor, 'tile:add');
     tutor.send({ t: 'tile:duplicate', id: original.id, copyId: 'real-copy' });
     const copy = (await tutor.take('tile:add')).tiles[0];
     expect(copy).toMatchObject({ id: 'real-copy', text: 'c', kind: 'consonant', heldBy: null });
     expect(copy.x === original.x && copy.y === original.y).toBe(false);
-    tutor.send({ t: 'tile:add-at', tile: { id: 'nan-drop', text: 'd', x: 'bad', y: 400 } });
+    tutor.send({ t: 'tile:duplicate', id: original.id, copyId: copy.id });
     await nothing(tutor, 'tile:add');
     await addTiles(tutor, Array.from({ length: MAX_TILES - 2 }, () => 'x'));
     tutor.send({ t: 'tile:duplicate', id: original.id, copyId: 'over-limit' });
-    tutor.send({ t: 'tile:add-at', tile: { id: 'over-limit-add', text: 'd', x: 100, y: 300 } });
+    tutor.send({ t: 'tile:add', tiles: [{ id: 'over-limit-add', text: 'd' }] });
     await nothing(tutor, 'tile:add');
   });
 

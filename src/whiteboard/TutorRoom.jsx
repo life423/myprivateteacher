@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, LayoutGrid, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
+import { Crosshair, Eraser, Eye, EyeOff, LayoutGrid, Milestone, MousePointer2, Pencil, Trash2, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import TutorGamesPanel from './TutorGamesPanel.jsx';
 import MaterialsWorkspace from './MaterialsWorkspace.jsx';
@@ -488,7 +488,6 @@ export default function TutorRoom() {
             tiles={wb.tiles}
             selectedTile={selectedTileId}
             canManageTiles
-            lettersReady={status === 'open' && Boolean(confirmedRoom)}
             tileActions={{ ...wb.tileActions, select: (id) => { setSelectedTileId(id); if (id) chooseTool('none'); } }}
             pieces={wb.pieces}
             pictures={wb.pictures}
@@ -524,7 +523,7 @@ export default function TutorRoom() {
       }
       call={call}
       peerName='your student'
-      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canAddLetters canHold handActions={hands} api={barApi} stageApi={stageApi} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold handActions={hands} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
       onPanelChange={setActivePanel}
       panels={[{

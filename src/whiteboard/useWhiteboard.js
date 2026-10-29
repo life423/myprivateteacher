@@ -1,10 +1,9 @@
-import { cleanPictureMetadata } from '../../shared/pictureMetadata.js';
 import { DEFAULT_LINES, isLineSize } from '../../shared/lines.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
 import { BOX_COUNTS, MAX_TILES, cleanTileText } from '../../shared/tiles.js';
 import { cleanBoxTap, cleanSoundBoxState } from '../../shared/soundBoxes.js';
-import { MAX_PICTURES, MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
+import { MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
 import { findPicturePlacement, picturePlacement, picturePlacementObstacles, PICTURE_RESERVATION_MS } from './picturePlacement.js';
 import { newPictureId, pictureUrl, shrinkPicture } from './pictures.js';
 import { createPictureUploads, uploadPicture } from './pictureUploads.js';
@@ -245,13 +244,6 @@ export function useWhiteboard(role, send) {
       },
       remove(id) {
         if (role === 'tutor') sendRef.current({ t: 'tile:delete', id });
-      },
-      addAt(text, x, y) {
-        const value = cleanTileText(text);
-        if (role !== 'tutor' || !value || !Number.isFinite(x) || !Number.isFinite(y) || tiles.current.size >= MAX_TILES) return null;
-        const id = makeId('tile');
-        sendRef.current({ t: 'tile:add-at', tile: { id, text: value, x, y } });
-        return id;
       },
       duplicate(id) {
         if (role !== 'tutor' || !tiles.current.has(id) || tiles.current.size >= MAX_TILES) return null;

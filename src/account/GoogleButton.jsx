@@ -39,6 +39,7 @@ export default function GoogleButton({ clientId, onSignedIn, width = 300 }) {
           auto_select: false,
           itp_support: true,
           callback: async ({ credential }) => {
+            if (!live) return;
             setError(null);
             const res = await fetch('/auth/google', {
               method: 'POST',
@@ -47,11 +48,11 @@ export default function GoogleButton({ clientId, onSignedIn, width = 300 }) {
             }).catch(() => null);
             if (!res?.ok) {
               const data = await res?.json().catch(() => null);
-              setError(data?.error || 'Sign-in failed. Please try again.');
+              if (live) setError(data?.error || 'Sign-in failed. Please try again.');
               return;
             }
             const account = await refreshAccount();
-            onSignedInRef.current?.(account.tutor);
+            if (live) onSignedInRef.current?.(account.tutor);
           },
         });
         google.accounts.id.renderButton(ref.current, {

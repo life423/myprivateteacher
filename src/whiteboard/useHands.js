@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { STAGE, letterAt } from './stage.js';
+import { STAGE } from './stage.js';
 
 // The two shared hands, right (r) and left (l), as the server has them, plus this person's
 // holding: grab, move, let go. Positions here are stage units. While a hand is held, this
@@ -16,7 +16,6 @@ const fromServer = (h) => ({
   by: h?.by ?? null,
 });
 const START = { r: fromServer({ on: true, x: 0.6 }), l: fromServer({ on: false, x: 0.4 }) };
-const pickupPoint = (point) => ({ x: point.x, y: point.y, letter: point.letter === undefined ? letterAt(point.x, point.y) : point.letter });
 const isPoint = (point) => Number.isFinite(point?.x) && Number.isFinite(point?.y);
 
 export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
@@ -24,11 +23,9 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
   const live = useRef(hands);
   const latest = useRef({}); // where this person last moved each hand, ahead of the next render
   const holding = useRef({}); // side -> the timer saying we still hold it
-  const pickup = useRef(null); // an existing shared glove temporarily drawn by the local pickup cursor
   // Grab/drop echoes alternate on this ordered socket. Counters retain their order without
   // an unbounded queue, even when another local gesture starts before the last echo arrives.
   const ownership = useRef({ l: { version: 0, pending: 0, nextBy: null }, r: { version: 0, pending: 0, nextBy: null } });
-  const [pickupSide, setPickupSide] = useState(null);
   const [interactionEpoch, setInteractionEpoch] = useState(0);
   const transport = useRef({ me, send, cancelThrottled });
   transport.current = { me, send, cancelThrottled };
@@ -43,11 +40,11 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     clearInterval(holding.current[side]);
     delete holding.current[side];
   };
-  const clearPickup = (side, revoked = false) => {
-    if (pickup.current?.side !== side) return;
-    pickup.current = null;
-    setPickupSide(null);
-    if (revoked) setInteractionEpoch((epoch) => epoch + 1);
+  const forgetHold = (side, notify = true) => {
+    const wasHolding = Boolean(holding.current[side]);
+    cancelMove(side);
+    stopHolding(side);
+    if (wasHolding && notify) setInteractionEpoch((epoch) => epoch + 1);
   };
   const resetOwnership = (side) => { ownership.current[side] = { version: 0, pending: 0, nextBy: null }; };
   const expectOwnership = (side, by) => {
@@ -69,21 +66,19 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
 
   useEffect(() => {
     // Fast Refresh can replay this effect while retaining React state. Its cleanup has
-    // already restored the live glove; reconcile the drawing state when setup runs again.
-    if (!pickup.current) { setPickupSide(null); setHands(live.current); }
+    // already released the live hand; reconcile the drawing state when setup runs again.
+    setHands(live.current);
     return () => {
-      const borrowed = pickup.current;
-      pickup.current = null;
       SIDES.forEach((side) => {
         const owned = holding.current[side] && live.current[side].by === transport.current.me;
         cancelMove(side);
         stopHolding(side);
         if (!owned) return;
-        const at = borrowed?.side === side ? borrowed.origin : latest.current[side] || live.current[side];
+        const at = latest.current[side] || live.current[side];
         latest.current[side] = at;
         live.current = { ...live.current, [side]: { ...live.current[side], ...at, by: null } };
         // The socket may survive effect replay. Its eventual release must not cancel
-        // a pickup begun after setup runs again.
+        // a direct hold begun after setup runs again.
         expectOwnership(side, null);
         sendDrop(side, at);
       });
@@ -104,19 +99,13 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
           if (syncing) {
             // A true synchronization snapshot starts a new authority boundary.
             resetOwnership(side);
-            cancelMove(side);
-            stopHolding(side);
-            clearPickup(side);
+            forgetHold(side, false);
           } else if (!next[side].on || (next[side].by && next[side].by !== me)) {
             resetOwnership(side);
-            cancelMove(side);
-            stopHolding(side);
-            clearPickup(side, true);
+            forgetHold(side);
           } else if (ownership.current[side].pending) next[side] = live.current[side];
           else if (next[side].by !== me) {
-            cancelMove(side);
-            stopHolding(side);
-            clearPickup(side, true);
+            forgetHold(side);
           } else if (holding.current[side]) Object.assign(next[side], latest.current[side]);
         });
         replace(next);
@@ -128,9 +117,7 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
       else if (staleOwnershipEcho(msg.side, hand.by)) return true;
       if (!hand.on || hand.by !== me) {
         resetOwnership(msg.side);
-        cancelMove(msg.side);
-        stopHolding(msg.side);
-        clearPickup(msg.side, true); // A new owner is authoritative; never restore over their hand.
+        forgetHold(msg.side); // The new owner is authoritative.
       }
       // While you hold it, where it is comes from you, not the server's copy.
       if (hand.on && hand.by === me && holding.current[msg.side]) update(msg.side, { on: hand.on, by: me });
@@ -143,9 +130,7 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
   // No gesture or queued motion belongs to a disconnected transport. Do not send
   // restoration on the next socket; its synchronization will supply authoritative hands.
   const disconnect = useCallback(() => {
-    SIDES.forEach((side) => { resetOwnership(side); cancelMove(side); stopHolding(side); });
-    pickup.current = null;
-    setPickupSide(null);
+    SIDES.forEach((side) => { resetOwnership(side); forgetHold(side, false); });
     replace(Object.fromEntries(SIDES.map((side) => [side, { ...live.current[side], by: null }])));
     setInteractionEpoch((epoch) => epoch + 1);
   }, []);
@@ -169,7 +154,7 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
 
   const move = useCallback(
     (side, p) => {
-      if (!holding.current[side]) return;
+      if (!holding.current[side] || !isPoint(p)) return;
       const at = { x: p.x, y: p.y, letter: p.letter ?? null };
       latest.current[side] = at;
       update(side, at);
@@ -182,7 +167,6 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
   const drop = useCallback(
     (side) => {
       cancelMove(side);
-      clearPickup(side);
       if (!holding.current[side]) return;
       stopHolding(side);
       const at = latest.current[side] || live.current[side];
@@ -193,66 +177,16 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     [send],
   );
 
-  // A successful letter drop leaves the borrowed glove there; cancellation returns it to
-  // its original point. Either way, the original shared hand is released, never cloned.
-  const finishLetterPickup = useCallback(
-    (point = null) => {
-      const borrowed = pickup.current;
-      if (!borrowed) return;
-      const { side, origin } = borrowed;
-      if (!holding.current[side] || !live.current[side].on || live.current[side].by !== me) {
-        cancelMove(side);
-        stopHolding(side);
-        clearPickup(side, true);
-        return;
-      }
-      const at = isPoint(point) ? pickupPoint(point) : origin;
-      latest.current[side] = at;
-      update(side, at);
-      drop(side);
-    },
-    [me, drop],
-  );
-
-  // Borrow a glove only if it is already out and nobody else holds it. A letter drag can
-  // still proceed with an ordinary cursor when this returns null; hidden gloves stay off.
-  const beginLetterPickup = useCallback(
-    (text, point) => {
-      finishLetterPickup();
-      if (!isPoint(point)) return null;
-      const available = ['r', 'l'].filter((side) => live.current[side].on && (!live.current[side].by || live.current[side].by === me));
-      const side = available.find((side) => live.current[side].letter === text) ?? available[0];
-      if (!side) return null;
-      const { x, y, letter } = live.current[side];
-      if (!grab(side)) return null;
-      pickup.current = { side, origin: { x, y, letter } };
-      setPickupSide(side);
-      move(side, { x: point.x, y: point.y, letter: text });
-      return side;
-    },
-    [me, finishLetterPickup, grab, move],
-  );
-
-  const moveLetterPickup = useCallback(
-    (point) => {
-      const borrowed = pickup.current;
-      if (!borrowed || !isPoint(point)) return;
-      move(borrowed.side, pickupPoint(point));
-    },
-    [move],
-  );
-
   const show = useCallback(
     (side, on) => {
       if (!on) {
-        if (pickup.current?.side === side) finishLetterPickup();
-        cancelMove(side);
-        stopHolding(side);
+        resetOwnership(side);
+        forgetHold(side);
       }
       update(side, on ? { on } : { on, by: null });
       send({ t: 'hands', [side]: on });
     },
-    [send, finishLetterPickup],
+    [send],
   );
 
   // After a server restart the tutor hands back which hands were out, and where.
@@ -262,9 +196,8 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     send({ t: 'hands', r: h.r.on, l: h.l.on, at });
   }, [send]);
 
-  // The borrowed hand remains in raw state, but the pickup cursor draws it locally.
-  const visible = SIDES.filter((s) => hands[s].on && s !== pickupSide).map((s) => ({ side: s, ...hands[s] }));
+  const visible = SIDES.filter((s) => hands[s].on).map((s) => ({ side: s, ...hands[s] }));
   const letters = visible.map((h) => h.letter).filter(Boolean);
 
-  return { hands, visible, letters, interactionEpoch, disconnect, handle, grab, move, drop, show, restore, beginLetterPickup, moveLetterPickup, finishLetterPickup };
+  return { hands, visible, letters, interactionEpoch, disconnect, handle, grab, move, drop, show, restore };
 }

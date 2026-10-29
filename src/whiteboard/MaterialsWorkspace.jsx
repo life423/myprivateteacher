@@ -53,7 +53,7 @@ export default function MaterialsWorkspace({ scope, tabs, supplement }) {
             {view[current]?.query && <button type='button' aria-label={`Clear ${selected?.label.toLowerCase()} search`} onClick={() => { changeQuery(''); search.current?.focus(); }} className='absolute right-0 top-0 inline-flex h-11 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100'><X className='h-4 w-4' aria-hidden='true' /></button>}
           </div>
         </header>
-        <div ref={area} data-materials-scroll onWheel={() => { restoring.current = false; }} onPointerDown={() => { restoring.current = false; }} className='min-h-0 flex-1 overflow-y-auto p-3' onScroll={() => {
+        <div ref={area} data-materials-scroll onWheel={() => { restoring.current = false; }} onPointerDown={() => { restoring.current = false; }} onKeyDownCapture={() => { restoring.current = false; }} className='min-h-0 flex-1 overflow-y-auto p-3' onScroll={() => {
           if (!restoring.current) setView((old) => ({ ...old, [current]: { ...old[current], scrollTop: area.current.scrollTop } }));
         }}>
           <div key={current} id={`${uid}-${current}-panel`} role='tabpanel' aria-labelledby={`${uid}-${current}-tab`} className='min-w-0'>{selected?.content(view[current]?.query || '')}</div>

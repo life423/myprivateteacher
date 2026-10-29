@@ -2,7 +2,6 @@ import { DEFAULT_LINES } from '../../shared/lines.js';
 import { guideRows } from './guides.js';
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Hand from './Hand.jsx';
-import AlphabetPickup, { isPickupCancellation, usePickupCancellation } from './AlphabetPickup.jsx';
 import InkCanvas from './InkCanvas.jsx';
 import Tile from './Tile.jsx';
 import PieceImage from './PieceImage.jsx';
@@ -12,7 +11,7 @@ import ObjectToolbar from './ObjectToolbar.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
-import { MAX_TILES, TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileKind, tileWidth } from '../../shared/tiles.js';
+import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileWidth } from '../../shared/tiles.js';
 import { clampPiece, isFacePiece, pieceSize } from '../../shared/pieces.js';
 import { Minus, Plus, Scan } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
@@ -20,7 +19,6 @@ import { picturePlacementBounds } from './picturePlacement.js';
 import { pictureOverlapState } from './pictureGeometry.js';
 import { pictureDragPosition, usePointerLifecycle } from './pointerLifecycle.js';
 
-const VIEW_BOX = `0 0 ${STAGE.width} ${STAGE.height}`;
 // Handwriting guides (top line, dashed midline, baseline) stay put even when the board grows.
 const PALM_MS = 1500; // touches this soon after an Apple Pencil event count as a resting palm
 const CLICK_SLOP = 6; // a tile that moves less than this was clicked, not dragged
@@ -134,7 +132,6 @@ export default function Stage({
   tiles = [],
   selectedTile = null,
   canManageTiles = false,
-  lettersReady = true,
   tileActions,
   pieces = [],
   pictures = [],
@@ -165,11 +162,7 @@ export default function Stage({
   const holding = useRef(new Map()); // pointer id -> { side, dx, dy }: the hands this screen is moving
   const tileDrag = useRef(null);
   const pieceDrag = useRef(null);
-  const letterDrag = useRef(null);
   const counterTap = useRef(null);
-  const [letterPreview, setLetterPreview] = useState(null);
-  const [alphabetPickup, setAlphabetPickup] = useState(null);
-  const [letterDrop, setLetterDrop] = useState(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
   live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, pieceActions, canManageTiles, strip, boxes, boxTaps, boxEpoch, onToggleSoundBox, canTapSoundBoxes, tool };
@@ -232,21 +225,6 @@ export default function Stage({
   const [activeBox, setActiveBox] = useState(null);
   const [layersOpen, setLayersOpen] = useState(false);
   useEffect(() => { counterTap.current = null; }, [boxes, boxEpoch, canTapSoundBoxes, tool]);
-  // A release is only complete once the server's tile is in the shared board.
-  useEffect(() => {
-    if (letterDrop?.id && letterDrop.status !== 'placed' && tiles.some(tile => tile.id === letterDrop.id)) {
-      setLetterDrop(current => current?.id === letterDrop.id ? { ...current, status: 'placed', message: `${current.text} added` } : current);
-    }
-  }, [tiles, letterDrop?.id, letterDrop?.status]);
-  useEffect(() => {
-    if (!letterDrop) return undefined;
-    const timer = setTimeout(() => {
-      setLetterDrop(current => current?.id !== letterDrop.id ? current : current?.status === 'pending'
-        ? { ...current, status: 'error', message: `${current.text} hasn't appeared yet. Try again once the lesson is connected.` }
-        : null);
-    }, letterDrop.status === 'pending' ? 4000 : letterDrop.status === 'placed' ? 2000 : 6000);
-    return () => clearTimeout(timer);
-  }, [letterDrop?.id, letterDrop?.status, letterDrop?.message]);
   useEffect(() => setLocalTileId(selectedTile), [selectedTile]);
   const [placementNotice, setPlacementNotice] = useState('');
   // Pieces are handled with the pointer tools (Watch, Hand), never the pen or eraser.
@@ -384,11 +362,11 @@ export default function Stage({
     live.current.onStroke?.end();
   }, [tool]);
 
-  const toStage = (clientX, clientY, lift = 0) => {
+  const toStage = (clientX, clientY) => {
     const matrix = svgRef.current?.getScreenCTM();
     if (!matrix) return null;
     const p = new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse());
-    return { x: clamp(p.x, 0, STAGE.width), y: clamp(p.y - lift, 0, STAGE.height) };
+    return { x: clamp(p.x, 0, STAGE.width), y: clamp(p.y, 0, STAGE.height) };
   };
 
   const withLetter = (p) => ({ ...p, letter: letterAt(p.x, p.y, live.current.strip) });
@@ -421,63 +399,6 @@ export default function Stage({
     return pickPiece(p) ? 'grab' : null;
   };
 
-  const previewLetter = (text, clientX, clientY) => {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
-    const point = inside ? toStage(clientX, clientY) : null;
-    if (!canManageTiles || !point || !insideBoard(point, boardRect(strip))) { setLetterPreview(null); setActiveBox(null); return false; }
-    const at = clampTile(text, point.x - tileWidth(text) / 2, Math.max(boardRect(strip).y, point.y - TILE_HEIGHT / 2));
-    const preview = { id: 'alphabet-preview', text, ...at, z: Infinity, kind: tileKind(text), heldBy: me };
-    setLetterPreview(preview);
-    setActiveBox(soundBoxTarget(preview, boxes, tiles)?.index ?? null);
-    return true;
-  };
-  const clearLetterPreview = () => { setLetterPreview(null); setActiveBox(null); };
-  const cancelAlphabetPickup = () => {
-    const drag = letterDrag.current;
-    if (drag) pointers.cancel(drag.pointerId, 'pickup-cancel');
-  };
-  usePickupCancellation(alphabetPickup?.pointerId ?? null, cancelAlphabetPickup, alphabetPickup?.pointerType);
-  useEffect(() => { if (!canManageTiles || !strip || fillTop) cancelAlphabetPickup(); }, [canManageTiles, strip, fillTop]); // eslint-disable-line react-hooks/exhaustive-deps
-  const startAlphabetPickup = (event, raw) => {
-    const letter = live.current.canManageTiles && !fillTop ? letterAt(raw.x, raw.y, live.current.strip) : null;
-    if (!letter || letterDrag.current) return false;
-    capture(event);
-    const side = live.current.handActions?.beginLetterPickup?.(letter, { ...raw, letter });
-    letterDrag.current = { pointerId: event.pointerId, pointerType: event.pointerType, text: letter, side: side || null, x: event.clientX, y: event.clientY, moved: false };
-    setLetterDrop(null);
-    setAlphabetPickup({ pointerId: event.pointerId, pointerType: event.pointerType, text: letter, side: side || null, x: event.clientX, y: event.clientY, onBoard: false });
-    setGrip('grabbing');
-    return true;
-  };
-  const addLetter = (text, point) => {
-    if (!canManageTiles || !tileActions?.addAt) return null;
-    const at = clampTile(text, point.x - tileWidth(text) / 2, Math.max(boardRect(strip).y, point.y - TILE_HEIGHT / 2));
-    const target = snapTile({ id: 'alphabet-new', text, ...at }, boxes, tiles) || at;
-    const id = tileActions.addAt(text, target.x, target.y);
-    if (id) selectLetter(id);
-    return id;
-  };
-  const dropLetter = (text, clientX, clientY) => {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
-    const point = inside ? toStage(clientX, clientY) : null;
-    clearLetterPreview();
-    if (!point || !insideBoard(point, boardRect(strip))) {
-      setLetterDrop({ text, status: 'error', message: `Drop ${text} on the white writing area.` });
-      return null;
-    }
-    if (!lettersReady) {
-      setLetterDrop({ text, status: 'error', message: 'The lesson is reconnecting. Try again when it is connected.' });
-      return null;
-    }
-    const id = addLetter(text, point);
-    setLetterDrop(id
-      ? { id, text, status: 'pending', message: `Placing ${text}…` }
-      : { text, status: 'error', message: tiles.length >= MAX_TILES ? `The board has ${MAX_TILES} tiles. Remove one before adding another.` : `${text} could not be added. Try again.` });
-    return id;
-  };
-
   // The hand under a point that this person may hold (the right one wins where they overlap):
   // the tutor can take either, even from the student; the student only one the tutor isn't holding.
   const handUnder = (raw, skip) => {
@@ -500,23 +421,16 @@ export default function Stage({
   };
 
   const onPointerDown = (event) => {
-    if (isPickupCancellation(event) || isPalm(event) || event.button !== 0) return;
+    if (isPalm(event) || event.button !== 0) return;
     pointers.start(event);
     const initialPoint = toStage(event.clientX, event.clientY);
-    // A letter cell is a letter source, even when a shared pointing glove covers it.
-    // The glove's palm/cuff below the strip still moves the shared pointer as before.
-    if (initialPoint && !(event.pointerType === 'touch' && gesture.current.touches.size) && startAlphabetPickup(event, initialPoint)) {
-      if (event.pointerType === 'touch') gesture.current.touches.set(event.pointerId, local(event.clientX, event.clientY));
-      return;
-    }
     // A visible tile wins over a glove covering its edge; the cuff remains grabbable.
-    if (!letterDrag.current && !(initialPoint && live.current.tileActions && pickTile(initialPoint)) && grabHand(event)) return;
+    if (!(initialPoint && live.current.tileActions && pickTile(initialPoint)) && grabHand(event)) return;
     if (event.pointerType === 'touch') {
       const g = gesture.current;
       g.touches.set(event.pointerId, local(event.clientX, event.clientY));
       if (g.touches.size === 2) {
         // A second finger: stop whatever the first was doing, and pinch or pan instead.
-        if (letterDrag.current) { live.current.handActions?.finishLetterPickup?.(); letterDrag.current = null; setAlphabetPickup(null); setGrip(null); clearLetterPreview(); }
         for (const id of g.touches.keys()) if (id !== event.pointerId) endAction({ pointerId: id });
         g.pan = null;
         const [a, b] = [...g.touches.values()];
@@ -611,15 +525,6 @@ export default function Stage({
 
   const onPointerMove = (event) => {
     if (event.pointerType === 'pen') lastPen.current = performance.now();
-    const ld = letterDrag.current;
-    if (ld && ld.pointerId === event.pointerId) {
-      if (Math.hypot(event.clientX - ld.x, event.clientY - ld.y) > CLICK_SLOP) ld.moved = true;
-      const onBoard = ld.moved && previewLetter(ld.text, event.clientX, event.clientY);
-      const point = toStage(event.clientX, event.clientY);
-      if (point) live.current.handActions?.moveLetterPickup?.(point);
-      setAlphabetPickup({ pointerId: event.pointerId, pointerType: ld.pointerType, text: ld.text, side: ld.side, x: event.clientX, y: event.clientY, onBoard: Boolean(onBoard) });
-      return;
-    }
     const held = holding.current.get(event.pointerId);
     if (held) {
       const hand = live.current.hands.find((h) => h.side === held.side);
@@ -701,7 +606,7 @@ export default function Stage({
     if (!raw) return;
     if (event.pointerType === 'mouse') {
       let next = null;
-      if ((canManageTiles && !fillTop && letterAt(raw.x, raw.y, strip)) || handUnder(raw)) next = 'grab';
+      if (handUnder(raw)) next = 'grab';
       else {
         const picked = tileOps ? pickTile(raw) : null;
         if (picked) next = 'grab';
@@ -769,17 +674,6 @@ export default function Stage({
       counterTap.current = null;
       if (soundTapCanFinish(tap, event, { canTap: live.current.canTapSoundBoxes, tool: live.current.tool, count: live.current.boxes, epoch: live.current.boxEpoch, pinching, point: toStage(event.clientX, event.clientY), scale: layoutRef.current.scale })) live.current.onToggleSoundBox?.(tap.index, tap.pressed);
     }
-    const ld = letterDrag.current;
-    if (ld && ld.pointerId === event.pointerId) {
-      letterDrag.current = null;
-      setAlphabetPickup(null);
-      setGrip(null);
-      const moved = ld.moved || Math.hypot(event.clientX - ld.x, event.clientY - ld.y) > CLICK_SLOP;
-      const id = moved && event.type === 'pointerup' ? dropLetter(ld.text, event.clientX, event.clientY) : null;
-      if (!id) clearLetterPreview();
-      live.current.handActions?.finishLetterPickup?.(id ? toStage(event.clientX, event.clientY) : null);
-      return;
-    }
     if (g.pan && g.pan.id === event.pointerId) {
       if (event.type === 'pointerup' && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
         const point = local(event.clientX, event.clientY);
@@ -792,7 +686,7 @@ export default function Stage({
   };
 
   const onPointerLeave = (event) => {
-    if (event.pointerType !== 'mouse' || holding.current.size || tileDrag.current || pieceDrag.current || letterDrag.current) return;
+    if (event.pointerType !== 'mouse' || holding.current.size || tileDrag.current || pieceDrag.current) return;
     setGrip(null);
     if (tool === 'pen' || tool === 'eraser') live.current.onLeave?.();
   };
@@ -824,9 +718,7 @@ export default function Stage({
         return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
       },
       selectPiece, showSoundBoxes,
-      previewLetter, clearLetterPreview, dropLetter,
       cancelInteractions: pointers.cancelAll,
-      addLetter(text) { const bounds = visibleBounds(); return addLetter(text, { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }); },
       pointAt(clientX, clientY) {
         const box = wrapRef.current?.getBoundingClientRect();
         if (!box || !layout.width) return null;
@@ -855,7 +747,7 @@ export default function Stage({
   return (
     <div className='flex h-full w-full min-h-0 flex-col'>
       <div ref={wrapRef} data-board-surface className='relative min-h-0 flex-1 select-none overflow-hidden'>
-      <Backdrop pointed={letters.join('') + (alphabetPickup?.text || '')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} boxTaps={boxTaps} />
+      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} boxTaps={boxTaps} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} overlap={overlapState.get(piece.id)} />
@@ -882,7 +774,6 @@ export default function Stage({
         {stacked.map((tile) => (
           <Tile key={tile.id} tile={tile} mine={me} selected={tile.id === selectedLetter?.id} />
         ))}
-        {letterPreview && <g opacity='.8' data-alphabet-preview><Tile tile={letterPreview} mine={me} /></g>}
         {peerView && (peerView.w < STAGE.width - 10 || peerView.h < STAGE.height - 10) && (
           <g className='pointer-events-none'>
             <rect
@@ -939,15 +830,9 @@ export default function Stage({
         {hands
           .filter((h) => !(fillTop && h.y < BOARD.y))
           .map((h) => (
-            <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} pose={h.by ? 'grab' : 'point'} />
+            <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} />
           ))}
       </svg>
-      <AlphabetPickup pickup={alphabetPickup} />
-      {letterDrop && <div data-letter-drop-status={letterDrop.status} role='status'
-        className={`pointer-events-none absolute bottom-3 left-1/2 z-20 max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-xl border px-3 py-2 text-center text-sm font-semibold shadow-sm ${letterDrop.status === 'error' ? 'border-amber-200 bg-amber-50 text-amber-900' : letterDrop.status === 'placed' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-blue-200 bg-white text-blue-900'}`}>
-        {letterDrop.message}
-      </div>}
-
       {boxes > 0 && <div role='group' aria-label='Sound box counters' className='pointer-events-none absolute inset-0 z-10'>
         {soundBoxes(boxes).map((box, index) => {
           const rect = soundBoxButtonRect(box, layout);
@@ -959,7 +844,7 @@ export default function Stage({
             style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}><span className='sr-only'>Sound {index + 1}</span></button>;
         })}
       </div>}
-      {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && !letterDrag.current && !letterPreview && (selectedPiece || selectedLetter) && <ObjectToolbar
+      {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && (selectedPiece || selectedLetter) && <ObjectToolbar
         object={selectedPiece || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
         kind={selectedPiece ? 'picture' : 'tile'}
         label={selectedPiece ? picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}
