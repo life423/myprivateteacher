@@ -207,8 +207,11 @@ export default function TutorRoom() {
   }, [callEnded]);
 
   useEffect(() => {
-    if (status !== 'open') setConfirmedRoom(null);
-  }, [status]);
+    if (status !== 'open') {
+      setConfirmedRoom(null);
+      wb.cancelPictureWrites();
+    }
+  }, [status, wb.cancelPictureWrites]);
 
   // A WebSocket opening is not enough: wait for the server to confirm the room.
   // Rejoining after a restart gets a new confirmation and reloads the catalog.
@@ -324,7 +327,10 @@ export default function TutorRoom() {
     pictures: wb.pictures,
     srcFor: (id) => pictureUrl(room.code, id),
     canAdd: true,
-    onAddFile: (file, options) => wb.addPicture(file, room, options),
+    uploadsReady: status === 'open' && Boolean(confirmedRoom),
+    onAddFile: (file, options) => wb.addPicture(file, status === 'open' ? confirmedRoom : null, options),
+    onAddPreparedPicture: (image, options) => wb.addPreparedPicture(image, status === 'open' ? confirmedRoom : null, options),
+    pdfWriteContext: status === 'open' && confirmedRoom ? wb.pictureWriteContext : null,
     onClear: wb.clearPictures,
     library,
     libraryState,

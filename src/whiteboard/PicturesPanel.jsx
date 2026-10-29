@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { ArrowLeft, BoxSelect, Check, ChevronDown, Eye, Gift, Image as ImageIcon, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
 import { mergePictureRegions, regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
+import PdfWorksheetImport from './PdfWorksheetImport.jsx';
 import { isFacePiece, MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
 import { defaultPictureCrop, picturePlacement } from './picturePlacement.js';
 import { catalogCollections, collectionLabel, filterLibraryCards } from './libraryCatalog.js';
@@ -123,7 +124,10 @@ export default function PicturesPanel({
   offers = [],
   srcFor,
   canAdd = false,
+  uploadsReady = true,
   onAddFile,
+  onAddPreparedPicture,
+  pdfWriteContext = null,
   library = [],
   libraryState = { status: 'ready' },
   onRetryLibrary,
@@ -212,6 +216,11 @@ export default function PicturesPanel({
     onOpenChangeRef.current?.(openId);
   }, [openId]);
   const fileRef = useRef(null);
+  const uploadTrigger = useRef(null);
+  const [pdfFile, setPdfFile] = useState(null);
+  const pdfContextRef = useRef(pdfWriteContext);
+  pdfContextRef.current = pdfWriteContext;
+  const pdfPlaced = useRef(new Set());
   const svgRef = useRef(null);
   const press = useRef(null);
 
@@ -337,6 +346,13 @@ export default function PicturesPanel({
 
   const addFile = async (file) => {
     if (!file || !canAdd || !onAddFile || busyRef.current) return;
+    if (!uploadsReady) { setNote('Reconnect to your lesson before uploading.'); return; }
+    if (worksheet && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''))) {
+      if (!onAddPreparedPicture || pdfWriteContext === null) { setNote('Reconnect to your lesson before importing a PDF.'); return; }
+      pdfPlaced.current.clear();
+      setPdfFile(file);
+      return;
+    }
     working(true);
     setNote(null);
     setPlacedNote(null);
@@ -431,7 +447,7 @@ export default function PicturesPanel({
 
   // Pasting an image anywhere on the page adds it (tutor only).
   useEffect(() => {
-    if (!canAdd || browseOnly) return undefined;
+    if (!canAdd || !uploadsReady || browseOnly || pdfFile) return undefined;
     const onPaste = (event) => {
       const file = [...(event.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
       if (!file) return;
@@ -758,6 +774,16 @@ export default function PicturesPanel({
 
   return (
     <section aria-label={panelTitle} data-library-view='catalog' aria-busy={busy || (catalogVisible && libraryState.status === 'loading')} className={embedded ? 'flex flex-col gap-3' : card}>
+      {pdfFile && worksheet && canAdd && !browseOnly && <PdfWorksheetImport file={pdfFile} uploadCount={uploads} writeContext={pdfWriteContext} returnFocusRef={uploadTrigger} onClose={() => setPdfFile(null)} onImportPage={async (prepared, options) => {
+        const result = await onAddPreparedPicture(prepared, options);
+        if (result?.id && !result.error && !options.signal.aborted && options.writeContext === pdfContextRef.current && !pdfPlaced.current.has(result.id)) {
+          const placed = placePicture(result, result.title || options.title, { keepOpen: true });
+          if (placed) pdfPlaced.current.add(result.id);
+          return { ...result, placementFailed: !placed };
+        }
+        return result;
+      }} />}
+
       <div className={`flex items-center justify-between ${browseOnly ? 'hidden' : ''}`}>
         <h2 className='text-sm font-bold text-slate-700'>{panelTitle}</h2>
         {!student && (
@@ -775,18 +801,19 @@ export default function PicturesPanel({
       {canAdd && !browseOnly && (
         <>
           <button
+            ref={uploadTrigger}
             type='button'
-            disabled={busy || uploads >= MAX_PICTURES}
+            disabled={busy || !uploadsReady || uploads >= MAX_PICTURES}
             onClick={() => fileRef.current?.click()}
             className={primary}
           >
             <Plus className='h-4 w-4' aria-hidden='true' />
-            {busy ? 'Adding…' : worksheet ? 'Upload worksheet image' : 'Upload picture'}
+            {busy ? 'Adding…' : worksheet ? 'Upload worksheet' : 'Upload picture'}
           </button>
           <input
             ref={fileRef}
             type='file'
-            accept='image/*'
+            accept={worksheet ? 'application/pdf,.pdf,image/*' : 'image/*'}
             className='hidden'
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -794,7 +821,8 @@ export default function PicturesPanel({
               addFile(file);
             }}
           />
-          <p className='-mt-1 text-xs leading-relaxed text-slate-500'>{worksheet ? 'Upload a worksheet as a JPG, PNG or another browser-supported image. It stays for this session.' : 'Upload or paste to add straight to the board. Choose a part afterwards if you need it. Pictures stay for this session only.'}</p>
+          <p className='-mt-1 text-xs leading-relaxed text-slate-500'>{worksheet ? 'Choose a PDF to select its pages, or upload a worksheet image. Selected pages stay for this session.' : 'Upload or paste to add straight to the board. Choose a part afterwards if you need it. Pictures stay for this session only.'}</p>
+          {!uploadsReady && <p role='status' className='text-xs font-semibold text-slate-600'>Reconnect to your lesson to upload {worksheet ? 'worksheets' : 'pictures'}.</p>}
         </>
       )}
       {placedNote && !catalogVisible && (

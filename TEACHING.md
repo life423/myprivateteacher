@@ -38,7 +38,7 @@ This is an original tool scenario, not a scripted Take Flight lesson. Assume the
 
 ## Current audit and delivery boundaries
 
-- Existing tiles, 2–5 sound boxes, articulation cards, Magic Select, ink and worksheet images provide manual teaching tools. They do not yet provide a saved instructional sequence or private dictation workflow.
+- Existing tiles, 2–5 sound boxes, articulation cards, Magic Select, ink, worksheet images and selected PDF page imports provide manual teaching tools. They do not yet provide a saved instructional sequence or private dictation workflow.
 - Phoneme Pop currently supplies the printed target and answer tokens. Its broad levels and automatic progression need a tutor-selected skill and review model.
 - Reviewed source corrections: `box` and `fox` need separate /k/ and /s/ units; `pink`, `bank` and `think` need separate /ng/ and /k/ units. Keep their normal written spellings. `nk` must not be marked as two letters making just one sound. [UFLI sound correspondences](https://ufli.education.ufl.edu/wp-content/uploads/2022/06/UFLI-Scope2.pdf).
 - That focused correction is not an audit of every word, pronunciation variant or illustration. A future sound model needs explicit pronunciation and spelling mappings, including voiced/unvoiced th and dialect differences.
@@ -47,7 +47,7 @@ This is an original tool scenario, not a scripted Take Flight lesson. Assume the
 
 ## Next delivery order
 
-1. Repair and test video reconnection and the reviewed sound-count errors.
-2. Add selected-page PDF worksheet import through the existing image/Magic Select pipeline. Keep previews private and respect upload limits; do not dump an entire PDF onto the board.
-3. Validate a real two-device lesson, including quiet speech, interruptions, student joining and tablet writing. Automated signaling tests do not establish these real-world qualities.
-4. Build saved preparation, per-activity board recovery, private tutor prompts and review notes around these requirements.
+1. Validate a real two-device lesson, including quiet speech, interruptions, student joining and tablet writing. Automated signaling and browser tests do not establish these real-world qualities.
+2. Build saved preparation, per-activity board recovery, private tutor prompts and review notes around these requirements.
+
+The reviewed sound-count corrections, video lifecycle repairs and selected-page PDF import are implemented. Continue validating them as the saved lesson workflow is developed.

@@ -45,6 +45,9 @@ describe('web server', () => {
       expect(res.headers['cache-control']).toBe('no-cache');
       expect(res.headers['content-security-policy']).toContain(`default-src 'self'`);
       expect(res.headers['content-security-policy']).toContain("img-src 'self' data: blob:");
+      expect(res.headers['content-security-policy']).toContain("worker-src 'self';");
+      expect(res.headers['content-security-policy']).toContain("font-src 'self' data:;");
+      expect(res.headers['content-security-policy']).not.toContain("'unsafe-eval'");
       expect(res.headers['x-powered-by']).toBeUndefined();
     }
   });

@@ -29,7 +29,7 @@ const SECURITY_HEADERS = {
   // Google's sign-in button loads its own script, style and frame from accounts.google.com/gsi,
   // and styles itself inline (hence 'unsafe-inline' for styles only; scripts stay locked to
   // this site and Google sign-in). Profile pictures come from googleusercontent.com.
-  'Content-Security-Policy': `default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; connect-src 'self' wss://${CANONICAL_HOST} https://accounts.google.com/gsi/; img-src 'self' data: blob: https://*.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`,
+  'Content-Security-Policy': `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client; worker-src 'self'; font-src 'self' data:; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; connect-src 'self' wss://${CANONICAL_HOST} https://accounts.google.com/gsi/; img-src 'self' data: blob: https://*.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`,
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=()', // camera and mic for video calls, this site only

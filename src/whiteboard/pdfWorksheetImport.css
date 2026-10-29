@@ -1,0 +1,27 @@
+.pdf-import-dialog {
+  width: min(960px, calc(100vw - 16px));
+  height: min(800px, calc(100dvh - 16px));
+  max-width: none;
+  max-height: calc(100dvh - 16px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 20px 60px #0f172a44;
+}
+.pdf-import-content { display: flex; min-height: 0; height: 100%; flex-direction: column; }
+.pdf-import-header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
+.pdf-import-body { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }
+.pdf-import-preview { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.pdf-import-footer { flex-shrink: 0; padding: 10px 12px; border-top: 1px solid #e2e8f0; background: white; }
+@media (min-width: 640px) {
+  .pdf-import-header, .pdf-import-footer { padding-right: 20px; padding-left: 20px; }
+  .pdf-import-body { padding: 16px 20px; }
+}
+@media (max-height: 450px) {
+  .pdf-import-header { padding-top: 4px; padding-bottom: 4px; }
+  .pdf-import-footer { padding-top: 6px; padding-bottom: 6px; }
+  .pdf-import-body { padding-top: 8px; padding-bottom: 8px; }
+}
