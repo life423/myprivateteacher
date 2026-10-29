@@ -16,7 +16,7 @@ export const WORD_LEVELS = [
 const w = (level, word, phonemes, display) => ({ level, word, phonemes: phonemes.split(' '), display });
 
 export const WORD_BANK = [
-  // Level 1: three sounds with a short vowel
+  // Level 1: short vowels; x in box/fox spells two sounds, /k/ then /s/.
   w(1, 'cat', 'c ă t', 'căt'),
   w(1, 'dog', 'd ŏ g', 'dŏg'),
   w(1, 'sun', 's ŭ n', 'sŭn'),
@@ -47,8 +47,8 @@ export const WORD_BANK = [
   w(1, 'mop', 'm ŏ p', 'mŏp'),
   w(1, 'log', 'l ŏ g', 'lŏg'),
   w(1, 'pot', 'p ŏ t', 'pŏt'),
-  w(1, 'box', 'b ŏ x', 'bŏx'),
-  w(1, 'fox', 'f ŏ x', 'fŏx'),
+  w(1, 'box', 'b ŏ k s', 'bŏx'),
+  w(1, 'fox', 'f ŏ k s', 'fŏx'),
   w(1, 'cup', 'c ŭ p', 'cŭp'),
   w(1, 'bug', 'b ŭ g', 'bŭg'),
   w(1, 'mud', 'm ŭ d', 'mŭd'),
@@ -81,8 +81,8 @@ export const WORD_BANK = [
   w(2, 'ring', 'r ĭ ng', 'rĭ[ng]'),
   w(2, 'song', 's ŏ ng', 'sŏ[ng]'),
   w(2, 'king', 'k ĭ ng', 'kĭ[ng]'),
-  w(2, 'pink', 'p ĭ nk', 'pĭ[nk]'),
-  w(2, 'bank', 'b ă nk', 'bă[nk]'),
+  w(2, 'pink', 'p ĭ ng k', 'pĭnk'),
+  w(2, 'bank', 'b ă ng k', 'bănk'),
   w(2, 'trip', 't r ĭ p', 'trĭp'),
   w(2, 'drum', 'd r ŭ m', 'drŭm'),
   w(2, 'crab', 'c r ă b', 'crăb'),
@@ -104,7 +104,7 @@ export const WORD_BANK = [
   w(3, 'phone', 'f ō n', '[ph]ōne'), // the sound is f, spelled ph
   w(3, 'light', 'l ī t', 'līght'),
   w(3, 'dream', 'd r ē m', 'drēam'),
-  w(3, 'think', 'th ĭ nk', '[th]ĭ[nk]'),
+  w(3, 'think', 'th ĭ ng k', '[th]ĭnk'),
   w(3, 'cloud', 'c l ou d', 'cl[ou]d'),
   w(3, 'sound', 's ou n d', 's[ou]nd'),
   w(3, 'cake', 'c ā k', 'cāke'),

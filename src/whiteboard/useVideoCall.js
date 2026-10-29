@@ -52,6 +52,8 @@ async function setLocal(pc, kind) {
 const typeOf = (candidate) => (/ typ (\w+)/.exec(candidate || '') || [])[1] || 'unknown';
 const tally = (counts) => Object.entries(counts).map(([type, n]) => `${n} ${type === 'host' ? 'direct' : type === 'srflx' ? 'internet' : type === 'relay' ? 'relay' : type}`).join(', ') || 'none';
 const STILL_CONNECTING_MS = 20000;
+const readinessId = () => globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const cleanReadinessId = (id) => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(id) ? id : null;
 
 // A one-to-one video call beside the whiteboard. The room's WebSocket only carries the
 // setup messages; the audio and video go browser to browser (or through the TURN relay).
@@ -70,12 +72,20 @@ export function useVideoCall(role, send) {
   const sendRef = useRef(send);
   sendRef.current = send;
   const pcRef = useRef(null);
+  const connectionIds = useRef(new WeakMap());
   const streamRef = useRef(null);
   const iceServers = useRef(null);
   const configWaiter = useRef(null);
   const makingOffer = useRef(false);
   const ignoreOffer = useRef(false);
   const queue = useRef(Promise.resolve());
+  const starting = useRef(false);
+  const startAttempt = useRef(0);
+  const readyId = useRef(null);
+  const peerReadyId = useRef(null);
+  const peerAnnounced = useRef(false);
+  const peerPresent = useRef(null);
+  const announceOnPresence = useRef(false);
   const [details, setDetails] = useState([]); // what happened, for the Connection details list
   const found = useRef({}); // this device's routes, by type
   const heard = useRef({}); // the other person's routes, by type
@@ -87,6 +97,10 @@ export function useVideoCall(role, send) {
   const closePc = () => {
     const pc = pcRef.current;
     pcRef.current = null;
+    makingOffer.current = false;
+    ignoreOffer.current = false;
+    // Old async descriptions must not hold up the replacement connection's queue.
+    queue.current = Promise.resolve();
     if (pc) {
       pc.onnegotiationneeded = null;
       pc.onicecandidate = null;
@@ -103,31 +117,36 @@ export function useVideoCall(role, send) {
     closePc();
     const pc = new RTCPeerConnection({ iceServers: iceServers.current || [] });
     pcRef.current = pc;
+    connectionIds.current.set(pc, { id: readyId.current, ...(peerReadyId.current ? { to: peerReadyId.current } : {}) });
     pc.ontrack = ({ streams }) => {
-      if (streams[0]) setRemoteStream(streams[0]);
+      if (pcRef.current === pc && streams[0]) setRemoteStream(streams[0]);
     };
     found.current = {};
     heard.current = {};
     pc.onicecandidate = ({ candidate }) => {
+      if (pcRef.current !== pc) return;
       if (candidate) {
         const type = typeOf(candidate.candidate);
         found.current[type] = (found.current[type] || 0) + 1;
-        sendRef.current({ t: 'rtc:candidate', candidate: candidate.toJSON() });
+        sendRef.current({ t: 'rtc:candidate', ...connectionIds.current.get(pc), candidate: candidate.toJSON() });
       } else {
         note(`This device found routes: ${tally(found.current)}`);
       }
     };
     pc.onnegotiationneeded = async () => {
+      if (pcRef.current !== pc) return;
       try {
         makingOffer.current = true;
         await setLocal(pc, 'offer');
-        sendRef.current({ t: 'rtc:description', description: pc.localDescription });
+        if (pcRef.current !== pc) return;
+        sendRef.current({ t: 'rtc:description', ...connectionIds.current.get(pc), description: pc.localDescription });
       } catch (error) {
+        if (pcRef.current !== pc) return;
         console.warn('Could not start call negotiation', error);
         note(`Couldn’t set up the call: ${error.name || 'error'} ${error.message || ''}`.trim());
         report(`offer failed: ${error.name}`);
       } finally {
-        makingOffer.current = false;
+        if (pcRef.current === pc) makingOffer.current = false;
       }
     };
     pc.onconnectionstatechange = () => {
@@ -153,6 +172,7 @@ export function useVideoCall(role, send) {
   const describeRoute = async (pc) => {
     try {
       const stats = await pc.getStats();
+      if (pcRef.current !== pc) return;
       let pair = null;
       stats.forEach((s) => {
         if (s.type === 'transport' && s.selectedCandidatePairId) pair = stats.get(s.selectedCandidatePairId);
@@ -163,7 +183,7 @@ export function useVideoCall(role, send) {
       note(`Connected ${label}${local?.protocol ? ` (${local.protocol})` : ''}`);
       report(`connected ${label}`);
     } catch {
-      report('connected');
+      if (pcRef.current === pc) report('connected');
     }
   };
 
@@ -171,23 +191,29 @@ export function useVideoCall(role, send) {
   // (direct connections only) if the answer doesn't come.
   const requestIceServers = () => {
     if (iceServers.current) return Promise.resolve(iceServers.current);
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        configWaiter.current = null;
-        resolve([]);
-      }, 5000);
-      configWaiter.current = (servers) => {
+    if (configWaiter.current) return configWaiter.current.promise;
+    const request = {};
+    request.promise = new Promise((resolve) => {
+      const timer = setTimeout(() => request.finish([], false), 5000);
+      request.finish = (servers, cache = true) => {
         clearTimeout(timer);
-        configWaiter.current = null;
-        iceServers.current = servers;
+        if (configWaiter.current === request) configWaiter.current = null;
+        if (cache) iceServers.current = servers;
         resolve(servers);
       };
-      sendRef.current({ t: 'rtc:config' });
     });
+    configWaiter.current = request;
+    sendRef.current({ t: 'rtc:config' });
+    return request.promise;
+  };
+
+  const announceReady = () => {
+    if (readyId.current && streamRef.current) sendRef.current({ t: 'rtc:ready', id: readyId.current });
   };
 
   const start = async () => {
-    if (streamRef.current) return;
+    if (streamRef.current || starting.current) return;
+    const attempt = ++startAttempt.current;
     setProblem(null);
     setDetails([]);
     note(`Starting video on ${deviceSummary()}`);
@@ -199,15 +225,22 @@ export function useVideoCall(role, send) {
       setStatus('error');
       return;
     }
+    starting.current = true;
     setStatus('starting');
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia(MEDIA);
     } catch (error) {
+      if (startAttempt.current !== attempt) return;
+      starting.current = false;
       note(`Camera didn’t start: ${error.name || 'error'}`);
       report(`camera: ${error.name}`);
       setProblem(PROBLEMS[error.name] || 'The camera couldn’t start. Try again.');
       setStatus('error');
+      return;
+    }
+    if (startAttempt.current !== attempt) {
+      stream.getTracks().forEach((track) => track.stop());
       return;
     }
     streamRef.current = stream;
@@ -216,13 +249,24 @@ export function useVideoCall(role, send) {
     setCamOn(true);
     note('Camera and microphone are on');
     const servers = await requestIceServers();
+    if (startAttempt.current !== attempt || streamRef.current !== stream) return;
+    starting.current = false;
     note(servers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn'))) ? 'Relay is ready' : 'No relay details: direct connections only');
-    buildPc();
-    setStatus(peerOnVideo ? 'connecting' : 'waiting');
-    sendRef.current({ t: 'rtc:ready' });
+    readyId.current = readinessId();
+    announceOnPresence.current = false;
+    // Wait for their ready message before creating an offer. An offer sent while
+    // their camera is off has no receiving PC and would never get an answer.
+    if (peerAnnounced.current) buildPc();
+    setStatus(peerAnnounced.current ? 'connecting' : 'waiting');
+    announceReady();
   };
 
   const stop = () => {
+    startAttempt.current += 1;
+    starting.current = false;
+    readyId.current = null;
+    announceOnPresence.current = false;
+    configWaiter.current?.finish([], false);
     closePc();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -233,6 +277,8 @@ export function useVideoCall(role, send) {
 
   // The other person left the video, or the room.
   const peerGone = () => {
+    peerReadyId.current = null;
+    peerAnnounced.current = false;
     setPeerOnVideo(false);
     if (!streamRef.current) return;
     closePc();
@@ -255,64 +301,129 @@ export function useVideoCall(role, send) {
     setCamOn(next);
   };
 
-  const onDescription = async (description) => {
-    const pc = pcRef.current;
-    if (!pc || !description) return;
+  const onDescription = async (pc, description) => {
+    if (!pc || pcRef.current !== pc || !description) return;
     const collision = description.type === 'offer' && (makingOffer.current || pc.signalingState !== 'stable');
     ignoreOffer.current = !polite && collision;
     if (ignoreOffer.current) return;
     // On a collision the polite side gives way. Newer browsers roll back by themselves inside
     // setRemoteDescription; older Safari needs it done first.
     if (collision && pc.signalingState === 'have-local-offer') await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+    if (pcRef.current !== pc) return;
     await pc.setRemoteDescription(description);
+    if (pcRef.current !== pc) return;
     if (description.type === 'offer') {
       await setLocal(pc, 'answer');
-      sendRef.current({ t: 'rtc:description', description: pc.localDescription });
+      if (pcRef.current !== pc) return;
+      sendRef.current({ t: 'rtc:description', ...connectionIds.current.get(pc), description: pc.localDescription });
     }
   };
 
-  const onCandidate = async (candidate) => {
-    const pc = pcRef.current;
-    if (!pc || !candidate) return;
+  const onCandidate = async (pc, candidate) => {
+    if (!pc || pcRef.current !== pc || !candidate) return;
     const type = typeOf(candidate.candidate);
     heard.current[type] = (heard.current[type] || 0) + 1;
     try {
       await pc.addIceCandidate(candidate);
     } catch (error) {
-      if (!ignoreOffer.current) throw error;
+      if (pcRef.current === pc && !ignoreOffer.current) throw error;
     }
   };
 
-  // Call messages from the server. Returns true when the message was about the call.
+  const currentSignal = (msg) => {
+    // A closed PC's messages may already be on the wire. Reject its old generation
+    // as well as messages addressed to our previous camera/transport generation.
+    // Untagged messages remain compatible with older clients and servers.
+    if (msg.id !== undefined && (!cleanReadinessId(msg.id) || msg.id !== peerReadyId.current)) return false;
+    if (msg.to !== undefined && (!cleanReadinessId(msg.to) || msg.to !== readyId.current)) return false;
+    return true;
+  };
+
+  // Call messages from the server. Room/presence updates are observed, not consumed.
   const handle = (msg) => {
     switch (msg.t) {
       case 'rtc:config':
-        configWaiter.current?.(Array.isArray(msg.iceServers) ? msg.iceServers : []);
+        configWaiter.current?.finish(Array.isArray(msg.iceServers) ? msg.iceServers : []);
         return true;
-      case 'rtc:ready':
+      case 'room':
+        // The WebSocket has confirmed our seat again. It may have replaced a stale
+        // socket without the other browser ever seeing an absent-presence event.
+        peerPresent.current = null;
+        if (configWaiter.current) sendRef.current({ t: 'rtc:config' });
+        if (streamRef.current && readyId.current) {
+          readyId.current = readinessId();
+          peerAnnounced.current = false;
+          setPeerOnVideo(false);
+          setProblem(null);
+          closePc();
+          setStatus('waiting');
+          announceOnPresence.current = true;
+        }
+        return false; // The room still needs its key, board and presence handlers.
+      case 'presence': {
+        const present = Boolean(msg[polite ? 'tutor' : 'student']);
+        const previous = peerPresent.current;
+        peerPresent.current = present;
+        if (present && readyId.current && (announceOnPresence.current || previous === false)) {
+          announceOnPresence.current = false;
+          announceReady();
+        }
+        return false;
+      }
+      case 'rtc:ready': {
+        const id = cleanReadinessId(msg.id);
+        if (msg.id !== undefined && !id) return true;
+        const duplicate = id && id === peerReadyId.current;
+        peerReadyId.current = id;
+        peerAnnounced.current = true;
         setPeerOnVideo(true);
-        // They're starting (or starting again after a refresh), so start a fresh connection too.
-        if (streamRef.current) {
+        if (duplicate) {
+          if (readyId.current && streamRef.current && !pcRef.current) buildPc();
+          if (readyId.current) setStatus((current) => current === 'waiting' ? 'connecting' : current);
+          return true;
+        }
+        if (streamRef.current && readyId.current) {
+          // Their new generation needs a fresh connection. Duplicate readiness
+          // above only builds if our own room recovery is waiting for its ACK.
           buildPc();
+          setProblem(null);
           setStatus('connecting');
+          // Echo our SAME generation once, so a returning peer learns we are still
+          // on video. IDs deduplicate the acknowledgement; legacy peers get no echo.
+          if (id) announceReady();
         }
         return true;
+      }
       case 'rtc:leave':
         peerGone();
         return true;
-      case 'rtc:description':
+      case 'rtc:description': {
+        if (!currentSignal(msg)) return true;
+        // Older peers do not echo ready after transport recovery. Their untagged
+        // offer is the acknowledgement; reuse our active media to receive it.
+        if (!pcRef.current && readyId.current && streamRef.current && msg.description?.type === 'offer' && msg.id === undefined && msg.to === undefined) {
+          buildPc();
+          peerAnnounced.current = true;
+          setStatus('connecting');
+        }
+        const pc = pcRef.current;
         setPeerOnVideo(true);
         queue.current = queue.current
-          .then(() => onDescription(msg.description))
+          .then(() => onDescription(pc, msg.description))
           .catch((error) => {
+            if (pcRef.current !== pc) return;
             console.warn('Call setup failed', error);
             note(`Call setup failed: ${error.name || 'error'} ${error.message || ''}`.trim());
             report(`setup failed: ${error.name}`);
           });
         return true;
-      case 'rtc:candidate':
-        queue.current = queue.current.then(() => onCandidate(msg.candidate)).catch(() => {});
+      }
+      case 'rtc:candidate': {
+        if (!currentSignal(msg)) return true;
+        const pc = pcRef.current;
+        queue.current = queue.current.then(() => onCandidate(pc, msg.candidate)).catch(() => {});
         return true;
+      }
       default:
         return false;
     }
@@ -330,7 +441,11 @@ export function useVideoCall(role, send) {
 
   useEffect(
     () => () => {
-      pcRef.current?.close();
+      startAttempt.current += 1;
+      configWaiter.current?.finish([], false);
+      const pc = pcRef.current;
+      pcRef.current = null;
+      pc?.close();
       streamRef.current?.getTracks().forEach((track) => track.stop());
     },
     [],

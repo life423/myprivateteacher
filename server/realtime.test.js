@@ -494,6 +494,54 @@ describe('video call setup', () => {
     await nothing(outsider.tutor, 'rtc:candidate');
   });
 
+  it('relays a bounded readiness generation without echoing or leaking extra fields', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    const outsider = await openRoom();
+    tutor.send({ t: 'rtc:ready', id: 'restart_1-abc', extra: 'not call setup' });
+    expect(await student.take('rtc:ready')).toEqual({ t: 'rtc:ready', id: 'restart_1-abc' });
+    student.send({ t: 'rtc:ready', id: 'x'.repeat(64) });
+    expect(await tutor.take('rtc:ready')).toEqual({ t: 'rtc:ready', id: 'x'.repeat(64) });
+    for (const id of ['x'.repeat(65), 'bad id', '<script>', 42, { value: 'wrong' }]) {
+      tutor.send({ t: 'rtc:ready', id });
+    }
+    await nothing(student, 'rtc:ready');
+    await nothing(tutor, 'rtc:ready');
+    await nothing(outsider.tutor, 'rtc:ready');
+  });
+
+  it('relays validated signalling generations and drops malformed sender or target IDs', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    const description = { type: 'offer', sdp: 'v=0 current generation' };
+    const candidate = { candidate: 'candidate:1 typ host', sdpMid: '0', sdpMLineIndex: 0 };
+    tutor.send({ t: 'rtc:description', id: 'sender-1', to: 'target_2', description, extra: 'omit' });
+    expect(await student.take('rtc:description')).toEqual({ t: 'rtc:description', id: 'sender-1', to: 'target_2', description });
+    student.send({ t: 'rtc:candidate', id: 'x'.repeat(64), to: 'sender-1', candidate });
+    expect(await tutor.take('rtc:candidate')).toMatchObject({ t: 'rtc:candidate', id: 'x'.repeat(64), to: 'sender-1', candidate });
+    for (const identity of [{ id: '' }, { id: 'x'.repeat(65) }, { to: 'not safe' }, { id: 5 }, { to: null }]) {
+      tutor.send({ t: 'rtc:description', ...identity, description });
+      tutor.send({ t: 'rtc:candidate', ...identity, candidate });
+    }
+    await nothing(student, 'rtc:description');
+    await nothing(student, 'rtc:candidate');
+  });
+
+  it('can exchange readiness after replacing a stale student socket without absent presence', async () => {
+    const { tutor, code } = await openRoom();
+    const first = await joinRoom(code);
+    await tutor.take('presence');
+    const closed = new Promise((resolve) => first.student.ws.once('close', (code) => resolve(code)));
+    const returning = await joinRoom(code, first.key); // Old TCP connection is still open.
+    expect(await closed).toBe(4000);
+    expect(await tutor.take('presence')).toEqual({ t: 'presence', tutor: true, student: true });
+    returning.student.send({ t: 'rtc:ready', id: 'returning-student' });
+    expect(await tutor.take('rtc:ready')).toEqual({ t: 'rtc:ready', id: 'returning-student' });
+    tutor.send({ t: 'rtc:ready', id: 'existing-tutor' });
+    expect(await returning.student.take('rtc:ready')).toEqual({ t: 'rtc:ready', id: 'existing-tutor' });
+    await nothing(tutor, 'presence');
+  });
+
   it('drops malformed or oversized call messages', async () => {
     const { tutor, code } = await openRoom();
     const { student } = await joinRoom(code);
