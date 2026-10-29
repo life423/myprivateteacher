@@ -8,7 +8,7 @@ import { newPictureId, shrinkPicture } from '../whiteboard/pictures.js';
 import { catalogCollections, collectionLabel, filterLibraryCards } from '../whiteboard/libraryCatalog.js';
 import { MAX_PICTURE_BYTES } from '../../shared/pieces.js';
 import { ACTIVITY_TYPES, MAX_ACTIVITIES, MAX_ASSETS, acknowledgeSave, activity, attachAsset, editDraft, isDirty, loadedEditor, moveActivity } from './editor.js';
-import { createLesson, deleteLesson, deleteLessonAsset, getLesson, getLessonCatalog, lessonAssetUrl, lessonCardUrl, listLessons, saveLesson, uploadLessonAsset } from './api.js';
+import { createLesson, deleteLesson, deleteLessonAsset, getLesson, getLessonCatalog, lessonAssetUrl, lessonCardUrl, listLessons, listLessonTemplates, saveLesson, uploadLessonAsset, createLessonFromTemplate } from './api.js';
 
 const button = 'inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 disabled:cursor-not-allowed disabled:opacity-50';
 const secondary = `${button} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`;
@@ -44,6 +44,47 @@ function SignIn({ clientId, onSignedIn, expired = false }) {
 function ErrorNotice({ error, children }) {
   if (!error) return null;
   return <div className='rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800'><p role='alert'>{error.message || error}</p>{children && <div className='mt-3 flex flex-wrap gap-2'>{children}</div>}</div>;
+}
+
+// The included original is read-only. This action opens a tutor-owned copy,
+// or its existing edited copy; the gallery never edits shared template content.
+export function IncludedLessons({ onAuthenticationRequired }) {
+  const [templates, setTemplates] = useState(null), [error, setError] = useState(null), [copyError, setCopyError] = useState(null), [attempt, setAttempt] = useState(0), [using, setUsing] = useState(null);
+  const active = useRef(false), copying = useRef(null), controllerRef = useRef(null), authRef = useRef(onAuthenticationRequired);
+  authRef.current = onAuthenticationRequired;
+  useEffect(() => { active.current = true; return () => { active.current = false; controllerRef.current?.abort(); }; }, []);
+  useEffect(() => {
+    const controller = new AbortController(); setError(null);
+    listLessonTemplates({ signal: controller.signal }).then((items) => { if (!controller.signal.aborted) setTemplates(items); }).catch((failure) => { if (!controller.signal.aborted && !aborted(failure)) setError(failure); });
+    return () => controller.abort();
+  }, [attempt]);
+  const useTemplate = async (id) => {
+    if (copying.current) return;
+    const controller = new AbortController(); controllerRef.current = controller; copying.current = id; setUsing(id); setCopyError(null);
+    try {
+      const lesson = await createLessonFromTemplate(id, { signal: controller.signal });
+      if (active.current && !controller.signal.aborted) navigate(`/lessons/${lesson.id}`);
+    } catch (failure) {
+      if (active.current && !controller.signal.aborted && !aborted(failure)) { setCopyError(failure); if (failure.status === 401) authRef.current?.(); }
+    } finally {
+      if (controllerRef.current === controller) { controllerRef.current = null; copying.current = null; if (active.current) setUsing(null); }
+    }
+  };
+  return <section aria-labelledby='included-lessons-heading' className='min-w-0'>
+    <h2 id='included-lessons-heading' className='text-lg font-bold'>Included lessons</h2>
+    <p className='mb-3 mt-1 text-sm leading-6 text-slate-600'>A starting point you can make your own. Your changes and review notes stay private.</p>
+    <ErrorNotice error={error}><button type='button' onClick={() => setAttempt((value) => value + 1)} className={secondary}>Retry included lessons</button></ErrorNotice>
+    <ErrorNotice error={copyError} />
+    {templates === null ? <p role='status' className='mt-3 text-sm text-slate-500'>{error ? 'Included lessons could not be loaded. Your own lessons are still available below.' : 'Loading included lessons…'}</p> : templates.length ? <ul className='mt-3 grid gap-3'>
+      {templates.map((template) => <li key={template.id}><article className='rounded-2xl border border-violet-200 bg-white p-4 shadow-sm sm:p-5'>
+        <div className='flex flex-wrap items-start justify-between gap-2'><h3 className='min-w-0 break-words text-base font-bold text-slate-900'>{template.title}</h3><span className='shrink-0 rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700'>Included</span></div>
+        <p className='mt-2 text-sm leading-6 text-slate-600'>{template.description}</p>
+        <p className='mt-3 text-xs leading-5 text-slate-500'><span className='font-semibold text-slate-700'>Already taught: </span>{template.knownLetters.join(' · ')}</p>
+        <div className='mt-4 flex flex-wrap items-center justify-between gap-3'><p className='text-xs text-slate-500'>{template.activityCount} activities · Editable private copy</p><button type='button' disabled={Boolean(using)} onClick={() => useTemplate(template.id)} className={`${button} w-full min-w-[9rem] border border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300 hover:bg-violet-100 sm:w-auto`}>{using === template.id ? 'Opening…' : 'Use this lesson'}</button></div>
+      </article></li>)}
+    </ul> : <p className='rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500'>No included lessons are available yet.</p>}
+    {using && <p role='status' className='sr-only'>Opening your private lesson copy…</p>}
+  </section>;
 }
 
 function LessonList({ clientId }) {
@@ -87,6 +128,8 @@ function LessonList({ clientId }) {
       <p className='mt-3 text-xs leading-5 text-slate-500'>Review · Build words · Dictation · Read</p>
       <Link to='/whiteboard/teach' className={`${secondary} mt-5 w-full`}>Open a blank whiteboard</Link>
     </form>
+    <div className='min-w-0 space-y-6'>
+    <IncludedLessons onAuthenticationRequired={() => setExpired(true)} />
     <section aria-labelledby='saved-lessons-heading' className='min-w-0'>
       {expired && <div className='mb-4'><SignIn expired clientId={clientId} onSignedIn={() => { setExpired(false); setRetry((value) => value + 1); }} /></div>}
       <h2 id='saved-lessons-heading' className='mb-3 text-lg font-bold'>Your lessons</h2>
@@ -97,6 +140,7 @@ function LessonList({ clientId }) {
         </Link>}</li>)}
       </ul>}
     </section>
+    </div>
   </div>;
 }
 

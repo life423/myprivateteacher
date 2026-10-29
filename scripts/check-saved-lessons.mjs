@@ -105,10 +105,24 @@ async function endButton(room){
   await button.waitFor();return button;
 }
 async function waitActive(room,index){
-  await panel(room.tutor).getByRole('button',{name:'Activity is on the board',exact:true}).waitFor();
-  assert.equal(await panel(room.tutor).getByRole('combobox',{name:'Lesson activity',exact:true}).inputValue(),String(index));
+  const reading=room.saved?.activities[index]?.type==='read';
+  if(reading){
+    // Reading intentionally closes the phone sheet. Confirm the runner's real
+    // completed state in its mounted private panel, not visible sheet chrome.
+    const mounted=room.tutor.locator('section[aria-label="Prepared lesson"]');
+    await mounted.getByRole('button',{name:'Activity is on the board',exact:true,includeHidden:true}).waitFor({state:'attached'});
+    assert.equal(await mounted.locator('select[aria-label="Lesson activity"]').inputValue(),String(index));
+  }else{
+    await panel(room.tutor).getByRole('button',{name:'Activity is on the board',exact:true}).waitFor();
+    assert.equal(await panel(room.tutor).getByRole('combobox',{name:'Lesson activity',exact:true}).inputValue(),String(index));
+  }
   const live=realtime.rooms.get(room.code);assert(live);
   for(const page of[room.tutor,room.student])await page.waitForFunction(id=>window.lessonReceived.filter(msg=>msg.t==='board').at(-1)?.pageId===id,live.pageId);
+  if(reading){
+    const scope={pageId:live.pageId,pageEpoch:live.pageEpoch};
+    await room.tutor.waitForFunction(scope=>window.lessonSent.some(msg=>msg.t==='focus'&&msg.reading===true&&msg.pageId===scope.pageId&&msg.pageEpoch===scope.pageEpoch),scope);
+    await room.student.waitForFunction(scope=>window.lessonReceived.some(msg=>msg.t==='focus'&&msg.reading===true&&msg.pageId===scope.pageId&&msg.pageEpoch===scope.pageEpoch),scope);
+  }
   return live.board;
 }
 async function chooseActivity(room,index){await openLesson(room);await panel(room.tutor).getByRole('combobox',{name:'Lesson activity',exact:true}).selectOption(String(index));return waitActive(room,index);}
@@ -237,7 +251,7 @@ async function run(base,mobile){
       room.readPage=realtime.rooms.get(room.code).pageId;
       const picture=[...realtime.rooms.get(room.code).board.pieces.values()][0];assert.equal(realtime.rooms.get(room.code).pictures.get(picture.pic).title,'Lesson worksheet');
       const source=await student.locator('[data-picture-piece] image').getAttribute('href');const res=await studentContext.request.get(new URL(source,base).href);assert.equal(res.status(),200);
-      await activate(room,panel(tutor).getByRole('button',{name:'Previous activity',exact:true}));await waitActive(room,2);await bothCount(room,'[data-letter-tile]',4);
+      await openLesson(room);await activate(room,panel(tutor).getByRole('button',{name:'Previous activity',exact:true}));await waitActive(room,2);await bothCount(room,'[data-letter-tile]',4);
       assert.deepEqual([...realtime.rooms.get(room.code).board.tiles.keys()],ids);assert.equal(realtime.rooms.get(room.code).pageId,room.buildPage);assert.equal(realtime.rooms.get(room.code).pages.size,4);
       return{learnerTilesRetained:4,activityPages:4,worksheetTitleGeneric:true,...await privacy(room)};
     });

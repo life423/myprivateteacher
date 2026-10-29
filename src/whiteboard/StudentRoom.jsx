@@ -1,3 +1,4 @@
+import { settleReadingFrame } from './readingFocus.js';
 import { useEffect, useRef, useState } from 'react';
 import { Eraser, LayoutGrid, Pencil, Undo2 } from 'lucide-react';
 import { navigate } from '../router.jsx';
@@ -40,6 +41,7 @@ export default function StudentRoom({ code }) {
   const [game, setGame] = useState(null); // the bridge, while the tutor has it on
   const [selected, setSelected] = useState(null); // the letter picked from the bridge's tray
   const stageApi = useRef(null);
+  const readingFocus = useRef(0);
   const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
   const [pictureOpenRequest, setPictureOpenRequest] = useState(null);
@@ -71,6 +73,7 @@ export default function StudentRoom({ code }) {
   const sendRef = useRef(() => {});
 
   const wb = useWhiteboard('student', (msg) => sendRef.current(msg));
+  const currentBoard = useRef(wb); currentBoard.current = wb;
   const pageScope = wb.pageScope();
   const pageSend = (message, origin = pageScope) => wb.sendPageMessage(message, origin);
   const hands = useHands({ me: 'student', send: pageSend, sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
@@ -111,7 +114,16 @@ export default function StudentRoom({ code }) {
         if (msg.pic) setBrowsing(true); // the tutor is showing them a picture: open the library
         return;
       }
-      if (msg.t === 'focus') return setFollow({ x: msg.x, y: msg.y, w: msg.w, h: msg.h, n: Date.now() });
+      if (msg.t === 'focus') {
+        const request = ++readingFocus.current;
+        const rect = { x: msg.x, y: msg.y, w: msg.w, h: msg.h };
+        if (!msg.reading) return setFollow({ ...rect, n: Date.now() });
+        const origin = wb.pageScope(), generation = wb.pictureWriteContext;
+        const current = () => request === readingFocus.current && currentBoard.current.pageReady && currentBoard.current.pictureWriteContext === generation && currentBoard.current.pageScope()?.pageId === origin?.pageId && currentBoard.current.pageScope()?.pageEpoch === origin?.pageEpoch;
+        setFollow(null); setBrowsing(false); layout.current?.closeSheet();
+        void settleReadingFrame(stageApi, current).then(ready => { if (ready && current()) stageApi.current?.showRect(rect); });
+        return;
+      }
       if (msg.t === 'tools') {
         applyTools(Boolean(msg.on), true);
       } else if (msg.t === 'room') {

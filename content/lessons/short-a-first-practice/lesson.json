@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "id": "starter-short-a-amstp-v1",
+  "title": "Short a practice",
+  "description": "Original reusable practice for learners who already know the sound-spelling correspondences a, m, s, t and p; not an official Take Flight lesson.",
+  "knownLetters": [
+    "a",
+    "m",
+    "s",
+    "t",
+    "p"
+  ],
+  "wordChain": [
+    "mat",
+    "pat",
+    "sat",
+    "sap",
+    "tap",
+    "map"
+  ],
+  "readingLines": [
+    "Sam sat.",
+    "Pat sat.",
+    "Tap, Sam, tap!",
+    "Tap, Pat, tap!"
+  ],
+  "asset": {
+    "id": "reading",
+    "file": "reading.png",
+    "source": "reading.svg",
+    "w": 1600,
+    "h": 1700
+  },
+  "activities": [
+    {
+      "id": "review-sounds",
+      "type": "review",
+      "title": "Sound review",
+      "directions": "Goal: connect short a, m, s, t and p to their sounds before reading and spelling. This is an original practice lesson for a learner who already knows these correspondences. Confirm readiness; if they are unfamiliar, teach fewer correspondences and defer the harder work.\n\nPoint to one letter at a time and ask for its sound, rather than its name. Mix the order. Model an uncertain sound, have the learner repeat it, then revisit the letter. Keep m and s continuous when blending; keep t and p brief without an added \"uh\". Use the learner’s established pronunciation model for short a.\n\nBriefly say mat and ask the learner to repeat it, separate its three sounds, and blend it again. Later, before the reading sheet, match S to s, P to p and T to t; explain that a capital begins a name or sentence. Continue at a comfortable pace, with no timer.",
+      "targets": "a\nm\ns\nt\np",
+      "letters": "a m s t p",
+      "boxes": 0,
+      "assetIds": [],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "build-short-a",
+      "type": "build",
+      "title": "Build and change words",
+      "directions": "Enable Student tools if the learner will move the tiles. Say mat. Have the learner repeat it and identify three sounds. Model placing m, a and t into the three boxes, one spelling for each sound, then blend and read mat. The other letter tiles can wait outside the boxes.\n\nGuide the change to pat. Continue through the private word chain, changing one sound and its spelling at a time. Ask \"Which sound changed?\" and \"Where in the word?\" After each change, have the learner blend and read the whole word. Briefly explain sap orally if unfamiliar.\n\nMove unused letters out of the boxes; use Materials if another copy is needed. If the learner hesitates, model the uncertain sound-spelling link, complete that word together, and give another supported attempt. Do not require a picture guess or a fast response. Stop or reduce the set as needed.",
+      "targets": "mat\npat\nsat\nsap\ntap\nmap",
+      "letters": "m a t p s",
+      "boxes": 3,
+      "assetIds": [],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "dictation-short-a",
+      "type": "dictation",
+      "title": "Spell from dictation",
+      "directions": "The answers below are private. The student gets an empty writing area with three sound boxes. Enable Student tools so the learner can write, and have them select Draw.\n\nSay one word without showing its spelling. The learner repeats the word, segments its three sounds, writes a spelling in each box, then blends and reads the word back. Clear the learner’s response between words when ready. Do not load the answer tiles in advance.\n\nIf needed, identify the uncertain sound-spelling connection, model it, and have the learner try that word again. Offer specific feedback about the step they used. Record what support was needed in Review next time; do not infer a diagnosis or invent a performance score.",
+      "targets": "sat\nmap\ntap",
+      "letters": "",
+      "boxes": 3,
+      "assetIds": [],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "read-sam-pat",
+      "type": "read",
+      "title": "Read Sam and Pat",
+      "directions": "Introduce Sam and Pat as fictional names. Preview S/s, P/p and T/t, the period, comma and exclamation mark orally; these marks are not extra sound boxes.\n\nAsk the learner to read the four-line passage on the sheet. If a word is difficult, point to its spellings, help the learner blend, and then reread the sentence. Use decoding help rather than pictures or guesses from context.\n\nAsk \"Who sat?\" and \"What were Sam and Pat asked to do?\" Let the learner show what tap means. Reread comfortably if useful, prioritizing accurate, meaningful reading rather than speed.\n\nFinish by noting one success and a specific item to revisit. Save any observation privately with Review next time; leave the note empty until there is an actual observation.",
+      "targets": "",
+      "letters": "",
+      "boxes": 0,
+      "assetIds": [
+        "reading"
+      ],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://ies.ed.gov/ncee/wwc/PracticeGuide/21",
+      "checked": "2026-10-29",
+      "use": "Sound-letter links, decoding and writing words, and connected-text reading; this does not validate this sample lesson."
+    },
+    {
+      "url": "https://ufli.education.ufl.edu/resources/teaching-resources/glossary/",
+      "checked": "2026-10-29",
+      "use": "One sound per sound box, consonants without added schwa, blending and immediate feedback; no UFLI lesson or passage copied."
+    }
+  ]
+}

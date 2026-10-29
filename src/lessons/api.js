@@ -5,9 +5,9 @@ export class LessonError extends Error {
 const required = (data, key, valid) => { if (!valid(data?.[key])) throw new LessonError('The server returned an incomplete reply. Please try again.'); return data[key]; };
 const documentReply = (data) => required(data, 'lesson', (lesson) => lesson && typeof lesson.id === 'string');
 const segment = (value) => encodeURIComponent(String(value));
-export async function lessonRequest(path = '', { signal, headers, ...options } = {}) {
+async function requestJson(url, { signal, headers, ...options } = {}) {
   let response;
-  try { response = await fetch(`/api/lessons${path}`, { credentials: 'same-origin', cache: 'no-store', ...options, signal, headers }); }
+  try { response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...options, signal, headers }); }
   catch (error) {
     if (error?.name === 'AbortError') throw error;
     throw new LessonError('Could not connect. Your changes are still here. Please try again.');
@@ -24,6 +24,9 @@ export async function lessonRequest(path = '', { signal, headers, ...options } =
   if (data === null && response.status !== 204) throw new LessonError('The server returned an incomplete reply. Please try again.', response.status);
   return data;
 }
+export const lessonRequest = (path = '', options) => requestJson(`/api/lessons${path}`, options);
+export const listLessonTemplates = async (options) => required(await requestJson('/api/lesson-templates', options), 'templates', Array.isArray);
+export const createLessonFromTemplate = async (id, options) => documentReply(await lessonRequest(`/from-template/${segment(id)}`, { ...options, method: 'POST' }));
 const json = (method, body, options) => ({ ...options, method, headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(body) });
 export const listLessons = async (options) => required(await lessonRequest('', options), 'lessons', Array.isArray);
 export const getLesson = async (id, options) => documentReply(await lessonRequest(`/${segment(id)}`, options));

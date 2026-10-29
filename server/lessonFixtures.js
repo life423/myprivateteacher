@@ -1,6 +1,7 @@
 // In-memory adapters for isolated API/browser regression fixtures. Production
 // code imports the repository and Azure adapter directly, never this fixture.
 import { createLessonRepository } from './lessons.js';
+import { createLessonTemplates } from './lessonTemplates.js';
 const clone = value => value === undefined ? undefined : structuredClone(value);
 const matches = (doc, query) => Object.entries(query).every(([key, expected]) => expected && typeof expected === 'object' && '$exists' in expected ? Object.hasOwn(doc, key) === expected.$exists : doc[key] === expected);
 export function memoryLessonCollection() {
@@ -41,4 +42,14 @@ export function memoryLessonAssets() {
 export function memoryLessons(options = {}) {
   const collection = memoryLessonCollection(), assets = memoryLessonAssets();
   return { lessons: createLessonRepository({ collection, assets, ...options }), collection, assets };
+}
+
+export function memoryLessonTemplates() {
+  const collection = memoryLessonCollection(), records = new Map();
+  const assets = {
+    records,
+    async put(id, hash, bytes) { records.set(`${id}/${hash}`, Buffer.from(bytes)); },
+    async get(id, hash) { const bytes = records.get(`${id}/${hash}`); if (!bytes) throw new Error('Missing fixture template asset'); return Buffer.from(bytes); },
+  };
+  return { templates: createLessonTemplates({ collection, assets }), collection, assets };
 }

@@ -1,3 +1,4 @@
+import { readingRectangle, settleReadingFrame } from './readingFocus.js';
 import LessonPanel from '../lessons/LessonPanel.jsx';
 import { useLessonRunner } from '../lessons/useLessonRunner.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -306,7 +307,17 @@ export default function TutorRoom() {
     },
   });
   sendRef.current = send;
-  const lessonRunner = useLessonRunner(wb, room, status === 'open' && Boolean(confirmedRoom));
+  const lessonRunner = useLessonRunner(wb, room, status === 'open' && Boolean(confirmedRoom), {
+    onReadReady: async (piece, current, origin) => {
+      const rect = readingRectangle(piece);
+      if (!rect || !current()) return false;
+      layout.current?.closeSheet();
+      if (!(await settleReadingFrame(stageApi, current)) || !current()) return false;
+      if (!stageApi.current?.showRect(rect)) return false;
+      wb.sendPageMessage({ t: 'focus', ...rect, reading: true }, origin);
+      return true;
+    },
+  });
   useEffect(() => {
     if (status !== 'open') { hands.disconnect(); wb.disconnect(); }
   }, [status, hands.disconnect, wb.disconnect]);
