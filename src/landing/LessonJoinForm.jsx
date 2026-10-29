@@ -5,13 +5,13 @@ import { isRoomCode } from '../whiteboard/stage.js';
 
 // Students enter the tutor's code here without an account or a second join page.
 // One real input supports pasting, a phone's numeric keyboard and screen readers.
-const LessonJoinForm = forwardRef(function LessonJoinForm(_, ref) {
+const LessonJoinForm = forwardRef(function LessonJoinForm({ onDismiss, inDialog = false }, ref) {
   const fieldId = useId();
   const hintId = `${fieldId}-hint`;
   const titleId = `${fieldId}-title`;
   const input = useRef(null);
   const trigger = useRef(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(inDialog);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const open = () => {
@@ -25,6 +25,7 @@ const LessonJoinForm = forwardRef(function LessonJoinForm(_, ref) {
     if (expanded) input.current?.focus({ preventScroll: true });
   }, [expanded]);
   const close = () => {
+    if (onDismiss) { setError(''); onDismiss(); return; }
     setExpanded(false);
     setError('');
     requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true }));
@@ -47,13 +48,13 @@ const LessonJoinForm = forwardRef(function LessonJoinForm(_, ref) {
       </button>
       <div id={`${fieldId}-entry`} aria-hidden={!expanded} inert={expanded ? undefined : ''} className={`[grid-area:1/1] grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${expanded ? 'w-full grid-rows-[1fr] opacity-100' : 'pointer-events-none w-0 grid-rows-[0fr] opacity-0'}`}>
         <div className='min-h-0 overflow-hidden'>
-          <form aria-labelledby={titleId} noValidate onSubmit={join} className='rounded-2xl border border-sky-200 bg-white/90 p-4 sm:p-5'>
-            <div className='flex items-center gap-2'>
+          <form aria-labelledby={titleId} noValidate onSubmit={join} className={inDialog ? '' : 'rounded-2xl border border-sky-200 bg-white/90 p-4 sm:p-5'}>
+            <div className={inDialog ? 'sr-only' : 'flex items-center gap-2'}>
               <Users className='h-5 w-5 shrink-0 text-sky-700' aria-hidden='true' />
               <h2 id={titleId} className='flex-1 text-lg font-bold leading-tight text-slate-900'>Join your lesson</h2>
-              <button type='button' onClick={close} aria-label='Close lesson code entry' className='-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-700'>
+              {!inDialog && <button type='button' onClick={close} aria-label='Close lesson code entry' className='-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-700'>
                 <X className='h-5 w-5' aria-hidden='true' />
-              </button>
+              </button>}
             </div>
             <label htmlFor={fieldId} className='mt-2 block text-sm leading-relaxed text-slate-600'>Enter the 4-digit code from your tutor.</label>
             <div className='mt-3 flex flex-col gap-2 min-[360px]:flex-row'>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300" viewBox="0 0 600 300">
+<rect width="600" height="300" fill="white"/>
+<text x="300" y="38" fill="#334155" font-family="Arial,sans-serif" font-size="21" font-weight="700" text-anchor="middle">Picture practice</text>
+<g fill="#f5c58b" stroke="#754d32" stroke-width="5" stroke-linejoin="round">
+<path d="M98 139 88 78 132 106Q166 94 201 106L244 78 234 139Q249 164 235 191Q219 215 166 216Q113 215 96 191Q82 165 98 139Z"/>
+<path d="m101 116-5-23 21 15m98 0 20-15-5 23" fill="#ec9f86" stroke-width="3"/>
+<ellipse cx="133" cy="151" rx="5" ry="8" fill="#334155" stroke="none"/><ellipse cx="199" cy="151" rx="5" ry="8" fill="#334155" stroke="none"/>
+<path d="m159 171 7 7 7-7Z" fill="#9c4b51" stroke-width="2"/>
+<path d="M166 178v10m-17-3q8 11 17 3 9 8 18-3M139 173l-36-6m36 17-38 4m93-15 36-6m-36 17 38 4" fill="none" stroke-width="3" stroke-linecap="round"/>
+</g>
+<g stroke="#ba7c15" stroke-width="5" stroke-linecap="round"><path d="M434 97V67m0 154v-30m-47-47h-30m154 0h-30m-14-33 22-22m-110 110 22-22m66 0 22 22M401 111l-22-22"/><circle cx="434" cy="144" r="47" fill="#f5c75c"/></g>
+<text x="166" y="266" fill="#334155" font-family="Arial,sans-serif" font-size="27" text-anchor="middle">cat</text><text x="434" y="266" fill="#334155" font-family="Arial,sans-serif" font-size="27" text-anchor="middle">sun</text>
+</svg>
