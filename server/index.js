@@ -229,16 +229,23 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
     // signs the browser in with a cookie that scripts can't read.
     app.post('/auth/google', express.json({ limit: '16kb' }), async (req, res) => {
       if (!sameSite(req)) return res.sendStatus(403);
+      res.set('Cache-Control', 'no-store');
       const credential = typeof req.body?.credential === 'string' ? req.body.credential : '';
+      let profile;
       try {
-        const profile = credential ? await accounts.verify(credential) : null;
-        if (!profile) return res.status(401).json({ error: 'That Google account could not be used.' });
+        profile = credential ? await accounts.verify(credential) : null;
+      } catch (error) {
+        console.warn(`Google verification failed: ${error.message}`);
+        return res.status(401).json({ error: 'That Google account could not be used.' });
+      }
+      if (!profile) return res.status(401).json({ error: 'That Google account could not be used.' });
+      try {
         const { token, tutor } = await accounts.signIn(profile, { userAgent: req.get('user-agent') || '' });
         res.cookie(SESSION_COOKIE, token, { httpOnly: true, secure: isHttps(req), sameSite: 'lax', path: '/', maxAge: SESSION_DAYS * 86400000 });
-        res.set('Cache-Control', 'no-store').json({ tutor: publicTutor(tutor) });
+        res.json({ tutor: publicTutor(tutor) });
       } catch (error) {
-        console.warn(`Google sign-in failed: ${error.message}`);
-        res.status(401).json({ error: 'Sign-in failed. Please try again.' });
+        console.warn(`Google session failed: ${error.message}`);
+        res.set('Retry-After', '5').status(503).json({ error: 'Sign-in is temporarily unavailable. Please try again in a moment.' });
       }
     });
     app.post('/auth/logout', async (req, res) => {
