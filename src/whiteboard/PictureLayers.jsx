@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowUpToLine, Check, Copy, EyeOff, Layers, Lock, Minus, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, Check, EyeOff, Layers, Lock, Minus, Plus, X } from 'lucide-react';
 import { pictureOverlapState } from './pictureGeometry.js';
 
 const control = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500';
@@ -29,22 +29,19 @@ export function pictureNames(pieces, pictures) {
 // The list stays available even when another picture completely covers the one wanted.
 // Selecting a row does not change the stack; Front and Back are deliberate tutor actions.
 export default function PictureLayers({
-  pieces, pictures, selected, me, srcFor, onSelect, onClear,
-  onLayer, onDuplicate, onDelete, onResize, canResize, canShrink, canGrow, resizeLocked = false,
-  canDuplicate, canDelete, height = 500, topOffset = 8, overlapState: suppliedOverlap, placementNotice = '', onDismissNotice,
+  pieces, pictures, selected, me, srcFor, onSelect, onClear, onOpenChange,
+  onLayer, onResize, canResize, canShrink, canGrow, resizeLocked = false,
+  height = 500, topOffset = 8, overlapState: suppliedOverlap,
 }) {
   const [open, setOpen] = useState(false);
   const toggle = useRef(null);
   const id = useId();
   const availableHeight = Math.max(0, height - topOffset);
-  const compact = availableHeight < 340;
   const names = pictureNames(pieces, pictures);
   const ordered = [...pieces].reverse().sort((a, b) => (b.z || 0) - (a.z || 0));
   const overlapState = suppliedOverlap || pictureOverlapState(pieces);
   const overlapping = [...overlapState.values()].filter((state) => state.above.length || state.below.length).length;
   const covered = [...overlapState.values()].filter((state) => state.covered).length;
-  const selectedIndex = ordered.findIndex((piece) => piece.id === selected?.id);
-  const position = ordered.length < 2 ? '' : selectedIndex === 0 ? 'Front picture' : selectedIndex === ordered.length - 1 ? 'Back picture' : `Layer ${selectedIndex + 1} of ${ordered.length}`;
   const heldElsewhere = Boolean(selected?.heldBy && selected.heldBy !== me);
   const canOrder = me === 'tutor' && Boolean(onLayer);
   const owner = selected?.heldBy === 'tutor' ? 'Your tutor' : 'Your student';
@@ -56,6 +53,8 @@ export default function PictureLayers({
     return '';
   };
   const quiet = () => { setOpen(false); toggle.current?.focus(); };
+  useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
+  useEffect(() => { if (!pieces.length) setOpen(false); }, [pieces.length]);
 
   useEffect(() => {
     if (!open && !selected) return undefined;
@@ -79,13 +78,14 @@ export default function PictureLayers({
           {covered > 0 && <span data-covered-count={covered} className='inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-rose-900'><EyeOff className='h-3 w-3' aria-hidden='true' />{covered} covered</span>}
         </button>
         {open && (
-          <section id={id} aria-label='Picture layers' className='pointer-events-auto mt-2 flex w-72 max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl' style={{ maxHeight: Math.max(60, Math.min(380, availableHeight - (selected && !compact ? 176 : 76))) }}>
+          <section id={id} aria-label='Picture layers' className='pointer-events-auto mt-2 flex w-72 max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl' style={{ maxHeight: Math.max(60, Math.min(380, availableHeight - 60)) }}>
             <div className='flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-3 py-2'>
               <div><h3 className='text-sm font-bold text-slate-800'>Pictures on the board</h3><p className='text-xs text-slate-500'>Front to back</p></div>
               <button type='button' aria-label='Close layers' onClick={quiet} className={`${control} shrink-0 px-2`}><X className='h-4 w-4' aria-hidden='true' /></button>
             </div>
             {availableHeight >= 240 && <p className='shrink-0 border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600'>{overlapping ? 'Amber edges mark overlapping pictures. Select a covered picture here, then use Front to reveal it. ' : ''}Writing and letter tiles stay above pictures.</p>}
-            <ol className='min-h-0 overflow-y-auto p-1'>
+            <div className='min-h-0 overflow-y-auto'>
+            <ol className='p-1'>
               {ordered.map((piece, index) => {
                 const active = selected?.id === piece.id;
                 const locked = piece.heldBy && piece.heldBy !== me;
@@ -102,26 +102,19 @@ export default function PictureLayers({
                 );
               })}
             </ol>
+            {selected && <div className='shrink-0 border-t border-slate-100 p-2'>
+              <p className='truncate px-1 text-xs font-semibold text-slate-700'>{names.get(selected.id)}</p>
+              <p role='status' className='px-1 text-[11px] text-slate-500'>{heldElsewhere ? `${owner} is moving this picture.` : resizeLocked ? 'Drag to move · Your tutor controls size' : 'Drag to move · Corners resize'}</p>
+              {(canResize || canOrder) && <div role='group' aria-label='Picture size and order' className='mt-1 flex flex-wrap gap-1'>
+                {canResize && <><button type='button' disabled={heldElsewhere || !canShrink} onClick={() => onResize(0.8)} className={control}><Minus className='h-4 w-4' aria-hidden='true' />Smaller</button><button type='button' disabled={heldElsewhere || !canGrow} onClick={() => onResize(1.25)} className={control}><Plus className='h-4 w-4' aria-hidden='true' />Larger</button></>}
+                {canOrder && <><button type='button' aria-label='Bring picture to front' disabled={heldElsewhere || ordered[0]?.id === selected.id} onClick={() => onLayer(selected.id, 'front')} className={control}><ArrowUpToLine className='h-4 w-4' aria-hidden='true' />Front</button><button type='button' aria-label='Send picture to back' disabled={heldElsewhere || ordered.at(-1)?.id === selected.id} onClick={() => onLayer(selected.id, 'back')} className={control}><ArrowDownToLine className='h-4 w-4' aria-hidden='true' />Back</button></>}
+              </div>}
+            </div>}
+            </div>
           </section>
         )}
       </div>
-      {selected && !(open && compact) && (
-        <section aria-label='Selected picture' className='absolute bottom-2 left-2 right-2 z-20 mx-auto w-fit max-w-[calc(100%-1rem)] rounded-xl border border-violet-200 bg-white/95 p-2 shadow-lg'>
-          {placementNotice && <div role='status' className='mb-2 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs leading-relaxed text-amber-950'><p className='flex-1'>{placementNotice}</p><button type='button' aria-label='Dismiss picture placement message' onClick={onDismissNotice} className={`${control} shrink-0 px-2`}><X className='h-4 w-4' aria-hidden='true' /></button></div>}
-          <div className='flex items-center gap-2 pl-1'>
-            <div className='min-w-0 flex-1'><p className='truncate text-xs font-bold text-slate-800'>{names.get(selected.id)}</p><p role='status' className='text-[11px] text-slate-500'>{position && `${position} · `}{heldElsewhere ? `${owner} is moving this picture.` : canResize ? 'Drag to move · Corners resize' : resizeLocked ? 'Drag to move · Your tutor controls size' : 'Drag to move this picture'}</p>{overlapDescription(selected) && <p className='mt-0.5 text-[11px] font-semibold text-amber-800'>{overlapDescription(selected)}</p>}</div>
-            <button type='button' aria-label='Deselect picture' onClick={() => { onClear(); toggle.current?.focus(); }} className={`${control} shrink-0 px-2`}><X className='h-4 w-4' aria-hidden='true' /></button>
-          </div>
-          {(canOrder || canDuplicate || canDelete || canResize) && (
-            <div role='group' aria-label='Picture actions' className='mt-1 flex flex-wrap justify-center gap-1'>
-              {canResize && <><button type='button' disabled={heldElsewhere || !canShrink} onClick={() => onResize(0.8)} className={control}><Minus className='h-4 w-4' aria-hidden='true' />Smaller</button><button type='button' disabled={heldElsewhere || !canGrow} onClick={() => onResize(1.25)} className={control}><Plus className='h-4 w-4' aria-hidden='true' />Larger</button></>}
-              {canOrder && <><button type='button' aria-label='Bring picture to front' disabled={heldElsewhere || ordered[0]?.id === selected.id} onClick={() => onLayer(selected.id, 'front')} className={control} title='Bring to front of the pictures'><ArrowUpToLine className='h-4 w-4' aria-hidden='true' />Front</button><button type='button' aria-label='Send picture to back' disabled={heldElsewhere || ordered.at(-1)?.id === selected.id} onClick={() => onLayer(selected.id, 'back')} className={control} title='Send to back of the pictures'><ArrowDownToLine className='h-4 w-4' aria-hidden='true' />Back</button></>}
-              {canDuplicate && <button type='button' disabled={heldElsewhere} onClick={() => onDuplicate(selected.id)} className={control}><Copy className='h-4 w-4' aria-hidden='true' />Duplicate</button>}
-              {canDelete && <button type='button' disabled={heldElsewhere} onClick={() => onDelete(selected.id)} className={`${control} text-rose-700 hover:bg-rose-50`}><Trash2 className='h-4 w-4' aria-hidden='true' />Delete</button>}
-            </div>
-          )}
-        </section>
-      )}
+
     </>
   );
 }

@@ -71,19 +71,38 @@ export function soundBoxes(count) {
 }
 
 // Where a dropped tile settles: centred in the sound box under its middle, if that box is free.
-export function snapTile(tile, count, tiles) {
+export function soundBoxTarget(tile, count, tiles) {
   const width = tileWidth(tile.text);
   const cx = tile.x + width / 2;
   const cy = tile.y + TILE_HEIGHT / 2;
   const m = BOX.snapMargin;
-  for (const box of soundBoxes(count)) {
+  for (const [index, box] of soundBoxes(count).entries()) {
     if (cx < box.x - m || cx > box.x + box.width + m || cy < box.y - m || cy > box.y + box.height + m) continue;
     const bx = box.x + box.width / 2;
     const by = box.y + box.height / 2;
     const taken = tiles.some(
       (t) => t.id !== tile.id && Math.abs(t.x + tileWidth(t.text) / 2 - bx) < 2 && Math.abs(t.y + TILE_HEIGHT / 2 - by) < 2,
     );
-    return taken ? null : { x: round1(bx - width / 2), y: round1(by - TILE_HEIGHT / 2) };
+    return taken ? null : { index, box, x: round1(bx - width / 2), y: round1(by - TILE_HEIGHT / 2) };
   }
   return null;
+}
+
+// Preview and release use the same target, including the server's occupancy rule.
+export function snapTile(tile, count, tiles) {
+  const target = soundBoxTarget(tile, count, tiles);
+  return target ? { x: target.x, y: target.y } : null;
+}
+
+// Find a nearby free copy position, including when the original sits at a board edge.
+export function duplicateTilePosition(tile, tiles) {
+  const width = tileWidth(tile.text);
+  const candidates = [];
+  const add = (x, y) => { const at = clampTile(tile.text, x, y); if (at) candidates.push(at); };
+  for (let row = -7; row <= 7; row += 1) for (let col = -16; col <= 16; col += 1) {
+    if (row || col) add(tile.x + col * (width + TILE_GAP), tile.y + row * (TILE_HEIGHT + TILE_GAP));
+  }
+  candidates.sort((a, b) => Math.hypot(a.x - tile.x, a.y - tile.y) - Math.hypot(b.x - tile.x, b.y - tile.y));
+  const free = candidates.find(at => tiles.every(other => at.x >= other.x + tileWidth(other.text) + 4 || at.x + width + 4 <= other.x || at.y >= other.y + TILE_HEIGHT + 4 || at.y + TILE_HEIGHT + 4 <= other.y));
+  return free || clampTile(tile.text, tile.x + 24, tile.y + 24);
 }

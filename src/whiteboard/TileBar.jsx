@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { matchingLetters } from './materials.js';
 import { BOX_COUNTS, MAX_TILES } from '../../shared/tiles.js';
 
 // The tutor's tile controls, a card in the side column: add tiles, change a selected one,
 // send them all home, clear them, and set the sound boxes.
-export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, onReset, onClear, boxes, onBoxes }) {
+export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, onReset, onClear, boxes, onBoxes, query = '', embedded = false, canAdd = true, tiles = [], toolsOn = false }) {
   const [text, setText] = useState('');
   const [note, setNote] = useState(null);
   const [armed, setArmed] = useState(false);
@@ -42,8 +43,14 @@ export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, 
 
   const pill = 'rounded-full px-3 py-2 text-sm font-semibold disabled:opacity-40';
 
+  const choices = matchingLetters(query);
+  if (!canAdd) return <section aria-label='Letter tiles' className='flex flex-col gap-3'>
+    <p className='text-xs leading-relaxed text-slate-600'>{toolsOn ? 'Move your tutor’s tiles on the board.' : 'Your tutor controls when you can move the letter tiles.'}</p>
+    <ul aria-label='Available letter tiles' className='flex flex-wrap gap-2'>{tiles.filter((tile) => tile.text.toLowerCase().includes(query.trim().toLowerCase())).map((tile) => <li key={tile.id} className='rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-lg font-bold text-slate-800'>{tile.text}</li>)}</ul>
+    {!tiles.length && <p className='text-sm text-slate-500'>Your tutor hasn’t added letter tiles yet.</p>}
+  </section>;
   return (
-    <section aria-label='Letter tiles' className='flex flex-col gap-3 rounded-2xl bg-white p-3 shadow'>
+    <section aria-label='Letter tiles' className={embedded ? 'flex flex-col gap-3' : 'flex flex-col gap-3 rounded-2xl bg-white p-3 shadow'}>
       <div className='flex items-center justify-between'>
         <h2 className='text-sm font-bold text-slate-700'>Letter tiles</h2>
         <span className='text-xs font-semibold text-slate-500'>
@@ -85,6 +92,13 @@ export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, 
           'Spaces between tiles. Click a tile to change it.'
         )}
       </p>
+      <div>
+        <p className='mb-2 text-xs font-semibold text-slate-600'>Choose a letter or sound</p>
+        <div aria-label='Letter choices' className='grid grid-cols-5 gap-1.5'>
+          {choices.map((letter) => <button key={letter} type='button' disabled={count >= MAX_TILES} aria-label={`Add ${letter} tile`} onClick={() => onAdd(letter)} className='min-h-11 rounded-lg border border-slate-200 bg-slate-50 px-1 font-mono text-lg font-bold text-slate-800 hover:border-violet-400 hover:bg-violet-50 disabled:opacity-40'>{letter}</button>)}
+        </div>
+        {!choices.length && <p className='text-xs text-slate-500'>No letter choices match. You can still type tiles above.</p>}
+      </div>
       <div className='grid grid-cols-2 gap-2'>
         <button type='button' onClick={onReset} disabled={!count} className={`${pill} border border-slate-300 text-slate-700 hover:bg-slate-50`}>
           Back to tray

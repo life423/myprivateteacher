@@ -1,7 +1,8 @@
+import { cleanPictureMetadata } from '../shared/pictureMetadata.js';
 import { WebSocketServer } from 'ws';
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
-import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, nextHome, snapTile, tileKind } from '../shared/tiles.js';
+import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, duplicateTilePosition, nextHome, snapTile, tileKind } from '../shared/tiles.js';
 import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isFacePiece, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
 import { cleanAct } from '../shared/bridge.js';
 import { cleanIntent } from '../shared/phoneme.js';
@@ -103,8 +104,8 @@ function cleanRegions(list, w, h) {
 }
 
 // What both screens learn about a picture: its size, plus a library card's id, title and regions.
-function sharedPicture({ id, w, h, regions, library, title }) {
-  return { id, w, h, ...(regions?.length ? { regions } : {}), ...(library ? { library } : {}), ...(title ? { title } : {}) };
+function sharedPicture({ id, w, h, regions, library, title, material }) {
+  return { id, w, h, ...(regions?.length ? { regions } : {}), ...(library ? { library } : {}), ...cleanPictureMetadata({ title, material }) };
 }
 
 // Azure's ingress appends the real client address as the last X-Forwarded-For entry.
@@ -681,6 +682,39 @@ export function attachRealtime(server, options = {}) {
       if (added.length) broadcast(room, { t: 'tile:add', tiles: added });
     },
 
+    // A tutor dragging from the alphabet creates one tile at a validated drop point.
+    'tile:add-at'(ws, msg) {
+      if (!isTutor(ws)) return;
+      const room = ws.room;
+      const item = msg.tile;
+      const text = cleanTileText(item?.text);
+      const at = text && clampTile(text, item.x, item.y);
+      if (!at || room.tiles.size >= MAX_TILES || !isStrokeId(item.id) || room.tiles.has(item.id)) return;
+      const home = nextHome([...room.tiles.values()], text);
+      room.zTop += 1;
+      room.order += 1;
+      const tile = { id: item.id, text, kind: tileKind(text), ...home, ...at, z: room.zTop, order: room.order, heldBy: null };
+      Object.assign(tile, snapTile(tile, room.boxes, [...room.tiles.values()]) || {});
+      room.tiles.set(tile.id, tile);
+      broadcast(room, { t: 'tile:add', tiles: [tile] });
+    },
+
+    // Tutor only: a copy has its own id/home and starts in nearby free board space.
+    'tile:duplicate'(ws, msg) {
+      if (!isTutor(ws)) return;
+      const room = ws.room;
+      const original = room.tiles.get(msg.id);
+      if (!original || room.tiles.size >= MAX_TILES || !isStrokeId(msg.copyId) || room.tiles.has(msg.copyId) || (original.heldBy && original.heldBy !== 'tutor')) return;
+      const existing = [...room.tiles.values()];
+      const home = nextHome(existing, original.text);
+      const at = duplicateTilePosition(original, existing);
+      room.zTop += 1;
+      room.order += 1;
+      const tile = { ...original, id: msg.copyId, ...home, ...at, z: room.zTop, order: room.order, heldBy: null };
+      room.tiles.set(tile.id, tile);
+      broadcast(room, { t: 'tile:add', tiles: [tile] });
+    },
+
     // Either person picks up a tile; it's theirs until they drop it, so nobody fights over it.
     'tile:grab'(ws, msg) {
       const role = roleOf(ws);
@@ -895,6 +929,18 @@ export function attachRealtime(server, options = {}) {
       piece.heldBy = null;
       broadcast(ws.room, { t: 'piece:drop', piece });
     },
+    // Crop an existing piece in place. The source and identity are never replaced.
+    'piece:crop'(ws, msg) {
+      if (!isTutor(ws)) return;
+      const piece = ws.room.pieces.get(msg.id);
+      if (!piece) return;
+      if (piece.heldBy && piece.heldBy !== 'tutor') return send(ws, { t: 'piece:denied', piece });
+      const crop = cleanCrop(msg.crop, ws.room.pictures.get(piece.pic));
+      if (!crop) return;
+      const size = pieceSize(crop, piece.w);
+      Object.assign(piece, { crop, ...size, ...clampPiece(size, piece.x, piece.y), heldBy: null });
+      broadcast(ws.room, { t: 'piece:drop', piece });
+    },
     // Selecting or moving a picture keeps its layer. Only the tutor changes the order.
     'piece:layer'(ws, msg) {
       if (!isTutor(ws) || !allow(ws, 'tile', POINTER_PER_SECOND)) return;
@@ -1046,7 +1092,7 @@ export function attachRealtime(server, options = {}) {
       pictureWrites.set(ticket, { room, tutor: room.tutor, generation: room.pictureGeneration });
       return ticket;
     },
-    add({ code, key, id, w, h, type, bytes, regions, library, title, writeToken }) {
+    add({ code, key, id, w, h, type, bytes, regions, library, title, material, writeToken }) {
       const room = isCode(code) ? rooms.get(code) : undefined;
       if (writeToken !== undefined) {
         const pending = pictureWrites.get(writeToken);
@@ -1063,8 +1109,8 @@ export function attachRealtime(server, options = {}) {
       if (alike >= (card ? MAX_LIBRARY_PICTURES : MAX_PICTURES)) return { status: 409 };
       if (pictureBytes + bytes.length > maxPictureBytes) return { status: 503 };
       const known = cleanRegions(regions, w, h);
-      const name = card && typeof title === 'string' ? title.trim().slice(0, 60) : '';
-      const picture = { id, w, h, type, bytes, regions: known, library: card, title: name };
+      const metadata = cleanPictureMetadata({ title, material: card ? undefined : material });
+      const picture = { id, w, h, type, bytes, regions: known, library: card, ...metadata };
       room.pictures.set(id, picture);
       pictureBytes += bytes.length;
       broadcast(room, { t: 'pic:add', pic: sharedPicture(picture) });

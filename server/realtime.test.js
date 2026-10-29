@@ -3,7 +3,7 @@ import http from 'node:http';
 import WebSocket from 'ws';
 import { createHmac } from 'node:crypto';
 import { attachRealtime } from './realtime.js';
-import { TILE_HEIGHT, soundBoxes, tileWidth } from '../shared/tiles.js';
+import { MAX_TILES, TILE_HEIGHT, soundBoxes, tileWidth } from '../shared/tiles.js';
 import { pieceSize, startingWidth } from '../shared/pieces.js';
 
 const ORIGIN = 'http://localhost:8080';
@@ -338,6 +338,32 @@ describe('letter tiles', () => {
     ]);
     expect(tiles.every((t) => t.y === 848 && t.x === t.hx)).toBe(true);
     expect((await student.take('tile:add')).tiles).toHaveLength(3);
+  });
+
+  it('allows only tutors to create alphabet drops and copies, validates positions and caps the room', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    student.send({ t: 'tile:add-at', tile: { id: 'forged-add', text: 'a', x: 200, y: 300 } });
+    await nothing(tutor, 'tile:add');
+    tutor.send({ t: 'boxes:set', count: 3 });
+    await tutor.take('boxes:set');
+    const box = soundBoxes(3)[0];
+    tutor.send({ t: 'tile:add-at', tile: { id: 'from-alphabet', text: 'c', x: box.x, y: box.y } });
+    const original = (await tutor.take('tile:add')).tiles[0];
+    expect(original.x + tileWidth('c') / 2).toBe(box.x + box.width / 2);
+    expect(original.y + TILE_HEIGHT / 2).toBe(box.y + box.height / 2);
+    student.send({ t: 'tile:duplicate', id: original.id, copyId: 'forged-copy' });
+    await nothing(tutor, 'tile:add');
+    tutor.send({ t: 'tile:duplicate', id: original.id, copyId: 'real-copy' });
+    const copy = (await tutor.take('tile:add')).tiles[0];
+    expect(copy).toMatchObject({ id: 'real-copy', text: 'c', kind: 'consonant', heldBy: null });
+    expect(copy.x === original.x && copy.y === original.y).toBe(false);
+    tutor.send({ t: 'tile:add-at', tile: { id: 'nan-drop', text: 'd', x: 'bad', y: 400 } });
+    await nothing(tutor, 'tile:add');
+    await addTiles(tutor, Array.from({ length: MAX_TILES - 2 }, () => 'x'));
+    tutor.send({ t: 'tile:duplicate', id: original.id, copyId: 'over-limit' });
+    tutor.send({ t: 'tile:add-at', tile: { id: 'over-limit-add', text: 'd', x: 100, y: 300 } });
+    await nothing(tutor, 'tile:add');
   });
 
   it('streams a drag live, and holds the tile for whoever is dragging it', async () => {
@@ -991,4 +1017,16 @@ describe('Phoneme Pop in a room', () => {
     tutor.ws.close();
     student.student.ws.close();
   });
+});
+
+it('relays worksheet upload metadata in live updates and reconnect snapshots without exposing bytes', async () => {
+  const { tutor, code, key } = await openRoom();
+  const { student, key: studentKey } = await joinRoom(code);
+  const id = '9'.repeat(32);
+  expect(realtime.pictures.add({ code, key: 'wrong', id, w: 400, h: 300, type: 'image/jpeg', bytes: Buffer.alloc(10), material: 'worksheet', title: 'Lesson.png' }).status).toBe(403);
+  expect(realtime.pictures.add({ code, key, id, w: 400, h: 300, type: 'image/jpeg', bytes: Buffer.alloc(10), material: 'worksheet', title: '<Lesson>\n1.png' }).status).toBe(201);
+  const pic = (await student.take('pic:add')).pic;
+  expect(pic).toEqual({ id, w: 400, h: 300, material: 'worksheet', title: 'Lesson1.png' });
+  const back = await joinRoom(code, studentKey);
+  expect(back.board.pictures).toEqual([pic]);
 });

@@ -6,12 +6,13 @@ import InkCanvas from './InkCanvas.jsx';
 import Tile from './Tile.jsx';
 import PieceImage from './PieceImage.jsx';
 import PictureLayers from './PictureLayers.jsx';
+import ObjectToolbar from './ObjectToolbar.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
-import { TILE_HEIGHT, clampTile, soundBoxes, tileWidth } from '../../shared/tiles.js';
+import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileKind, tileWidth } from '../../shared/tiles.js';
 import { clampPiece, isFacePiece, pieceSize } from '../../shared/pieces.js';
-import { Expand, Shrink } from 'lucide-react';
+import { Minus, Plus, Scan } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
 import { picturePlacementBounds } from './picturePlacement.js';
 import { pictureOverlapState } from './pictureGeometry.js';
@@ -28,7 +29,6 @@ const overHand = (p, hand) => {
   return dx >= -50 && dx <= 52 && p.y >= hand.y - 10 && p.y <= hand.y + 146;
 };
 const overTile = (p, t) => p.x >= t.x && p.x <= t.x + tileWidth(t.text) && p.y >= t.y && p.y <= t.y + TILE_HEIGHT;
-const overRemove = (p, t) => Math.hypot(p.x - (t.x + tileWidth(t.text)), p.y - t.y) <= 26;
 
 // Picture pieces: selected with the pointer tools, then moved, resized (keeping their shape),
 // duplicated or deleted. Sizes here are in stage units.
@@ -55,7 +55,7 @@ function letterTone(letter, pointed) {
 }
 
 // The bottom layer: the alphabet strip (unless hidden), the board, its guide lines and the sound boxes.
-const Backdrop = memo(function Backdrop({ pointed, strip, boxes, lines, viewBox, bar = false }) {
+const Backdrop = memo(function Backdrop({ pointed, strip, boxes, lines, viewBox, bar = false, activeBox = null }) {
   const board = boardRect(strip);
   return (
     <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='absolute inset-0 h-full w-full' aria-hidden='true'>
@@ -90,17 +90,19 @@ const Backdrop = memo(function Backdrop({ pointed, strip, boxes, lines, viewBox,
           <line x1={board.x + 40} x2={board.x + board.width - 40} y1={row.base} y2={row.base} className='stroke-slate-300' />
         </g>
       ))}
-      {soundBoxes(boxes).map((box) => (
+      {soundBoxes(boxes).map((box, index) => (
         <rect
           key={box.x}
+          data-sound-box={index}
+          data-drop-target={activeBox === index ? 'true' : undefined}
           x={box.x}
           y={box.y}
           width={box.width}
           height={box.height}
           rx='16'
           strokeWidth='4'
-          strokeDasharray='14 10'
-          className='fill-slate-50 stroke-slate-400'
+          strokeDasharray={activeBox === index ? undefined : '14 10'}
+          className={activeBox === index ? 'fill-violet-50 stroke-violet-500' : 'fill-slate-50 stroke-slate-400'}
         />
       ))}
     </svg>
@@ -136,7 +138,8 @@ export default function Stage({
   canEditPieces = false,
   canDeletePieces = false,
   canDuplicatePieces = false,
-  onSelectPiece = null, // selecting from Layers or adding a picture switches to Watch
+  onSelectPiece = null, // selecting from Layers or adding a picture switches to Select
+  onCropPiece = null, // tutor: open this session picture in the existing Magic Select editor
   stageApi = null,
   onView = null, // told which part of the board this screen shows
   peerView = null, // the part of the board the other person can see, outlined
@@ -157,9 +160,11 @@ export default function Stage({
   const holding = useRef(new Map()); // pointer id -> { side, dx, dy }: the hands this screen is moving
   const tileDrag = useRef(null);
   const pieceDrag = useRef(null);
+  const letterDrag = useRef(null);
+  const [letterPreview, setLetterPreview] = useState(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
-  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, canManageTiles, strip };
+  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, canManageTiles, strip, boxes };
   // The board's frame on screen: all of it fitted (view is null), or zoomed and panned by this
   // person alone. The board's own coordinates never change, so the other screen never notices.
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -208,16 +213,30 @@ export default function Stage({
   }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const [grip, setGrip] = useState(null); // 'grab', 'grabbing' or 'remove', for the cursor
   const [selectedPieceId, setSelectedPieceId] = useState(null);
+  const [localTileId, setLocalTileId] = useState(null);
+  const [activeBox, setActiveBox] = useState(null);
+  const [layersOpen, setLayersOpen] = useState(false);
+  useEffect(() => setLocalTileId(selectedTile), [selectedTile]);
   const [placementNotice, setPlacementNotice] = useState('');
   // Pieces are handled with the pointer tools (Watch, Hand), never the pen or eraser.
   const movable = tool === 'none';
   const stackedPieces = [...pieces].sort((a, b) => a.z - b.z);
   const overlapState = useMemo(() => pictureOverlapState(pieces), [pieces]);
   const selectedPiece = movable ? pieces.find((p) => p.id === selectedPieceId) || null : null;
+  const selectedLetter = movable && !selectedPiece ? tiles.find((tile) => tile.id === (selectedTile || localTileId)) || null : null;
+  const selectLetter = (id) => { setSelectedPieceId(null); setLocalTileId(id); tileActions?.select?.(id); };
+  const clearSelection = () => { setSelectedPieceId(null); setLocalTileId(null); tileActions?.select?.(null); };
+  useEffect(() => {
+    if (!selectedPiece && !selectedLetter) return undefined;
+    const escape = event => { if (event.key === 'Escape' && !layersOpen && !event.target.closest?.('[role=dialog]')) clearSelection(); };
+    window.addEventListener('keydown', escape); return () => window.removeEventListener('keydown', escape);
+  }, [selectedPiece?.id, selectedLetter?.id, layersOpen]);
   const selectedFace = Boolean(selectedPiece && isFacePiece(selectedPiece, pictures.find((picture) => picture.id === selectedPiece.pic)));
   const canResizeSelected = Boolean(selectedPiece && canEditPieces && (me === 'tutor' || !selectedFace));
   const selectPiece = (id) => {
     setSelectedPieceId(id);
+    setLocalTileId(null);
+    tileActions?.select?.(null);
     onSelectPiece?.(id);
     const piece = pieces.find((p) => p.id === id);
     if (piece && seen && (piece.x < seen.x || piece.y < seen.y || piece.x + piece.w > seen.x + seen.w || piece.y + piece.h > seen.y + seen.h)) {
@@ -357,16 +376,10 @@ export default function Stage({
     }
   };
 
-  // The tile under a point, topmost first. For the tutor, a tile's delete button counts too.
+  // Tile deletion belongs to the selected object's contextual toolbar.
   const pickTile = (p) => {
-    const { tiles: list, canManageTiles: manage } = live.current;
-    const top = [...list].sort((a, b) => b.z - a.z);
-    if (manage) {
-      const doomed = top.find((t) => overRemove(p, t));
-      if (doomed) return { tile: doomed, remove: true };
-    }
-    const tile = top.find((t) => overTile(p, t));
-    return tile ? { tile, remove: false } : null;
+    const tile = [...live.current.tiles].sort((a, b) => b.z - a.z).find(tile => overTile(p, tile));
+    return tile ? { tile } : null;
   };
 
   // The selected piece's resize handles. Other actions are real HTML buttons below.
@@ -381,6 +394,34 @@ export default function Stage({
     const control = pieceControl(p);
     if (control?.handle) return HANDLE_CURSOR[`${control.handle.hx},${control.handle.hy}`];
     return pickPiece(p) ? 'grab' : null;
+  };
+
+  const previewLetter = (text, clientX, clientY) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+    const point = inside ? toStage(clientX, clientY) : null;
+    if (!canManageTiles || !point || !insideBoard(point, boardRect(strip))) { setLetterPreview(null); setActiveBox(null); return false; }
+    const at = clampTile(text, point.x - tileWidth(text) / 2, point.y - TILE_HEIGHT / 2);
+    const preview = { id: 'alphabet-preview', text, ...at, z: Infinity, kind: tileKind(text), heldBy: me };
+    setLetterPreview(preview);
+    setActiveBox(soundBoxTarget(preview, boxes, tiles)?.index ?? null);
+    return true;
+  };
+  const clearLetterPreview = () => { setLetterPreview(null); setActiveBox(null); };
+  const addLetter = (text, point) => {
+    if (!canManageTiles || !tileActions?.addAt) return null;
+    const at = clampTile(text, point.x - tileWidth(text) / 2, point.y - TILE_HEIGHT / 2);
+    const target = snapTile({ id: 'alphabet-new', text, ...at }, boxes, tiles) || at;
+    const id = tileActions.addAt(text, target.x, target.y);
+    if (id) selectLetter(id);
+    return id;
+  };
+  const dropLetter = (text, clientX, clientY) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+    const point = inside ? toStage(clientX, clientY) : null;
+    clearLetterPreview();
+    return point && insideBoard(point, boardRect(strip)) ? addLetter(text, point) : null;
   };
 
   // The hand under a point that this person may hold (the right one wins where they overlap):
@@ -412,6 +453,7 @@ export default function Stage({
       g.touches.set(event.pointerId, local(event.clientX, event.clientY));
       if (g.touches.size === 2) {
         // A second finger: stop whatever the first was doing, and pinch or pan instead.
+        if (letterDrag.current) { letterDrag.current = null; clearLetterPreview(); }
         for (const id of g.touches.keys()) if (id !== event.pointerId) endAction({ pointerId: id });
         g.pan = null;
         const [a, b] = [...g.touches.values()];
@@ -451,10 +493,7 @@ export default function Stage({
     const picked = tileOps ? pickTile(raw) : null;
     if (picked) {
       const { tile } = picked;
-      if (picked.remove) {
-        tileOps.remove(tile.id);
-        return;
-      }
+      selectLetter(tile.id);
       if (tile.heldBy && tile.heldBy !== me) return; // the other person has it right now
       capture(event);
       tileDrag.current = {
@@ -485,7 +524,13 @@ export default function Stage({
       if (tool !== 'none') point?.({ ...raw, letter: null });
       return;
     }
-    if (movable) setSelectedPieceId(null);
+    const letter = canManageTiles && !fillTop ? letterAt(raw.x, raw.y, strip) : null;
+    if (letter) {
+      capture(event);
+      letterDrag.current = { pointerId: event.pointerId, text: letter, x: event.clientX, y: event.clientY, moved: false };
+      return;
+    }
+    if (movable) clearSelection();
     if (tool === 'none') {
       // Watching: dragging the empty board pans it when zoomed in.
       if (view) {
@@ -502,6 +547,15 @@ export default function Stage({
   };
 
   const onPointerMove = (event) => {
+    const ld = letterDrag.current;
+    if (ld && ld.pointerId === event.pointerId) {
+      if (Math.hypot(event.clientX - ld.x, event.clientY - ld.y) > CLICK_SLOP) ld.moved = true;
+      if (ld.moved && !previewLetter(ld.text, event.clientX, event.clientY)) {
+        const point = toStage(event.clientX, event.clientY);
+        if (point) setLetterPreview({ id: 'alphabet-preview', text: ld.text, x: point.x - tileWidth(ld.text) / 2, y: point.y - TILE_HEIGHT / 2, z: Infinity, kind: tileKind(ld.text), heldBy: me });
+      }
+      return;
+    }
     const held = holding.current.get(event.pointerId);
     if (held) {
       const hand = live.current.hands.find((h) => h.side === held.side);
@@ -574,6 +628,8 @@ export default function Stage({
       td.x = pos.x;
       td.y = pos.y;
       tileOps?.move(td.id, pos.x, pos.y);
+      const target = soundBoxTarget({ id: td.id, text: td.text, ...pos }, live.current.boxes, live.current.tiles);
+      setActiveBox(was => was === (target?.index ?? null) ? was : target?.index ?? null);
       if (tool !== 'none') point?.({ ...raw, letter: null });
       return;
     }
@@ -591,7 +647,7 @@ export default function Stage({
       if (handUnder(raw)) next = 'grab';
       else {
         const picked = tileOps ? pickTile(raw) : null;
-        if (picked) next = picked.remove ? 'remove' : 'grab';
+        if (picked) next = 'grab';
         else if (pieceActions) next = pieceGrip(raw);
       }
       setGrip(next);
@@ -621,8 +677,11 @@ export default function Stage({
       tileDrag.current = null;
       setGrip(null);
       const { tileActions: tileOps, canManageTiles: manage } = live.current;
-      if (!td.moved && manage) tileOps?.select?.(td.id); // a click picks the tile for changing
-      tileOps?.drop(td.id, td.x, td.y);
+      setActiveBox(null);
+      if (!td.moved && manage) tileOps?.select?.(td.id);
+      const at = snapTile(td, live.current.boxes, live.current.tiles) || { x: td.x, y: td.y };
+      tileOps?.move(td.id, at.x, at.y);
+      tileOps?.drop(td.id, at.x, at.y);
       return;
     }
     if (drawing.current === event.pointerId) {
@@ -632,6 +691,15 @@ export default function Stage({
   };
 
   const onRelease = (event) => {
+    const ld = letterDrag.current;
+    if (ld && ld.pointerId === event.pointerId) {
+      letterDrag.current = null;
+      gesture.current.touches.delete(event.pointerId);
+      if (!gesture.current.touches.size) gesture.current.pinch = null;
+      if (ld.moved && event.type !== 'pointercancel') dropLetter(ld.text, event.clientX, event.clientY);
+      else clearLetterPreview();
+      return;
+    }
     if (holding.current.has(event.pointerId)) return endAction(event);
     const g = gesture.current;
     if (g.touches.delete(event.pointerId) && g.touches.size === 0) g.pinch = null;
@@ -668,6 +736,8 @@ export default function Stage({
         return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
       },
       selectPiece,
+      previewLetter, clearLetterPreview, dropLetter,
+      addLetter(text) { const bounds = visibleBounds(); return addLetter(text, { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }); },
       pointAt(clientX, clientY) {
         const box = wrapRef.current?.getBoundingClientRect();
         if (!box || !layout.width) return null;
@@ -681,24 +751,21 @@ export default function Stage({
   }
   const clip = boardRect(strip);
   const stacked = [...tiles].sort((a, b) => a.z - b.z);
+  const paperTop = Math.max(8, layout.top + clip.y * layout.scale + 8);
+  const layersButton = wrapRef.current?.querySelector('[data-picture-layers-control] > button');
+  const layersBounds = layersButton?.getBoundingClientRect();
+  const wrapBounds = wrapRef.current?.getBoundingClientRect();
+  const reserved = layersBounds && wrapBounds ? [{ x: layersBounds.x - wrapBounds.x, y: layersBounds.y - wrapBounds.y, w: layersBounds.width, h: layersBounds.height }] : [];
+  const zoomAroundCentre = (scale) => {
+    const point = boardPoint({ x: size.width / 2, y: size.height / 2 });
+    zoomTo(scale, point.x, point.y, size.width / 2, size.height / 2);
+  };
+  const zoomControl = 'inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-violet-100 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500';
 
   return (
-    <div ref={wrapRef} className='relative h-full w-full select-none overflow-hidden'>
-      {layout.scale > 0 && (view || size.height / size.width > 0.72) && (
-        <button
-          type='button'
-          onClick={() => {
-            autoFill.current = !view && Boolean(sticky);
-            setView(view ? null : fillView(size.width, size.height, fillTop, fillCentre));
-          }}
-          aria-label={view ? 'Fit the whole board' : 'Fill the screen with the board'}
-          title={view ? 'Fit the whole board' : 'Fill the screen with the board'}
-          className='absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow ring-1 ring-slate-200 hover:bg-white'
-        >
-          {view ? <Shrink className='h-4 w-4' aria-hidden='true' /> : <Expand className='h-4 w-4' aria-hidden='true' />}
-        </button>
-      )}
-      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} />
+    <div className='flex h-full w-full min-h-0 flex-col'>
+      <div ref={wrapRef} data-board-surface className='relative min-h-0 flex-1 select-none overflow-hidden'>
+      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} overlap={overlapState.get(piece.id)} />
@@ -722,8 +789,9 @@ export default function Stage({
       >
         <rect width={STAGE.width} height={STAGE.height} fill='transparent' />
         {stacked.map((tile) => (
-          <Tile key={tile.id} tile={tile} mine={me} selected={tile.id === selectedTile} removable={canManageTiles} />
+          <Tile key={tile.id} tile={tile} mine={me} selected={tile.id === selectedLetter?.id} />
         ))}
+        {letterPreview && <g opacity='.8' data-alphabet-preview><Tile tile={letterPreview} mine={me} /></g>}
         {peerView && (peerView.w < STAGE.width - 10 || peerView.h < STAGE.height - 10) && (
           <g className='pointer-events-none'>
             <rect
@@ -790,23 +858,38 @@ export default function Stage({
         me={me}
         srcFor={pictureSrc}
         onSelect={selectPiece}
+        onOpenChange={setLayersOpen}
         onClear={clearPiece}
         onLayer={pieceActions.layer}
-        onDuplicate={duplicatePiece}
-        onDelete={(id) => { pieceActions.remove(id); clearPiece(); }}
         onResize={resizePiece}
         canResize={canResizeSelected}
         resizeLocked={me === 'student' && selectedFace}
         canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
         canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
-        canDuplicate={canDuplicatePieces}
-        canDelete={canDeletePieces}
         height={size.height}
         topOffset={pictureLayersTop(layout, { strip, externalAlphabet: Boolean(fillTop), floatingTools: fill && canEditPieces && window.matchMedia('(orientation: landscape)').matches })}
         overlapState={overlapState}
-        placementNotice={placementNotice}
-        onDismissNotice={() => setPlacementNotice('')}
       />}
+      {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && !letterDrag.current && !letterPreview && (selectedPiece || selectedLetter) && <ObjectToolbar
+        object={selectedPiece || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
+        kind={selectedPiece ? 'picture' : 'tile'}
+        label={selectedPiece ? picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}
+        layout={layout} viewport={size} topInset={paperTop} reserved={reserved}
+        locked={Boolean((selectedPiece || selectedLetter).heldBy && (selectedPiece || selectedLetter).heldBy !== me)}
+        resizeLocked={me === 'student' && selectedFace}
+        placementNotice={selectedPiece ? placementNotice : ''}
+        onCrop={selectedPiece && me === 'tutor' && onCropPiece ? () => onCropPiece(selectedPiece) : null}
+        onDuplicate={selectedPiece ? canDuplicatePieces ? () => duplicatePiece(selectedPiece.id) : null : canManageTiles && tileActions?.duplicate ? () => { const copy = tileActions.duplicate(selectedLetter.id); if (copy) selectLetter(copy); } : null}
+        onDelete={selectedPiece ? canDeletePieces ? () => { pieceActions.remove(selectedPiece.id); clearSelection(); } : null : canManageTiles ? () => { tileActions.remove(selectedLetter.id); clearSelection(); } : null}
+        onClear={clearSelection}
+      />}
+      </div>
+      <div data-board-zoom role='group' aria-label='Board zoom' className='flex shrink-0 justify-end border-t border-slate-200/70 bg-slate-50 px-1'>
+        <button type='button' aria-label='Zoom out' disabled={layout.scale <= layout.fit * 1.02} onClick={() => zoomAroundCentre(layout.scale / 1.25)} className={zoomControl}><Minus className='h-4 w-4' aria-hidden='true' /></button>
+        <button type='button' aria-label='Zoom to 100%' onClick={() => zoomAroundCentre(1)} className={`${zoomControl} min-w-14`}><span>{Math.round(layout.scale * 100)}%</span></button>
+        <button type='button' aria-label='Zoom in' disabled={layout.scale >= layout.max * .999} onClick={() => zoomAroundCentre(layout.scale * 1.25)} className={zoomControl}><Plus className='h-4 w-4' aria-hidden='true' /></button>
+        <button type='button' aria-label='Fit the whole board' onClick={() => { autoFill.current = false; setView(null); }} className={zoomControl}><Scan className='mr-1 h-4 w-4' aria-hidden='true' />Fit</button>
+      </div>
     </div>
   );
 }

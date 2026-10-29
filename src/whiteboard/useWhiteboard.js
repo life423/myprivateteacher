@@ -1,3 +1,4 @@
+import { cleanPictureMetadata } from '../../shared/pictureMetadata.js';
 import { DEFAULT_LINES, isLineSize } from '../../shared/lines.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
@@ -13,9 +14,10 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const makeId = (prefix) => `${prefix[0]}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 // Sends a shrunk picture to the room; the tutor's room key proves who is asking. True once it's there.
-async function sendPicture(room, id, { blob, w, h }) {
+async function sendPicture(room, id, { blob, w, h, material, title }) {
   try {
-    const res = await fetch(`${pictureUrl(room.code, id)}?w=${w}&h=${h}`, {
+    const query = new URLSearchParams({ w, h, ...cleanPictureMetadata({ material, title }) });
+    const res = await fetch(`${pictureUrl(room.code, id)}?${query}`, {
       method: 'POST',
       body: blob,
       headers: { 'Content-Type': 'image/jpeg', 'X-Room-Key': room.key },
@@ -205,7 +207,20 @@ export function useWhiteboard(role, send) {
         sendRef.current({ t: 'tile:drop', id, x, y });
       },
       remove(id) {
-        sendRef.current({ t: 'tile:delete', id });
+        if (role === 'tutor') sendRef.current({ t: 'tile:delete', id });
+      },
+      addAt(text, x, y) {
+        const value = cleanTileText(text);
+        if (role !== 'tutor' || !value || !Number.isFinite(x) || !Number.isFinite(y) || tiles.current.size >= MAX_TILES) return null;
+        const id = makeId('tile');
+        sendRef.current({ t: 'tile:add-at', tile: { id, text: value, x, y } });
+        return id;
+      },
+      duplicate(id) {
+        if (role !== 'tutor' || !tiles.current.has(id) || tiles.current.size >= MAX_TILES) return null;
+        const copyId = makeId('tile');
+        sendRef.current({ t: 'tile:duplicate', id, copyId });
+        return copyId;
       },
     }),
     [role, renderTiles, sendThrottled, cancelThrottled],
@@ -283,6 +298,13 @@ export function useWhiteboard(role, send) {
       remove(id) {
         sendRef.current({ t: 'piece:delete', id });
       },
+      crop(id, crop) {
+        const piece = pieces.current.get(id);
+        const chosen = piece && cleanCrop(crop, pictures.current.get(piece.pic));
+        if (role !== 'tutor' || !chosen || (piece.heldBy && piece.heldBy !== 'tutor')) return false;
+        sendRef.current({ t: 'piece:crop', id, crop: chosen });
+        return true;
+      },
       layer(id, direction) {
         if (role === 'tutor' && (direction === 'front' || direction === 'back')) {
           sendRef.current({ t: 'piece:layer', id, direction });
@@ -293,7 +315,7 @@ export function useWhiteboard(role, send) {
   );
 
   // Tutor only: shrink a picture, send it to the room, and keep a copy in case the server restarts.
-  const addPicture = useCallback(async (file, room) => {
+  const addPicture = useCallback(async (file, room, { material, title = file?.name } = {}) => {
     if (!room?.code || !room?.key) return { error: 'Not connected yet. Try again in a moment.' };
     const uploads = [...pictures.current.values()].filter((p) => !p.library).length;
     if (uploads >= MAX_PICTURES) return { error: `Up to ${MAX_PICTURES} uploaded pictures per session.` };
@@ -303,10 +325,11 @@ export function useWhiteboard(role, send) {
     } catch {
       return { error: 'That file isn’t a picture this browser can open.' };
     }
+    Object.assign(shrunk, cleanPictureMetadata({ material, title }));
     const id = newPictureId();
     if (!(await sendPicture(room, id, shrunk))) return { error: 'The picture couldn’t be added. Try again.' };
     kept.current.set(id, shrunk);
-    const picture = { id, w: shrunk.w, h: shrunk.h };
+    const picture = { id, w: shrunk.w, h: shrunk.h, ...cleanPictureMetadata(shrunk) };
     pictures.current.set(id, picture);
     renderTiles();
     return picture;

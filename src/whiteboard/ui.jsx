@@ -152,7 +152,7 @@ export function StageNotice({ children }) {
   const [closed, setClosed] = useState(null);
   if (closed === text) return null;
   return (
-    <div className='pointer-events-none absolute inset-x-0 top-[22%] z-10 flex justify-center px-3 sm:px-4'>
+    <div className='pointer-events-none absolute inset-x-0 top-[22%] z-10 flex justify-center px-3 sm:px-4 [main:has([data-object-toolbar])_&]:hidden'>
       <div className='pointer-events-auto relative max-w-md rounded-2xl bg-slate-900/85 px-9 py-3 text-center text-sm font-semibold leading-snug text-white shadow-lg backdrop-blur-sm sm:px-10 sm:text-base'>
         <p className='text-balance'>{children}</p>
         <button
@@ -169,25 +169,36 @@ export function StageNotice({ children }) {
   );
 }
 
-export function CopyButton({ text, label }) {
+export function CopyButton({ text, label = 'Copy lesson link', compact = false }) {
   const [copied, setCopied] = useState(false);
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
+      clearTimeout(timer.current);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      timer.current = setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt('Copy this link:', text);
+      clearTimeout(timer.current);
+      setCopied(false);
+      window.prompt('Copy this lesson link:', text);
     }
   };
   return (
     <button
       type='button'
       onClick={copy}
-      className='inline-flex items-center gap-1 rounded-full border border-violet-300 px-3 py-1 text-sm font-semibold text-violet-700 hover:bg-violet-50'
+      aria-label={copied ? 'Copied lesson link' : label}
+      title={copied ? 'Copied' : label}
+      className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-violet-200 text-sm font-semibold text-violet-800 hover:bg-violet-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${compact ? 'w-11 px-0 sm:w-auto sm:px-3' : 'px-3'}`}
     >
-      {copied ? <Check className='h-4 w-4' aria-hidden='true' /> : <Copy className='h-4 w-4' aria-hidden='true' />}
-      {copied ? 'Copied!' : label}
+      {copied ? <Check className='h-4 w-4 shrink-0' aria-hidden='true' /> : <Copy className='h-4 w-4 shrink-0' aria-hidden='true' />}
+      <span className={`${compact ? 'hidden sm:grid' : 'grid'} text-center`} aria-hidden='true'>
+        <span className='invisible [grid-area:1/1]'>{label}</span>
+        <span className='[grid-area:1/1]'>{copied ? 'Copied' : label}</span>
+      </span>
+      <span role='status' className='sr-only'>{copied ? 'Lesson link copied.' : ''}</span>
     </button>
   );
 }
