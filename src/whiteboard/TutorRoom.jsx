@@ -485,6 +485,7 @@ export default function TutorRoom() {
             tiles={wb.tiles}
             selectedTile={selectedTileId}
             canManageTiles
+            lettersReady={status === 'open' && Boolean(confirmedRoom)}
             tileActions={{ ...wb.tileActions, select: (id) => { setSelectedTileId(id); if (id) chooseTool('none'); } }}
             pieces={wb.pieces}
             pictures={wb.pictures}

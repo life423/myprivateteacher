@@ -153,14 +153,14 @@ export function StageNotice({ children }) {
   if (closed === text) return null;
   return (
     <div className='pointer-events-none absolute inset-x-0 top-[22%] z-10 flex justify-center px-3 sm:px-4 [main:has([data-object-toolbar])_&]:hidden [main:has([data-sound-box])_&]:hidden'>
-      <div className='pointer-events-auto relative max-w-md rounded-2xl bg-slate-900/85 px-9 py-3 text-center text-sm font-semibold leading-snug text-white shadow-lg backdrop-blur-sm sm:px-10 sm:text-base'>
+      <div className='pointer-events-none relative max-w-md rounded-2xl bg-slate-900/85 px-9 py-3 text-center text-sm font-semibold leading-snug text-white shadow-lg backdrop-blur-sm sm:px-10 sm:text-base'>
         <p className='text-balance'>{children}</p>
         <button
           type='button'
           onClick={() => setClosed(text)}
           aria-label='Close this message'
           title='Close'
-          className='absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/25 hover:text-white'
+          className='pointer-events-auto absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/25 hover:text-white'
         >
           <X className='h-3.5 w-3.5' aria-hidden='true' />
         </button>

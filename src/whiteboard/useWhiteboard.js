@@ -39,15 +39,33 @@ export function useFrameState(initial) {
   const [value, setValue] = useState(initial);
   const next = useRef(initial);
   const frame = useRef(0);
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
-  const set = useCallback((v) => {
-    next.current = v;
-    if (frame.current) return;
+  const pending = useRef(false);
+  const mounted = useRef(false);
+  const schedule = useCallback(() => {
+    if (!mounted.current || frame.current || !pending.current) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
+      if (!mounted.current || !pending.current) return;
+      pending.current = false;
       setValue(next.current);
     });
   }, []);
+  useEffect(() => {
+    mounted.current = true;
+    // StrictMode and Fast Refresh replay effects while retaining refs. A canceled
+    // frame must not block future updates, and its latest value still needs paint.
+    schedule();
+    return () => {
+      mounted.current = false;
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
+    };
+  }, [schedule]);
+  const set = useCallback((v) => {
+    next.current = v;
+    pending.current = true;
+    schedule();
+  }, [schedule]);
   return [value, set];
 }
 
@@ -497,7 +515,9 @@ export function useWhiteboard(role, send) {
           return true;
         case 'tile:add':
           for (const tile of msg.tiles || []) putTile(tile);
-          renderTiles();
+          // Creation is a discrete server-confirmed change, not pointer motion.
+          // Render it immediately; tile movement remains animation-frame batched.
+          bump();
           return true;
         case 'tile:grab': {
           const tile = tiles.current.get(msg.id);

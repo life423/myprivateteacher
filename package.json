@@ -7,6 +7,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "vite build",
     "test": "vitest run",
+    "test:alphabet-drag": "node scripts/check-alphabet-drag.mjs",
     "server": "node --env-file-if-exists=.env --watch server/index.js",
     "start": "node --env-file-if-exists=.env server/index.js",
     "smoke": "node server/smoke.js",

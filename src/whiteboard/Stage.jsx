@@ -2,6 +2,7 @@ import { DEFAULT_LINES } from '../../shared/lines.js';
 import { guideRows } from './guides.js';
 import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Hand from './Hand.jsx';
+import AlphabetPickup, { isPickupCancellation, usePickupCancellation } from './AlphabetPickup.jsx';
 import InkCanvas from './InkCanvas.jsx';
 import Tile from './Tile.jsx';
 import PieceImage from './PieceImage.jsx';
@@ -11,7 +12,7 @@ import ObjectToolbar from './ObjectToolbar.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
-import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileKind, tileWidth } from '../../shared/tiles.js';
+import { MAX_TILES, TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileKind, tileWidth } from '../../shared/tiles.js';
 import { clampPiece, isFacePiece, pieceSize } from '../../shared/pieces.js';
 import { Minus, Plus, Scan } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
@@ -132,6 +133,7 @@ export default function Stage({
   tiles = [],
   selectedTile = null,
   canManageTiles = false,
+  lettersReady = true,
   tileActions,
   pieces = [],
   pictures = [],
@@ -165,6 +167,8 @@ export default function Stage({
   const letterDrag = useRef(null);
   const counterTap = useRef(null);
   const [letterPreview, setLetterPreview] = useState(null);
+  const [alphabetPickup, setAlphabetPickup] = useState(null);
+  const [letterDrop, setLetterDrop] = useState(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
   live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, canManageTiles, strip, boxes, boxTaps, boxEpoch, onToggleSoundBox, canTapSoundBoxes, tool };
@@ -220,6 +224,21 @@ export default function Stage({
   const [activeBox, setActiveBox] = useState(null);
   const [layersOpen, setLayersOpen] = useState(false);
   useEffect(() => { counterTap.current = null; }, [boxes, boxEpoch, canTapSoundBoxes, tool]);
+  // A release is only complete once the server's tile is in the shared board.
+  useEffect(() => {
+    if (letterDrop?.id && letterDrop.status !== 'placed' && tiles.some(tile => tile.id === letterDrop.id)) {
+      setLetterDrop(current => current?.id === letterDrop.id ? { ...current, status: 'placed', message: `${current.text} added` } : current);
+    }
+  }, [tiles, letterDrop?.id, letterDrop?.status]);
+  useEffect(() => {
+    if (!letterDrop) return undefined;
+    const timer = setTimeout(() => {
+      setLetterDrop(current => current?.id !== letterDrop.id ? current : current?.status === 'pending'
+        ? { ...current, status: 'error', message: `${current.text} hasn't appeared yet. Try again once the lesson is connected.` }
+        : null);
+    }, letterDrop.status === 'pending' ? 4000 : letterDrop.status === 'placed' ? 2000 : 6000);
+    return () => clearTimeout(timer);
+  }, [letterDrop?.id, letterDrop?.status, letterDrop?.message]);
   useEffect(() => setLocalTileId(selectedTile), [selectedTile]);
   const [placementNotice, setPlacementNotice] = useState('');
   // Pieces are handled with the pointer tools (Watch, Hand), never the pen or eraser.
@@ -405,16 +424,37 @@ export default function Stage({
     const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
     const point = inside ? toStage(clientX, clientY) : null;
     if (!canManageTiles || !point || !insideBoard(point, boardRect(strip))) { setLetterPreview(null); setActiveBox(null); return false; }
-    const at = clampTile(text, point.x - tileWidth(text) / 2, point.y - TILE_HEIGHT / 2);
+    const at = clampTile(text, point.x - tileWidth(text) / 2, Math.max(boardRect(strip).y, point.y - TILE_HEIGHT / 2));
     const preview = { id: 'alphabet-preview', text, ...at, z: Infinity, kind: tileKind(text), heldBy: me };
     setLetterPreview(preview);
     setActiveBox(soundBoxTarget(preview, boxes, tiles)?.index ?? null);
     return true;
   };
   const clearLetterPreview = () => { setLetterPreview(null); setActiveBox(null); };
+  const cancelAlphabetPickup = () => {
+    const drag = letterDrag.current;
+    letterDrag.current = null;
+    if (drag) gesture.current.touches.delete(drag.pointerId);
+    if (!gesture.current.touches.size) gesture.current.pinch = null;
+    setAlphabetPickup(null);
+    setGrip(null);
+    clearLetterPreview();
+  };
+  usePickupCancellation(alphabetPickup?.pointerId ?? null, cancelAlphabetPickup);
+  useEffect(() => { if (!canManageTiles || !strip || fillTop) cancelAlphabetPickup(); }, [canManageTiles, strip, fillTop]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startAlphabetPickup = (event, raw) => {
+    const letter = live.current.canManageTiles && !fillTop ? letterAt(raw.x, raw.y, live.current.strip) : null;
+    if (!letter || letterDrag.current) return false;
+    capture(event);
+    letterDrag.current = { pointerId: event.pointerId, text: letter, x: event.clientX, y: event.clientY, moved: false };
+    setLetterDrop(null);
+    setAlphabetPickup({ pointerId: event.pointerId, text: letter, x: event.clientX, y: event.clientY, onBoard: false });
+    setGrip('grabbing');
+    return true;
+  };
   const addLetter = (text, point) => {
     if (!canManageTiles || !tileActions?.addAt) return null;
-    const at = clampTile(text, point.x - tileWidth(text) / 2, point.y - TILE_HEIGHT / 2);
+    const at = clampTile(text, point.x - tileWidth(text) / 2, Math.max(boardRect(strip).y, point.y - TILE_HEIGHT / 2));
     const target = snapTile({ id: 'alphabet-new', text, ...at }, boxes, tiles) || at;
     const id = tileActions.addAt(text, target.x, target.y);
     if (id) selectLetter(id);
@@ -425,7 +465,19 @@ export default function Stage({
     const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
     const point = inside ? toStage(clientX, clientY) : null;
     clearLetterPreview();
-    return point && insideBoard(point, boardRect(strip)) ? addLetter(text, point) : null;
+    if (!point || !insideBoard(point, boardRect(strip))) {
+      setLetterDrop({ text, status: 'error', message: `Drop ${text} on the white writing area.` });
+      return null;
+    }
+    if (!lettersReady) {
+      setLetterDrop({ text, status: 'error', message: 'The lesson is reconnecting. Try again when it is connected.' });
+      return null;
+    }
+    const id = addLetter(text, point);
+    setLetterDrop(id
+      ? { id, text, status: 'pending', message: `Placing ${text}…` }
+      : { text, status: 'error', message: tiles.length >= MAX_TILES ? `The board has ${MAX_TILES} tiles. Remove one before adding another.` : `${text} could not be added. Try again.` });
+    return id;
   };
 
   // The hand under a point that this person may hold (the right one wins where they overlap):
@@ -450,14 +502,21 @@ export default function Stage({
   };
 
   const onPointerDown = (event) => {
-    if (isPalm(event)) return;
-    if (grabHand(event)) return;
+    if (isPickupCancellation(event) || isPalm(event) || event.button !== 0) return;
+    const initialPoint = toStage(event.clientX, event.clientY);
+    // A letter cell is a letter source, even when a shared pointing glove covers it.
+    // The glove's palm/cuff below the strip still moves the shared pointer as before.
+    if (initialPoint && !(event.pointerType === 'touch' && gesture.current.touches.size) && startAlphabetPickup(event, initialPoint)) {
+      if (event.pointerType === 'touch') gesture.current.touches.set(event.pointerId, local(event.clientX, event.clientY));
+      return;
+    }
+    if (!letterDrag.current && grabHand(event)) return;
     if (event.pointerType === 'touch') {
       const g = gesture.current;
       g.touches.set(event.pointerId, local(event.clientX, event.clientY));
       if (g.touches.size === 2) {
         // A second finger: stop whatever the first was doing, and pinch or pan instead.
-        if (letterDrag.current) { letterDrag.current = null; clearLetterPreview(); }
+        if (letterDrag.current) { letterDrag.current = null; setAlphabetPickup(null); setGrip(null); clearLetterPreview(); }
         for (const id of g.touches.keys()) if (id !== event.pointerId) endAction({ pointerId: id });
         g.pan = null;
         const [a, b] = [...g.touches.values()];
@@ -528,12 +587,6 @@ export default function Stage({
       if (tool !== 'none') point?.({ ...raw, letter: null });
       return;
     }
-    const letter = canManageTiles && !fillTop ? letterAt(raw.x, raw.y, strip) : null;
-    if (letter) {
-      capture(event);
-      letterDrag.current = { pointerId: event.pointerId, text: letter, x: event.clientX, y: event.clientY, moved: false };
-      return;
-    }
     if (movable) clearSelection();
     const target = event.button === 0 && movable && canTapSoundBoxes && onToggleSoundBox ? soundBoxAt(raw, live.current.boxes, layoutRef.current.scale) : null;
     if (target && !live.current.hands.some((hand) => overHand(raw, hand))) {
@@ -560,10 +613,8 @@ export default function Stage({
     const ld = letterDrag.current;
     if (ld && ld.pointerId === event.pointerId) {
       if (Math.hypot(event.clientX - ld.x, event.clientY - ld.y) > CLICK_SLOP) ld.moved = true;
-      if (ld.moved && !previewLetter(ld.text, event.clientX, event.clientY)) {
-        const point = toStage(event.clientX, event.clientY);
-        if (point) setLetterPreview({ id: 'alphabet-preview', text: ld.text, x: point.x - tileWidth(ld.text) / 2, y: point.y - TILE_HEIGHT / 2, z: Infinity, kind: tileKind(ld.text), heldBy: me });
-      }
+      const onBoard = ld.moved && previewLetter(ld.text, event.clientX, event.clientY);
+      setAlphabetPickup({ pointerId: event.pointerId, text: ld.text, x: event.clientX, y: event.clientY, onBoard: Boolean(onBoard) });
       return;
     }
     const held = holding.current.get(event.pointerId);
@@ -661,7 +712,7 @@ export default function Stage({
     if (!raw) return;
     if (event.pointerType === 'mouse') {
       let next = null;
-      if (handUnder(raw)) next = 'grab';
+      if ((canManageTiles && !fillTop && letterAt(raw.x, raw.y, strip)) || handUnder(raw)) next = 'grab';
       else {
         const picked = tileOps ? pickTile(raw) : null;
         if (picked) next = 'grab';
@@ -721,6 +772,8 @@ export default function Stage({
     const ld = letterDrag.current;
     if (ld && ld.pointerId === event.pointerId) {
       letterDrag.current = null;
+      setAlphabetPickup(null);
+      setGrip(null);
       gesture.current.touches.delete(event.pointerId);
       if (!gesture.current.touches.size) gesture.current.pinch = null;
       if (ld.moved && event.type !== 'pointercancel') dropLetter(ld.text, event.clientX, event.clientY);
@@ -739,7 +792,7 @@ export default function Stage({
   };
 
   const onPointerLeave = (event) => {
-    if (event.pointerType !== 'mouse' || holding.current.size || tileDrag.current || pieceDrag.current) return;
+    if (event.pointerType !== 'mouse' || holding.current.size || tileDrag.current || pieceDrag.current || letterDrag.current) return;
     setGrip(null);
     if (tool === 'pen' || tool === 'eraser') live.current.onLeave?.();
   };
@@ -798,7 +851,7 @@ export default function Stage({
   return (
     <div className='flex h-full w-full min-h-0 flex-col'>
       <div ref={wrapRef} data-board-surface className='relative min-h-0 flex-1 select-none overflow-hidden'>
-      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} boxTaps={boxTaps} />
+      <Backdrop pointed={letters.join('') + (alphabetPickup?.text || '')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} boxTaps={boxTaps} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} overlap={overlapState.get(piece.id)} />
@@ -818,6 +871,7 @@ export default function Stage({
         onPointerMove={onPointerMove}
         onPointerUp={onRelease}
         onPointerCancel={onRelease}
+        onLostPointerCapture={event => { if (letterDrag.current?.pointerId === event.pointerId) cancelAlphabetPickup(); }}
         onPointerLeave={onPointerLeave}
       >
         <rect width={STAGE.width} height={STAGE.height} fill='transparent' />
@@ -879,11 +933,17 @@ export default function Stage({
           ))}
         {/* With the alphabet in its own bar, a hand above the board shows there instead. */}
         {hands
-          .filter((h) => !(fillTop && h.y < BOARD.y))
+          .filter((h) => !(fillTop && h.y < BOARD.y) && h.letter !== alphabetPickup?.text)
           .map((h) => (
-            <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} />
+            <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} pose={h.by ? 'grab' : 'point'} />
           ))}
       </svg>
+      <AlphabetPickup pickup={alphabetPickup} />
+      {letterDrop && <div data-letter-drop-status={letterDrop.status} role='status'
+        className={`pointer-events-none absolute bottom-3 left-1/2 z-20 max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-xl border px-3 py-2 text-center text-sm font-semibold shadow-sm ${letterDrop.status === 'error' ? 'border-amber-200 bg-amber-50 text-amber-900' : letterDrop.status === 'placed' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-blue-200 bg-white text-blue-900'}`}>
+        {letterDrop.message}
+      </div>}
+
       {boxes > 0 && <div role='group' aria-label='Sound box counters' className='pointer-events-none absolute inset-0 z-10'>
         {soundBoxes(boxes).map((box, index) => {
           const rect = soundBoxButtonRect(box, layout);
