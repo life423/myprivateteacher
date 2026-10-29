@@ -61,7 +61,9 @@ export function TopBar({ back, title, children, menu, end }) {
   return (
     <header
       ref={ref}
-      className={`relative z-40 flex items-center gap-x-3 gap-y-2 bg-white px-3 py-2 shadow-sm sm:px-4 ${room ? 'flex-nowrap sm:gap-x-4' : 'flex-wrap gap-x-4'}`}
+      data-whiteboard-topbar
+      data-collapsed={collapsed}
+      className={`group/topbar relative z-40 flex items-center gap-x-2 gap-y-2 bg-white px-2 py-2 shadow-sm sm:px-4 ${room ? 'flex-nowrap sm:gap-x-4' : 'flex-wrap gap-x-4'}`}
     >
       {back && (
         <Link to={back} aria-label='Back' className='rounded-full p-2 text-violet-700 hover:bg-violet-100'>
@@ -70,7 +72,7 @@ export function TopBar({ back, title, children, menu, end }) {
       )}
       <h1 className={`text-lg font-bold text-violet-800 sm:text-xl ${room && collapsed ? 'min-w-0 truncate max-sm:text-base' : 'shrink-0'}`}>{title}</h1>
       <div
-        className={`flex items-center justify-end gap-x-2 gap-y-2 ${room ? 'ml-auto shrink-0 sm:gap-x-3' : 'min-w-0 flex-1 flex-wrap sm:gap-x-4'}`}
+        className={`flex items-center justify-end gap-x-1.5 gap-y-2 ${room ? 'ml-auto shrink-0 sm:gap-x-3' : 'min-w-0 flex-1 flex-wrap sm:gap-x-4'}`}
       >
         {children}
         {/* In the bar, controls marked hide-inline show just their icon (the menu shows their words). */}
@@ -119,11 +121,11 @@ export function StatusPill({ tone, children }) {
     <span
       role='status'
       title={typeof children === 'string' ? children : undefined}
-      className={`inline-flex shrink-0 items-center gap-2 rounded-full px-2 py-2 text-sm font-semibold sm:px-3 sm:py-1 ${TONES[tone]}`}
+      className={`inline-flex shrink-0 items-center gap-2 rounded-full px-2 py-2 text-sm font-semibold sm:px-3 sm:py-1 group-data-[collapsed=true]/topbar:px-2 group-data-[collapsed=true]/topbar:py-2 ${TONES[tone]}`}
     >
       <span className='h-2 w-2 rounded-full bg-current' aria-hidden='true' />
-      {/* On phones just the coloured dot shows; the words stay for screen readers. */}
-      <span className='max-sm:sr-only'>{children}</span>
+      {/* Compact headers keep the status words available to screen readers. */}
+      <span className='max-sm:sr-only group-data-[collapsed=true]/topbar:sr-only'>{children}</span>
     </span>
   );
 }

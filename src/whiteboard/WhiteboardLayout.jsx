@@ -337,12 +337,12 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
       />
     );
 
-  // The instructor's resource shortcut stays in the same place, outside scrollable panels.
-  // A small dedicated row also keeps it clear of video, Layers and selected-picture controls.
-  const resourceBar = persistentControls && (
-    <div className='relative z-30 flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-1 sm:px-4'>
+  // The normal header holds the resource shortcut. In focus mode this compact
+  // replacement keeps it and Exit focus available without adding a second row.
+  const resourceBar = focus && persistentControls && (
+    <div data-focus-resource-controls className='relative z-30 flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-1 sm:px-4'>
       {persistentControls}
-      {focus && <ExitFocus inline onClick={() => setFocus(false)} />}
+      <ExitFocus inline onClick={() => setFocus(false)} />
     </div>
   );
 

@@ -342,22 +342,26 @@ export default function TutorRoom() {
   const studentBrowsing = studentHere && studentBrowse.open;
   const browseText = studentPicTitle ? `Your student is looking at ${studentPicTitle}.` : 'Your student opened the picture library.';
 
+  const pictureLibraryShortcut = (compact = false) => (
+    <button
+      type='button'
+      aria-label='Picture library'
+      title='Open picture library'
+      aria-haspopup='dialog'
+      aria-expanded={browsing}
+      aria-controls='tutor-picture-library'
+      onClick={() => setBrowsing(true)}
+      className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-sm font-bold text-violet-800 hover:border-violet-400 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${compact ? 'gap-1.5 px-2' : 'gap-2 px-3'}`}
+    >
+      <LayoutGrid className='h-5 w-5' aria-hidden='true' />
+      <span className={compact ? 'hidden min-[380px]:inline' : ''}>Pictures</span>
+    </button>
+  );
+
   return (
     <>
     <WhiteboardLayout
-      persistentControls={
-        <button
-          type='button'
-          aria-haspopup='dialog'
-          aria-expanded={browsing}
-          aria-controls='tutor-picture-library'
-          onClick={() => setBrowsing(true)}
-          className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-800 hover:border-violet-400 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
-        >
-          <LayoutGrid className='h-5 w-5' aria-hidden='true' />
-          Picture library
-        </button>
-      }
+      persistentControls={pictureLibraryShortcut()}
       header={
         <TopBar
           title='Alphabet Whiteboard'
@@ -411,11 +415,12 @@ export default function TutorRoom() {
           }
         >
           <div className='flex shrink-0 items-center gap-2'>
-            <span title='Room code' className='rounded-lg bg-violet-600 px-3 py-1 font-mono text-2xl font-bold tracking-widest text-white'>
+            <span title='Room code' className='rounded-lg bg-violet-600 px-2 py-1 font-mono text-xl font-bold tracking-wider text-white sm:px-3 sm:text-2xl sm:tracking-widest'>
               {room.code || '····'}
             </span>
           </div>
           {pill}
+          {pictureLibraryShortcut(true)}
         </TopBar>
       }
       tools={
