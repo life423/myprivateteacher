@@ -6,6 +6,8 @@ import InkCanvas from './InkCanvas.jsx';
 import Tile from './Tile.jsx';
 import PieceImage from './PieceImage.jsx';
 import PictureLayers from './PictureLayers.jsx';
+import SoundBoxControls from './SoundBoxControls.jsx';
+import { soundBoxAt, soundBoxButtonRect, soundTapCanFinish, SOUND_TAP_SLOP } from './soundBoxInteraction.js';
 import ObjectToolbar from './ObjectToolbar.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
@@ -16,7 +18,6 @@ import { Minus, Plus, Scan } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
 import { picturePlacementBounds } from './picturePlacement.js';
 import { pictureOverlapState } from './pictureGeometry.js';
-import { pictureLayersTop } from './pictureLayerPosition.js';
 
 const VIEW_BOX = `0 0 ${STAGE.width} ${STAGE.height}`;
 // Handwriting guides (top line, dashed midline, baseline) stay put even when the board grows.
@@ -55,7 +56,7 @@ function letterTone(letter, pointed) {
 }
 
 // The bottom layer: the alphabet strip (unless hidden), the board, its guide lines and the sound boxes.
-const Backdrop = memo(function Backdrop({ pointed, strip, boxes, lines, viewBox, bar = false, activeBox = null }) {
+const Backdrop = memo(function Backdrop({ pointed, strip, boxes, lines, viewBox, bar = false, activeBox = null, boxTaps = [] }) {
   const board = boardRect(strip);
   return (
     <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='absolute inset-0 h-full w-full' aria-hidden='true'>
@@ -90,21 +91,19 @@ const Backdrop = memo(function Backdrop({ pointed, strip, boxes, lines, viewBox,
           <line x1={board.x + 40} x2={board.x + board.width - 40} y1={row.base} y2={row.base} className='stroke-slate-300' />
         </g>
       ))}
-      {soundBoxes(boxes).map((box, index) => (
-        <rect
-          key={box.x}
-          data-sound-box={index}
-          data-drop-target={activeBox === index ? 'true' : undefined}
-          x={box.x}
-          y={box.y}
-          width={box.width}
-          height={box.height}
-          rx='16'
-          strokeWidth='4'
-          strokeDasharray={activeBox === index ? undefined : '14 10'}
-          className={activeBox === index ? 'fill-violet-50 stroke-violet-500' : 'fill-slate-50 stroke-slate-400'}
-        />
-      ))}
+      {soundBoxes(boxes).map((box, index) => {
+        const pressed = boxTaps.includes(index);
+        const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+        return <g key={box.x}>
+          <rect data-sound-box={index} data-sound-pressed={pressed ? 'true' : 'false'} data-drop-target={activeBox === index ? 'true' : undefined}
+            x={box.x} y={box.y} width={box.width} height={box.height} rx='16' strokeWidth='4'
+            strokeDasharray={activeBox === index || pressed ? undefined : '14 10'}
+            className={activeBox === index || pressed ? 'fill-violet-50 stroke-violet-500' : 'fill-slate-50 stroke-slate-400'} />
+          <circle cx={cx} cy={cy} r='25' strokeWidth='3' className={pressed ? 'fill-violet-600 stroke-violet-600' : 'fill-white stroke-violet-300'} />
+          {pressed ? <path d={`M${cx - 11} ${cy}l8 8 15-18`} fill='none' stroke='white' strokeWidth='5' strokeLinecap='round' strokeLinejoin='round' /> : <circle cx={cx} cy={cy} r='7' className='fill-violet-200' />}
+        </g>;
+      })}
+
     </svg>
   );
 });
@@ -126,6 +125,12 @@ export default function Stage({
   letters = [], // the letters the hands point at
   strip = true,
   boxes = 0,
+  boxTaps = [],
+  boxEpoch = 0,
+  onBoxes = null,
+  onResetSoundBoxes = null,
+  onToggleSoundBox = null,
+  canTapSoundBoxes = false,
   lines = DEFAULT_LINES,
   tiles = [],
   selectedTile = null,
@@ -161,10 +166,11 @@ export default function Stage({
   const tileDrag = useRef(null);
   const pieceDrag = useRef(null);
   const letterDrag = useRef(null);
+  const counterTap = useRef(null);
   const [letterPreview, setLetterPreview] = useState(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
-  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, canManageTiles, strip, boxes };
+  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, canManageTiles, strip, boxes, boxTaps, boxEpoch, onToggleSoundBox, canTapSoundBoxes, tool };
   // The board's frame on screen: all of it fitted (view is null), or zoomed and panned by this
   // person alone. The board's own coordinates never change, so the other screen never notices.
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -216,6 +222,8 @@ export default function Stage({
   const [localTileId, setLocalTileId] = useState(null);
   const [activeBox, setActiveBox] = useState(null);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [soundControlsOpen, setSoundControlsOpen] = useState(false);
+  useEffect(() => { counterTap.current = null; }, [boxes, boxEpoch, canTapSoundBoxes, tool]);
   useEffect(() => setLocalTileId(selectedTile), [selectedTile]);
   const [placementNotice, setPlacementNotice] = useState('');
   // Pieces are handled with the pointer tools (Watch, Hand), never the pen or eraser.
@@ -228,9 +236,9 @@ export default function Stage({
   const clearSelection = () => { setSelectedPieceId(null); setLocalTileId(null); tileActions?.select?.(null); };
   useEffect(() => {
     if (!selectedPiece && !selectedLetter) return undefined;
-    const escape = event => { if (event.key === 'Escape' && !layersOpen && !event.target.closest?.('[role=dialog]')) clearSelection(); };
+    const escape = event => { if (event.key === 'Escape' && !layersOpen && !soundControlsOpen && !event.target.closest?.('[role=dialog]')) clearSelection(); };
     window.addEventListener('keydown', escape); return () => window.removeEventListener('keydown', escape);
-  }, [selectedPiece?.id, selectedLetter?.id, layersOpen]);
+  }, [selectedPiece?.id, selectedLetter?.id, layersOpen, soundControlsOpen]);
   const selectedFace = Boolean(selectedPiece && isFacePiece(selectedPiece, pictures.find((picture) => picture.id === selectedPiece.pic)));
   const canResizeSelected = Boolean(selectedPiece && canEditPieces && (me === 'tutor' || !selectedFace));
   const selectPiece = (id) => {
@@ -531,6 +539,12 @@ export default function Stage({
       return;
     }
     if (movable) clearSelection();
+    const target = event.button === 0 && movable && canTapSoundBoxes && onToggleSoundBox ? soundBoxAt(raw, live.current.boxes, layoutRef.current.scale) : null;
+    if (target && !live.current.hands.some((hand) => overHand(raw, hand))) {
+      capture(event);
+      counterTap.current = { pointerId: event.pointerId, index: target.index, count: live.current.boxes, epoch: live.current.boxEpoch, pressed: !live.current.boxTaps.includes(target.index), x: event.clientX, y: event.clientY };
+      return;
+    }
     if (tool === 'none') {
       // Watching: dragging the empty board pans it when zoomed in.
       if (view) {
@@ -587,6 +601,13 @@ export default function Stage({
         return;
       }
       if (g.pinch) return; // the finger left after a pinch does nothing until it lifts
+    }
+    const tap = counterTap.current;
+    if (tap?.pointerId === event.pointerId) {
+      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) <= SOUND_TAP_SLOP) return;
+      counterTap.current = null;
+      if (view) g.pan = { id: event.pointerId, at: boardPoint(local(tap.x, tap.y)) };
+      else return;
     }
     if (g.pan && g.pan.id === event.pointerId) {
       const p = local(event.clientX, event.clientY);
@@ -649,6 +670,7 @@ export default function Stage({
         const picked = tileOps ? pickTile(raw) : null;
         if (picked) next = 'grab';
         else if (pieceActions) next = pieceGrip(raw);
+        if (!next && tool === 'none' && live.current.canTapSoundBoxes && !live.current.hands.some((hand) => overHand(raw, hand)) && soundBoxAt(raw, live.current.boxes, layoutRef.current.scale)) next = 'remove';
       }
       setGrip(next);
     }
@@ -658,6 +680,7 @@ export default function Stage({
 
   // Ends what a pointer was doing (a stroke, a drag). Also used when a second finger arrives.
   const endAction = (event) => {
+    if (counterTap.current?.pointerId === event.pointerId) { counterTap.current = null; return; }
     const held = holding.current.get(event.pointerId);
     if (held) {
       holding.current.delete(event.pointerId);
@@ -691,6 +714,14 @@ export default function Stage({
   };
 
   const onRelease = (event) => {
+    const tap = counterTap.current;
+    if (tap?.pointerId === event.pointerId) {
+      counterTap.current = null;
+      const g = gesture.current, pinching = Boolean(g.pinch);
+      if (g.touches.delete(event.pointerId) && !g.touches.size) g.pinch = null;
+      if (soundTapCanFinish(tap, event, { canTap: live.current.canTapSoundBoxes, tool: live.current.tool, count: live.current.boxes, epoch: live.current.boxEpoch, pinching, point: toStage(event.clientX, event.clientY), scale: layoutRef.current.scale })) live.current.onToggleSoundBox?.(tap.index, tap.pressed);
+      return;
+    }
     const ld = letterDrag.current;
     if (ld && ld.pointerId === event.pointerId) {
       letterDrag.current = null;
@@ -752,10 +783,7 @@ export default function Stage({
   const clip = boardRect(strip);
   const stacked = [...tiles].sort((a, b) => a.z - b.z);
   const paperTop = Math.max(8, layout.top + clip.y * layout.scale + 8);
-  const layersButton = wrapRef.current?.querySelector('[data-picture-layers-control] > button');
-  const layersBounds = layersButton?.getBoundingClientRect();
-  const wrapBounds = wrapRef.current?.getBoundingClientRect();
-  const reserved = layersBounds && wrapBounds ? [{ x: layersBounds.x - wrapBounds.x, y: layersBounds.y - wrapBounds.y, w: layersBounds.width, h: layersBounds.height }] : [];
+  const reserved = []; // Board resource controls now have their own row.
   const zoomAroundCentre = (scale) => {
     const point = boardPoint({ x: size.width / 2, y: size.height / 2 });
     zoomTo(scale, point.x, point.y, size.width / 2, size.height / 2);
@@ -764,8 +792,38 @@ export default function Stage({
 
   return (
     <div className='flex h-full w-full min-h-0 flex-col'>
+      {(onBoxes || boxes > 0 || pieces.length > 0) && <div data-board-controls className='relative z-30 flex h-11 shrink-0 items-center justify-between gap-1 border-b border-slate-200 bg-slate-100 px-1'>
+        <SoundBoxControls count={boxes} taps={boxTaps} onCount={onBoxes} onReset={onResetSoundBoxes} open={soundControlsOpen} onOpenChange={(open) => { setSoundControlsOpen(open); if (open) setLayersOpen(false); }} height={size.height} onShow={() => {
+          const list = soundBoxes(boxes);
+          if (!list.length || !size.width || !size.height) return;
+          autoFill.current = false;
+          const width = list.at(-1).x + list.at(-1).width - list[0].x;
+          const scale = Math.min(size.width / (width + 80), size.height / (list[0].height + 100));
+          zoomTo(scale, STAGE.width / 2, list[0].y + list[0].height / 2, size.width / 2, size.height / 2);
+        }} />
+          {pieceActions && <PictureLayers
+        inline
+        open={layersOpen}
+        pieces={pieces}
+        pictures={pictures}
+        selected={selectedPiece}
+        me={me}
+        srcFor={pictureSrc}
+        onSelect={selectPiece}
+        onOpenChange={(open) => { setLayersOpen(open); if (open) setSoundControlsOpen(false); }}
+        onClear={clearPiece}
+        onLayer={pieceActions.layer}
+        onResize={resizePiece}
+        canResize={canResizeSelected}
+        resizeLocked={me === 'student' && selectedFace}
+        canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
+        canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
+        height={size.height}
+        overlapState={overlapState}
+      />}
+      </div>}
       <div ref={wrapRef} data-board-surface className='relative min-h-0 flex-1 select-none overflow-hidden'>
-      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} />
+      <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} boxTaps={boxTaps} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
         {stackedPieces.map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} overlap={overlapState.get(piece.id)} />
@@ -851,26 +909,18 @@ export default function Stage({
             <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} />
           ))}
       </svg>
-      {pieceActions && <PictureLayers
-        pieces={pieces}
-        pictures={pictures}
-        selected={selectedPiece}
-        me={me}
-        srcFor={pictureSrc}
-        onSelect={selectPiece}
-        onOpenChange={setLayersOpen}
-        onClear={clearPiece}
-        onLayer={pieceActions.layer}
-        onResize={resizePiece}
-        canResize={canResizeSelected}
-        resizeLocked={me === 'student' && selectedFace}
-        canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
-        canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
-        height={size.height}
-        topOffset={pictureLayersTop(layout, { strip, externalAlphabet: Boolean(fillTop), floatingTools: fill && canEditPieces && window.matchMedia('(orientation: landscape)').matches })}
-        overlapState={overlapState}
-      />}
-      {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && !letterDrag.current && !letterPreview && (selectedPiece || selectedLetter) && <ObjectToolbar
+      {boxes > 0 && <div role='group' aria-label='Sound box counters' className='pointer-events-none absolute inset-0 z-10'>
+        {soundBoxes(boxes).map((box, index) => {
+          const rect = soundBoxButtonRect(box, layout);
+          const visible = rect.x >= 0 && rect.y >= 0 && rect.x + rect.w <= size.width && rect.y + rect.h <= size.height;
+          return <button key={index} type='button' data-sound-counter={index} aria-label={`Sound box ${index + 1} counter`} aria-pressed={boxTaps.includes(index)} aria-hidden={!visible || undefined} tabIndex={visible ? 0 : -1} disabled={!canTapSoundBoxes || !movable || !onToggleSoundBox}
+            title={canTapSoundBoxes ? 'Select tool: tap one box for each sound' : 'Your tutor needs to turn on your tools first'}
+            onClick={() => { if (canTapSoundBoxes && movable) onToggleSoundBox?.(index, !boxTaps.includes(index)); }}
+            className='pointer-events-none absolute rounded-xl border border-transparent bg-transparent focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-violet-600'
+            style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}><span className='sr-only'>Sound {index + 1}</span></button>;
+        })}
+      </div>}
+      {movable && !layersOpen && !soundControlsOpen && !pieceDrag.current && !tileDrag.current && !letterDrag.current && !letterPreview && (selectedPiece || selectedLetter) && <ObjectToolbar
         object={selectedPiece || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
         kind={selectedPiece ? 'picture' : 'tile'}
         label={selectedPiece ? picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}

@@ -152,7 +152,7 @@ export function StageNotice({ children }) {
   const [closed, setClosed] = useState(null);
   if (closed === text) return null;
   return (
-    <div className='pointer-events-none absolute inset-x-0 top-[22%] z-10 flex justify-center px-3 sm:px-4 [main:has([data-object-toolbar])_&]:hidden'>
+    <div className='pointer-events-none absolute inset-x-0 top-[22%] z-10 flex justify-center px-3 sm:px-4 [main:has([data-object-toolbar])_&]:hidden [main:has([data-sound-box])_&]:hidden'>
       <div className='pointer-events-auto relative max-w-md rounded-2xl bg-slate-900/85 px-9 py-3 text-center text-sm font-semibold leading-snug text-white shadow-lg backdrop-blur-sm sm:px-10 sm:text-base'>
         <p className='text-balance'>{children}</p>
         <button

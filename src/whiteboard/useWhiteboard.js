@@ -3,6 +3,7 @@ import { DEFAULT_LINES, isLineSize } from '../../shared/lines.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
 import { BOX_COUNTS, MAX_TILES, cleanTileText } from '../../shared/tiles.js';
+import { cleanBoxTap, cleanSoundBoxState } from '../../shared/soundBoxes.js';
 import { MAX_PICTURES, MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
 import { findPicturePlacement, picturePlacement, picturePlacementObstacles, PICTURE_RESERVATION_MS } from './picturePlacement.js';
 import { newPictureId, pictureUrl, shrinkPicture } from './pictures.js';
@@ -56,7 +57,7 @@ export function useFrameState(initial) {
 export function useWhiteboard(role, send) {
   const [board] = useState(() => new Board());
   const [, setVersion] = useState(0);
-  const [settings, setSettings] = useState({ strip: true, boxes: 0, lines: DEFAULT_LINES });
+  const [settings, setSettings] = useState({ strip: true, ...cleanSoundBoxState(), lines: DEFAULT_LINES });
   const [, setTileFrame] = useFrameState(0);
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -412,7 +413,23 @@ export function useWhiteboard(role, send) {
   const resetTiles = useCallback(() => sendRef.current({ t: 'tiles:reset' }), []);
   const clearTiles = useCallback(() => sendRef.current({ t: 'tiles:clear' }), []);
   const setStrip = useCallback((on) => sendRef.current({ t: 'strip:set', on }), []);
-  const setBoxes = useCallback((count) => sendRef.current({ t: 'boxes:set', count }), []);
+  const setBoxes = useCallback((count) => {
+    if (role !== 'tutor' || !BOX_COUNTS.includes(count)) return false;
+    sendRef.current({ t: 'boxes:set', count });
+    return true;
+  }, [role]);
+  const toggleSoundBox = useCallback((index, pressed) => {
+    const { boxes, boxTaps, boxEpoch } = settingsRef.current;
+    const tap = cleanBoxTap({ index, pressed: pressed === undefined ? !boxTaps.includes(index) : pressed, epoch: boxEpoch }, boxes, boxEpoch);
+    if (!tap) return false;
+    sendRef.current({ t: 'boxes:tap', ...tap });
+    return true;
+  }, []);
+  const resetSoundBoxes = useCallback(() => {
+    if (role !== 'tutor') return false;
+    sendRef.current({ t: 'boxes:reset' });
+    return true;
+  }, [role]);
   const setLines = useCallback((size) => sendRef.current({ t: 'lines:set', size }), []);
 
   // After a server restart, the tutor hands back the board they still have: strokes,
@@ -430,8 +447,8 @@ export function useWhiteboard(role, send) {
       const ordered = [...tiles.current.values()].sort((a, b) => a.z - b.z);
       for (const tile of ordered) sendRef.current({ t: 'rs-tile', tile });
       for (const piece of [...pieces.current.values()].sort((a, b) => a.z - b.z)) sendRef.current({ t: 'rs-piece', piece });
-      const { strip, boxes, lines } = settingsRef.current;
-      sendRef.current({ t: 'restored', tools, strip, boxes, lines });
+      const { strip, boxes, boxTaps, boxEpoch, lines } = settingsRef.current;
+      sendRef.current({ t: 'restored', tools, strip, boxes, boxTaps, boxEpoch, lines });
     },
     [board],
   );
@@ -455,7 +472,7 @@ export function useWhiteboard(role, send) {
           offers.current = new Map((Array.isArray(msg.offers) ? msg.offers : []).map((o) => [o.id, o]));
           setSettings({
             strip: msg.strip !== false,
-            boxes: BOX_COUNTS.includes(msg.boxes) ? msg.boxes : 0,
+            ...cleanSoundBoxState(msg),
             lines: isLineSize(msg.lines) ? msg.lines : DEFAULT_LINES,
           });
           renderTiles();
@@ -568,7 +585,7 @@ export function useWhiteboard(role, send) {
           setSettings((s) => ({ ...s, strip: Boolean(msg.on) }));
           return true;
         case 'boxes:set':
-          setSettings((s) => ({ ...s, boxes: BOX_COUNTS.includes(msg.count) ? msg.count : 0 }));
+          setSettings((s) => ({ ...s, ...cleanSoundBoxState({ boxes: msg.count, boxTaps: msg.taps, boxEpoch: msg.epoch }) }));
           return true;
         case 'lines:set':
           setSettings((s) => ({ ...s, lines: isLineSize(msg.size) ? msg.size : s.lines }));
@@ -609,9 +626,13 @@ export function useWhiteboard(role, send) {
     clearTiles,
     strip: settings.strip,
     boxes: settings.boxes,
+    boxTaps: settings.boxTaps,
+    boxEpoch: settings.boxEpoch,
     lines: settings.lines,
     setStrip,
     setBoxes,
+    toggleSoundBox,
+    resetSoundBoxes,
     setLines,
   };
 }

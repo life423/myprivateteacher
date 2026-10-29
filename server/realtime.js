@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
 import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, duplicateTilePosition, nextHome, snapTile, tileKind } from '../shared/tiles.js';
+import { cleanBoxTap, cleanBoxTaps, cleanSoundBoxState, nextBoxEpoch } from '../shared/soundBoxes.js';
 import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isFacePiece, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
 import { cleanAct } from '../shared/bridge.js';
 import { cleanIntent } from '../shared/phoneme.js';
@@ -179,6 +180,8 @@ export function attachRealtime(server, options = {}) {
     hands: publicHands(room),
     strip: room.strip,
     boxes: room.boxes,
+    boxTaps: room.boxTaps,
+    boxEpoch: room.boxEpoch,
     lines: room.lines,
     strokes: room.strokes.map(({ id, by, tool, pts, seq }) => ({ id, by, tool, pts, seq })),
     tiles: [...room.tiles.values()],
@@ -191,6 +194,12 @@ export function attachRealtime(server, options = {}) {
   const broadcast = (room, msg) => {
     send(room.tutor, msg);
     send(room.student, msg);
+  };
+
+  const broadcastBoxes = (room) => broadcast(room, { t: 'boxes:set', count: room.boxes, taps: room.boxTaps, epoch: room.boxEpoch });
+  const resetBoxTaps = (room) => {
+    room.boxTaps = [];
+    room.boxEpoch = nextBoxEpoch(room.boxEpoch);
   };
 
   const publicHands = (room) => ({ r: publicHand(room.hands.r), l: publicHand(room.hands.l) });
@@ -454,6 +463,8 @@ export function attachRealtime(server, options = {}) {
           order: 0, // creation order, for packing the tray
           strip: true,
           boxes: 0,
+          boxTaps: [],
+          boxEpoch: 0,
           lines: DEFAULT_LINES,
           // After a restart the tutor's browser hands back its copy of the board.
           restoring: reuse,
@@ -632,6 +643,7 @@ export function attachRealtime(server, options = {}) {
       if (!room || room.tutor !== ws) return;
       room.strokes = [];
       room.strokeById.clear();
+      resetBoxTaps(room);
       for (const w of [room.tutor, room.student]) if (w) w.openStroke = null;
       broadcastBoard(room);
     },
@@ -669,7 +681,7 @@ export function attachRealtime(server, options = {}) {
       room.restoring = false;
       room.tools = Boolean(msg.tools);
       room.strip = msg.strip !== false;
-      room.boxes = BOX_COUNTS.includes(msg.boxes) ? msg.boxes : 0;
+      Object.assign(room, cleanSoundBoxState(msg));
       room.lines = isLineSize(msg.lines) ? msg.lines : DEFAULT_LINES;
       broadcastBoard(room);
     },
@@ -813,9 +825,30 @@ export function attachRealtime(server, options = {}) {
 
     // Tutor only: sound boxes off (0) or 2 to 5 of them.
     'boxes:set'(ws, msg) {
-      if (!isTutor(ws) || !BOX_COUNTS.includes(msg.count)) return;
-      ws.room.boxes = msg.count;
-      broadcast(ws.room, { t: 'boxes:set', count: ws.room.boxes });
+      if (!isTutor(ws) || !BOX_COUNTS.includes(msg.count) || !allow(ws, 'boxes:control', 20)) return;
+      const room = ws.room;
+      if (room.boxes !== msg.count) {
+        room.boxes = msg.count;
+        resetBoxTaps(room);
+      }
+      broadcastBoxes(room);
+    },
+
+    // Counter marks are shared, while the tutor retains the exercise settings.
+    'boxes:tap'(ws, msg) {
+      const role = roleOf(ws);
+      if (!role || !canDraw(ws.room, role) || !allow(ws, 'boxes:tap', 20)) return;
+      const room = ws.room;
+      const tap = cleanBoxTap(msg, room.boxes, room.boxEpoch);
+      if (!tap) return;
+      room.boxTaps = tap.pressed ? cleanBoxTaps(room.boxes, [...room.boxTaps, tap.index]) : room.boxTaps.filter((index) => index !== tap.index);
+      broadcastBoxes(room);
+    },
+
+    'boxes:reset'(ws) {
+      if (!isTutor(ws) || !allow(ws, 'boxes:control', 20)) return;
+      resetBoxTaps(ws.room);
+      broadcastBoxes(ws.room);
     },
 
     // Tutor only, right after a restart: one tile of the board they kept.

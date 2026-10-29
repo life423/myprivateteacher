@@ -38,7 +38,7 @@ This is an original tool scenario, not a scripted Take Flight lesson. Assume the
 
 ## Current audit and delivery boundaries
 
-- Existing tiles, 2–5 sound boxes, articulation cards, Magic Select, ink, worksheet images and selected PDF page imports provide manual teaching tools. They do not yet provide a saved instructional sequence or private dictation workflow.
+- Existing tiles, shared tap counters in 2–5 sound boxes, articulation cards, Magic Select, ink, worksheet images and selected PDF page imports provide manual teaching tools. Sound-box count is chosen by the tutor, not inferred from spelling; a team such as sh can occupy one sound box. They do not yet provide a saved instructional sequence or private dictation workflow.
 - Phoneme Pop currently supplies the printed target and answer tokens. Its broad levels and automatic progression need a tutor-selected skill and review model.
 - Reviewed source corrections: `box` and `fox` need separate /k/ and /s/ units; `pink`, `bank` and `think` need separate /ng/ and /k/ units. Keep their normal written spellings. `nk` must not be marked as two letters making just one sound. [UFLI sound correspondences](https://ufli.education.ufl.edu/wp-content/uploads/2022/06/UFLI-Scope2.pdf).
 - That focused correction is not an audit of every word, pronunciation variant or illustration. A future sound model needs explicit pronunciation and spelling mappings, including voiced/unvoiced th and dialect differences.

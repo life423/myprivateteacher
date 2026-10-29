@@ -273,6 +273,10 @@ export default function StudentRoom({ code }) {
             me='student'
             strip={wb.strip}
             boxes={wb.boxes}
+            boxTaps={wb.boxTaps}
+            boxEpoch={wb.boxEpoch}
+            onToggleSoundBox={wb.toggleSoundBox}
+            canTapSoundBoxes={toolsOn}
             lines={wb.lines}
             tiles={wb.tiles}
             tileActions={wb.tileActions}
