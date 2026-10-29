@@ -1078,3 +1078,168 @@ it('relays worksheet upload metadata in live updates and reconnect snapshots wit
   const back = await joinRoom(code, studentKey);
   expect(back.board.pictures).toEqual([pic]);
 });
+
+describe('shared sound-box counters', () => {
+  const expectBoth = async (tutor, student, expected) => {
+    for (const client of [tutor, student].filter(Boolean)) expect(await client.take('boxes:set')).toMatchObject(expected);
+  };
+  const choose = async (tutor, student, count) => {
+    tutor.send({ t: 'boxes:set', count });
+    const state = await tutor.take('boxes:set');
+    if (student) expect(await student.take('boxes:set')).toEqual(state);
+    return state;
+  };
+
+  it('shares tutor taps and permits student taps only while tools are enabled', async () => {
+    const { tutor, code } = await openRoom();
+    const { student, board } = await joinRoom(code);
+    expect(board).toMatchObject({ boxes: 0, boxTaps: [], boxEpoch: 0 });
+    const state = await choose(tutor, student, 3);
+    expect(state).toEqual({ t: 'boxes:set', count: 3, taps: [], epoch: 1 });
+
+    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: state.epoch });
+    await expectBoth(tutor, student, { count: 3, taps: [0], epoch: 1 });
+    student.send({ t: 'boxes:tap', index: 1, pressed: true, epoch: state.epoch });
+    student.send({ t: 'boxes:set', count: 5 });
+    student.send({ t: 'boxes:reset' });
+    await nothing(tutor, 'boxes:set');
+    expect(realtime.rooms.get(code)).toMatchObject({ boxes: 3, boxTaps: [0], boxEpoch: 1 });
+
+    tutor.send({ t: 'tools', on: true });
+    await student.take('tools');
+    student.send({ t: 'boxes:tap', index: 1, pressed: true, epoch: 1 });
+    await expectBoth(tutor, student, { count: 3, taps: [0, 1], epoch: 1 });
+    student.send({ t: 'boxes:tap', index: 0, pressed: false, epoch: 1 });
+    await expectBoth(tutor, student, { count: 3, taps: [1], epoch: 1 });
+    // Tools permit marks, never changes to the teacher's exercise or reset.
+    student.send({ t: 'boxes:set', count: 2 });
+    student.send({ t: 'boxes:reset' });
+    await nothing(tutor, 'boxes:set');
+    tutor.send({ t: 'tools', on: false });
+    await student.take('tools');
+    student.send({ t: 'boxes:tap', index: 2, pressed: true, epoch: 1 });
+    await nothing(tutor, 'boxes:set');
+    expect(realtime.rooms.get(code).boxTaps).toEqual([1]);
+  });
+
+  it('merges concurrent different-box marks and makes repeated explicit marks idempotent', async () => {
+    const { tutor, student, code } = await withTools();
+    await choose(tutor, student, 3);
+    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 1 });
+    student.send({ t: 'boxes:tap', index: 2, pressed: true, epoch: 1 });
+    for (const client of [tutor, student]) {
+      await client.take('boxes:set');
+      expect(await client.take('boxes:set')).toMatchObject({ taps: [0, 2], epoch: 1 });
+    }
+    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 1 });
+    student.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 1 });
+    await expectBoth(tutor, student, { taps: [0, 2], epoch: 1 });
+    await expectBoth(tutor, student, { taps: [0, 2], epoch: 1 });
+    expect(realtime.rooms.get(code).boxTaps).toEqual([0, 2]);
+  });
+
+  it('resets taps on count changes, explicit reset and Clear board while preserving tiles', async () => {
+    const { tutor, code } = await openRoom();
+    await choose(tutor, null, 3);
+    tutor.send({ t: 'tile:add', tiles: [{ id: 'sound-tile', text: 'sh' }] });
+    const tile = (await tutor.take('tile:add')).tiles[0];
+    const [first] = soundBoxes(3);
+    tutor.send({ t: 'tile:grab', id: tile.id });
+    await tutor.take('tile:grab');
+    tutor.send({ t: 'tile:drop', id: tile.id, x: first.x, y: first.y });
+    const before = (await tutor.take('tile:drop')).tile;
+    tutor.send({ t: 's', id: 'sound-ink', tool: 'pen', x: 200, y: 300 });
+    await tutor.take('ack');
+    tutor.send({ t: 'e', id: 'sound-ink' });
+    await choose(tutor, null, 3); // an ordered reply after the stroke finishes
+    const ink = structuredClone(realtime.rooms.get(code).strokes);
+    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 1 });
+    await tutor.take('boxes:set');
+
+    expect(await choose(tutor, null, 5)).toMatchObject({ count: 5, taps: [], epoch: 2 });
+    expect([...realtime.rooms.get(code).tiles.values()]).toEqual([before]);
+    expect(realtime.rooms.get(code).strokes).toEqual(ink);
+    tutor.send({ t: 'boxes:tap', index: 4, pressed: true, epoch: 2 });
+    await tutor.take('boxes:set');
+    tutor.send({ t: 'boxes:reset' });
+    expect(await tutor.take('boxes:set')).toMatchObject({ count: 5, taps: [], epoch: 3 });
+    expect([...realtime.rooms.get(code).tiles.values()]).toEqual([before]);
+    expect(realtime.rooms.get(code).strokes).toEqual(ink);
+
+    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 3 });
+    await tutor.take('boxes:set');
+    expect(await choose(tutor, null, 5)).toMatchObject({ taps: [0], epoch: 3 });
+    tutor.send({ t: 'clear' });
+    const cleared = await tutor.take('board');
+    expect(cleared).toMatchObject({ boxes: 5, boxTaps: [], boxEpoch: 4, strokes: [] });
+    expect(cleared.tiles).toEqual([before]);
+    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 3 });
+    await nothing(tutor, 'boxes:set');
+    expect(await choose(tutor, null, 0)).toMatchObject({ count: 0, taps: [], epoch: 5 });
+    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 5 });
+    await nothing(tutor, 'boxes:set');
+    expect([...realtime.rooms.get(code).tiles.values()]).toEqual([before]);
+  });
+
+  it('rejects malformed, legacy and stale tap requests without changing the exercise', async () => {
+    const { tutor, code } = await openRoom();
+    await choose(tutor, null, 2);
+    for (const invalid of [
+      { index: 0, pressed: true }, { index: 0, pressed: true, epoch: 0 },
+      { index: 0, pressed: true, epoch: '1' }, { index: 0, pressed: true, epoch: -1 },
+      { index: 0, pressed: true, epoch: Number.MAX_SAFE_INTEGER + 1 },
+      { index: 0, pressed: 1, epoch: 1 }, { index: 0, epoch: 1 },
+      { index: '0', pressed: true, epoch: 1 }, { index: -1, pressed: true, epoch: 1 },
+      { index: 2, pressed: true, epoch: 1 }, { index: 0.5, pressed: true, epoch: 1 },
+    ]) tutor.send({ t: 'boxes:tap', ...invalid });
+    await nothing(tutor, 'boxes:set');
+    expect(realtime.rooms.get(code)).toMatchObject({ boxes: 2, boxTaps: [], boxEpoch: 1 });
+    tutor.send({ t: 'boxes:tap', index: 1, pressed: true, epoch: 1 });
+    expect(await tutor.take('boxes:set')).toMatchObject({ taps: [1], epoch: 1 });
+    tutor.send({ t: 'boxes:reset' });
+    expect(await tutor.take('boxes:set')).toMatchObject({ taps: [], epoch: 2 });
+    tutor.send({ t: 'boxes:tap', index: 1, pressed: true, epoch: 1 });
+    await nothing(tutor, 'boxes:set');
+  });
+
+  it('preserves taps on reconnect and restores only a sanitized tutor snapshot after restart', async () => {
+    const { tutor, code, key } = await openRoom();
+    await choose(tutor, null, 4);
+    tutor.send({ t: 'boxes:tap', index: 3, pressed: true, epoch: 1 });
+    await tutor.take('boxes:set');
+    const first = await joinRoom(code);
+    expect(first.board).toMatchObject({ boxes: 4, boxTaps: [3], boxEpoch: 1 });
+    const returning = await joinRoom(code, first.key);
+    expect(returning.board).toMatchObject({ boxes: 4, boxTaps: [3], boxEpoch: 1 });
+
+    realtime.rooms.delete(code);
+    const back = await connect();
+    back.send({ t: 'create', code, key });
+    expect(await back.take('room')).toMatchObject({ fresh: true });
+    const student = (await joinRoom(code)).student;
+    student.send({ t: 'restored', tools: true, boxes: 5, boxTaps: [0, 1, 2, 3, 4], boxEpoch: 999 });
+    await nothing(student, 'board');
+    expect(realtime.rooms.get(code)).toMatchObject({ restoring: true, boxes: 0, boxTaps: [], boxEpoch: 0 });
+    back.send({ t: 'restored', tools: true, boxes: 4, boxTaps: [3, 1, 3, -1, 4, '0'], boxEpoch: 7 });
+    for (const client of [back, student]) expect(await client.take('board')).toMatchObject({ boxes: 4, boxTaps: [1, 3], boxEpoch: 7 });
+    student.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 1 });
+    await nothing(back, 'boxes:set');
+    student.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 7 });
+    await expectBoth(back, student, { count: 4, taps: [0, 1, 3], epoch: 7 });
+    // A restore message after the restore window cannot overwrite live counters.
+    back.send({ t: 'restored', boxes: 2, boxTaps: [0], boxEpoch: 0 });
+    await nothing(student, 'board');
+    expect(realtime.rooms.get(code)).toMatchObject({ boxes: 4, boxTaps: [0, 1, 3], boxEpoch: 7 });
+  });
+
+  it('bounds rapid tap messages independently of the count/reset controls', async () => {
+    const { tutor, code } = await openRoom();
+    await choose(tutor, null, 2);
+    for (let index = 0; index < 21; index++) tutor.send({ t: 'boxes:tap', index: 0, pressed: index % 2 === 0, epoch: 1 });
+    for (let index = 0; index < 20; index++) await tutor.take('boxes:set');
+    await nothing(tutor, 'boxes:set');
+    expect(realtime.rooms.get(code).boxTaps).toEqual([]);
+    tutor.send({ t: 'boxes:reset' });
+    expect(await tutor.take('boxes:set')).toMatchObject({ taps: [], epoch: 2 });
+  });
+});

@@ -477,6 +477,12 @@ export default function TutorRoom() {
             me='tutor'
             strip={wb.strip}
             boxes={wb.boxes}
+            boxTaps={wb.boxTaps}
+            boxEpoch={wb.boxEpoch}
+            onToggleSoundBox={wb.toggleSoundBox}
+            onBoxes={wb.setBoxes}
+            onResetSoundBoxes={wb.resetSoundBoxes}
+            canTapSoundBoxes
             lines={wb.lines}
             tiles={wb.tiles}
             selectedTile={selectedTileId}

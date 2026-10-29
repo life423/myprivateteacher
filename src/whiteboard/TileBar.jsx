@@ -57,6 +57,24 @@ export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, 
           {count}/{MAX_TILES}
         </span>
       </div>
+      <div>
+        <p id='sound-boxes-label' className='mb-1.5 text-xs font-semibold text-slate-600'>
+          Sound boxes
+        </p>
+        <div role='group' aria-labelledby='sound-boxes-label' className='grid grid-cols-5 gap-1'>
+          {BOX_COUNTS.map((n) => (
+            <button
+              key={n}
+              type='button'
+              aria-pressed={boxes === n}
+              onClick={() => onBoxes(n)}
+              className={`min-h-11 rounded-lg py-1.5 text-sm font-bold ${boxes === n ? 'bg-violet-600 text-white' : 'bg-slate-50 text-slate-700 hover:bg-violet-50'}`}
+            >
+              {n === 0 ? 'Off' : n}
+            </button>
+          ))}
+        </div>
+      </div>
       <form onSubmit={submit} className='flex items-center gap-2'>
         <label htmlFor='tile-input' className='sr-only'>
           {selected ? 'Change the selected tile' : 'Add tiles'}
@@ -115,24 +133,6 @@ export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, 
         >
           {armed ? 'Sure?' : 'Clear tiles'}
         </button>
-      </div>
-      <div>
-        <p id='sound-boxes-label' className='mb-1.5 text-xs font-semibold text-slate-600'>
-          Sound boxes
-        </p>
-        <div role='group' aria-labelledby='sound-boxes-label' className='grid grid-cols-5 gap-1'>
-          {BOX_COUNTS.map((n) => (
-            <button
-              key={n}
-              type='button'
-              aria-pressed={boxes === n}
-              onClick={() => onBoxes(n)}
-              className={`rounded-lg py-1.5 text-sm font-bold ${boxes === n ? 'bg-violet-600 text-white' : 'bg-slate-50 text-slate-700 hover:bg-violet-50'}`}
-            >
-              {n === 0 ? 'Off' : n}
-            </button>
-          ))}
-        </div>
       </div>
       {note && (
         <p role='status' className='text-xs font-semibold text-amber-700'>

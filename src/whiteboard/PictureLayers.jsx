@@ -31,12 +31,15 @@ export function pictureNames(pieces, pictures) {
 export default function PictureLayers({
   pieces, pictures, selected, me, srcFor, onSelect, onClear, onOpenChange,
   onLayer, onResize, canResize, canShrink, canGrow, resizeLocked = false,
-  height = 500, topOffset = 8, overlapState: suppliedOverlap,
+  height = 500, topOffset = 8, overlapState: suppliedOverlap, inline = false, open: externalOpen,
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = externalOpen === undefined ? localOpen : externalOpen;
+  const setOpen = (value) => { const next = typeof value === 'function' ? value(open) : value; if (externalOpen === undefined) setLocalOpen(next); onOpenChange?.(next); };
+  const element = useRef(null);
   const toggle = useRef(null);
   const id = useId();
-  const availableHeight = Math.max(0, height - topOffset);
+  const availableHeight = Math.max(0, height - (inline ? 0 : topOffset));
   const names = pictureNames(pieces, pictures);
   const ordered = [...pieces].reverse().sort((a, b) => (b.z || 0) - (a.z || 0));
   const overlapState = suppliedOverlap || pictureOverlapState(pieces);
@@ -53,8 +56,13 @@ export default function PictureLayers({
     return '';
   };
   const quiet = () => { setOpen(false); toggle.current?.focus(); };
-  useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
-  useEffect(() => { if (!pieces.length) setOpen(false); }, [pieces.length]);
+  useEffect(() => { if (!pieces.length && open) setOpen(false); }, [pieces.length]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const outside = (event) => { if (!element.current?.contains(event.target)) setOpen(false); };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [open]);
 
   useEffect(() => {
     if (!open && !selected) return undefined;
@@ -70,15 +78,17 @@ export default function PictureLayers({
   if (!pieces.length) return null;
   return (
     <>
-      <div data-picture-layers-control className='pointer-events-none absolute left-2 right-14 z-20' style={{ top: topOffset }}>
-        <button ref={toggle} type='button' aria-label={`Picture layers, ${pieces.length} picture${pieces.length === 1 ? '' : 's'}${overlapping ? `, ${overlapping} overlapping` : ''}${covered ? `, ${covered} fully covered` : ''}`} aria-expanded={open} aria-controls={id} onClick={() => setOpen((was) => !was)} className={`${control} pointer-events-auto max-w-full flex-wrap bg-white/95 shadow-sm`}>
+      <div ref={element} data-picture-layers-control className={inline ? 'relative z-30 min-w-0 shrink-0' : 'pointer-events-none absolute left-2 right-14 z-20'} style={inline ? undefined : { top: topOffset }}>
+        <button ref={toggle} type='button' aria-label={`Picture layers, ${pieces.length} picture${pieces.length === 1 ? '' : 's'}${overlapping ? `, ${overlapping} overlapping` : ''}${covered ? `, ${covered} fully covered` : ''}`} aria-expanded={open} aria-controls={id} onClick={() => setOpen((was) => !was)} className={`${control} pointer-events-auto relative max-w-full ${inline ? 'whitespace-nowrap !px-2' : 'flex-wrap bg-white/95 shadow-sm'}`}>
           <Layers className='h-4 w-4' aria-hidden='true' />
           Layers <span className='rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-600'>{pieces.length}</span>
-          {overlapping > 0 && <span data-overlap-count={overlapping} className='rounded-md bg-amber-100 px-1.5 py-0.5 text-amber-900'>{overlapping} overlapping</span>}
-          {covered > 0 && <span data-covered-count={covered} className='inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-rose-900'><EyeOff className='h-3 w-3' aria-hidden='true' />{covered} covered</span>}
+          {inline ? overlapping > 0 && <span data-overlap-count={overlapping} data-covered-count={covered || undefined} aria-hidden='true' className='absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-200 px-1 text-[10px] font-extrabold text-amber-950'>{covered ? <EyeOff className='h-3 w-3' /> : '!'}</span> : <>
+            {overlapping > 0 && <span data-overlap-count={overlapping} className='rounded-md bg-amber-100 px-1.5 py-0.5 text-amber-900'>{overlapping} overlapping</span>}
+            {covered > 0 && <span data-covered-count={covered} className='inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-rose-900'><EyeOff className='h-3 w-3' aria-hidden='true' />{covered} covered</span>}
+          </>}
         </button>
         {open && (
-          <section id={id} aria-label='Picture layers' className='pointer-events-auto mt-2 flex w-72 max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl' style={{ maxHeight: Math.max(60, Math.min(380, availableHeight - 60)) }}>
+          <section id={id} aria-label='Picture layers' className={`pointer-events-auto flex w-72 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ${inline ? 'absolute right-0 top-full mt-1 max-w-[calc(100vw-2rem)]' : 'mt-2 max-w-full'}`} style={{ maxHeight: Math.max(44, Math.min(380, availableHeight - (inline ? 4 : 60))) }}>
             <div className='flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-3 py-2'>
               <div><h3 className='text-sm font-bold text-slate-800'>Pictures on the board</h3><p className='text-xs text-slate-500'>Front to back</p></div>
               <button type='button' aria-label='Close layers' onClick={quiet} className={`${control} shrink-0 px-2`}><X className='h-4 w-4' aria-hidden='true' /></button>
