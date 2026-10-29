@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BoxSelect, Check, Eye, Gift, Image as ImageIcon, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, BoxSelect, Check, ChevronDown, Eye, Gift, Image as ImageIcon, LayoutGrid, Plus, Wand2, X } from 'lucide-react';
 import { mergePictureRegions, regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
 import { isFacePiece, MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
@@ -180,9 +180,23 @@ export default function PicturesPanel({
   const busyCount = useRef(0);
   const faceGesture = useRef(null);
   const catalogSearch = useRef(null);
+  const filtersTrigger = useRef(null);
+  const filtersId = useId();
+  const filtersOpen = view.filtersOpen === true;
   const collections = useMemo(() => catalogCollections(library), [library]);
   const activeCollection = collections.includes(catalogCollection) ? catalogCollection : '';
   const filteredLibrary = useMemo(() => filterLibraryCards(library, { collection: activeCollection, query: catalogQuery }), [library, activeCollection, catalogQuery]);
+  const filtersActive = Boolean(catalogQuery.trim() || activeCollection);
+  const filterSummary = [catalogQuery.trim() && `Search: “${catalogQuery.trim()}”`, activeCollection && collectionLabel(activeCollection)].filter(Boolean).join(' · ');
+  const toggleFilters = () => {
+    updateView({ filtersOpen: !filtersOpen });
+    if (filtersOpen) filtersTrigger.current?.focus({ preventScroll: true });
+  };
+  const clearFilters = () => {
+    updateView({ query: '', collection: '', scrollTop: 0 });
+    setLibraryNote(null);
+    (filtersOpen ? catalogSearch : filtersTrigger).current?.focus({ preventScroll: true });
+  };
   const busyRef = useRef(false);
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
@@ -789,35 +803,49 @@ export default function PicturesPanel({
             )}
           </div>
           <div className='flex flex-wrap items-center justify-between gap-x-3'><label className='inline-flex min-h-11 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700'><input type='checkbox' checked={view.keepOpen} onChange={(event) => updateView({ keepOpen: event.target.checked })} className='h-4 w-4 accent-violet-600' />Keep library open</label><span className='text-[11px] text-slate-500'>Ctrl/⌘-click keeps it open</span></div>
-          <label className='mt-1 flex min-w-0 flex-col gap-1'>
-            <span className='text-xs font-semibold text-slate-600'>Find a card</span>
-            <input
-              ref={catalogSearch}
-              type='search'
-              aria-label='Search picture library'
-              placeholder='Sound, keyword or instruction'
-              value={catalogQuery}
-              onChange={(event) => { setCatalogQuery(event.target.value); setLibraryNote(null); }}
-              autoComplete='off'
-              spellCheck={false}
-              className='min-h-11 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
-            />
-          </label>
-          <label className='flex min-w-0 flex-col gap-1'>
-            <span className='text-xs font-semibold text-slate-600'>Collection</span>
-            <select
-              aria-label='Card collection'
-              value={activeCollection}
-              onChange={(event) => { setCatalogCollection(event.target.value); setLibraryNote(null); }}
-              className='min-h-11 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
-            >
-              <option value=''>All collections</option>
-              {collections.map((name) => <option key={name} value={name}>{collectionLabel(name)}</option>)}
-            </select>
-          </label>
-          <div className='flex flex-wrap items-center justify-between gap-x-2'>
-            {catalogReady && <p role='status' className='text-xs text-slate-500'>{filteredLibrary.length} of {library.length} cards</p>}
-            {(catalogQuery || activeCollection) && <button type='button' onClick={() => { setCatalogQuery(''); setCatalogCollection(''); setLibraryNote(null); catalogSearch.current?.focus(); }} className='min-h-11 rounded-lg px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'>Clear filters</button>}
+          <div data-catalog-filters className='min-w-0'>
+            <div className='flex min-h-11 items-center gap-1.5'>
+              <button ref={filtersTrigger} type='button' onClick={toggleFilters} aria-expanded={filtersOpen} aria-controls={filtersId}
+                className={`inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${filtersActive ? 'border-violet-200 bg-violet-50 text-violet-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                <span>Search &amp; filters</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 motion-safe:transition-transform motion-safe:duration-200 ${filtersOpen ? 'rotate-180' : ''}`} aria-hidden='true' />
+              </button>
+              {catalogReady && <p role='status' aria-label={`${filteredLibrary.length} of ${library.length} cards`} className='ml-auto shrink-0 text-[11px] text-slate-500'>{filtersActive ? `${filteredLibrary.length}/${library.length}` : library.length} cards</p>}
+              {filtersActive && <button type='button' onClick={clearFilters} aria-label='Clear filters' title='Clear filters' className='inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-violet-700 hover:bg-violet-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'><X className='h-4 w-4' aria-hidden='true' /></button>}
+            </div>
+            {filtersActive && <p data-active-filters className='mt-0.5 truncate text-xs text-violet-800' title={filterSummary}>{filterSummary}</p>}
+            <div id={filtersId} aria-hidden={!filtersOpen} inert={filtersOpen ? undefined : ''} className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${filtersOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+              <div className='min-h-0 overflow-hidden'>
+                <div role='group' aria-label='Picture library filters' className='mt-2 grid min-w-0 gap-2'>
+                <label className='flex min-w-0 flex-col gap-1'>
+                  <span className='text-xs font-semibold text-slate-600'>Find a card</span>
+                  <input
+                    ref={catalogSearch}
+                    type='search'
+                    aria-label='Search picture library'
+                    placeholder='Sound, keyword or instruction'
+                    value={catalogQuery}
+                    onChange={(event) => { setCatalogQuery(event.target.value); setLibraryNote(null); }}
+                    autoComplete='off'
+                    spellCheck={false}
+                    className='min-h-11 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
+                  />
+                </label>
+                <label className='flex min-w-0 flex-col gap-1'>
+                  <span className='text-xs font-semibold text-slate-600'>Collection</span>
+                  <select
+                    aria-label='Card collection'
+                    value={activeCollection}
+                    onChange={(event) => { setCatalogCollection(event.target.value); setLibraryNote(null); }}
+                    className='min-h-11 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'
+                  >
+                    <option value=''>All collections</option>
+                    {collections.map((name) => <option key={name} value={name}>{collectionLabel(name)}</option>)}
+                  </select>
+                </label>
+                </div>
+              </div>
+            </div>
           </div>
           {libraryNote && (
             <p role='status' className='text-xs font-semibold text-slate-600'>
@@ -1029,7 +1057,7 @@ export function PictureDrawer({ id, open, onClose, title = 'Picture library', ch
         closeRef.current();
       }
       if (event.key === 'Tab') {
-        const stops = [...dialog.current.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter((node) => node.getClientRects().length);
+        const stops = [...dialog.current.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter((node) => node.getClientRects().length && !node.closest('[inert]'));
         const first = stops[0], last = stops.at(-1);
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }

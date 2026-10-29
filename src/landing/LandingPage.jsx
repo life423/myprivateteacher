@@ -41,7 +41,7 @@ function Ticks({ items, className = '' }) {
   );
 }
 
-const Eyebrow = ({ children }) => <p className='text-xs font-bold uppercase tracking-[0.14em] text-violet-600'>{children}</p>;
+const Eyebrow = ({ children, onDark = false, strong = false }) => <p className={`text-xs font-bold uppercase tracking-[0.14em] ${onDark ? 'text-violet-300' : strong ? 'text-violet-800' : 'text-violet-600'}`}>{children}</p>;
 
 const FEATURES = [
   { icon: Video, tone: 'bg-violet-100 text-violet-700', title: 'Live, interactive lessons', text: 'See and hear each other while you teach on one shared board.' },
@@ -246,123 +246,125 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id='features' className='scroll-mt-20 border-y border-slate-200 bg-slate-100'>
-          <div className='mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20'>
-            <div className='max-w-2xl'>
-              <Eyebrow>Your lesson toolkit</Eyebrow>
-              <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>Everything you need for engaging lessons</h2>
+        <div data-landing-chapters>
+          <section id='features' data-landing-chapter className='scroll-mt-20 border-y border-slate-300 bg-slate-200'>
+            <div className='mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20'>
+              <div className='max-w-2xl'>
+                <Eyebrow strong>Your lesson toolkit</Eyebrow>
+                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>Everything you need for engaging lessons</h2>
+              </div>
+              <div className='mt-8 grid gap-6 sm:grid-cols-2 sm:gap-8 lg:grid-cols-4'>
+                {FEATURES.map(({ icon: Icon, tone, title, text }) => (
+                  <div key={title} className='flex gap-4 sm:block'>
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}>
+                      <Icon className='h-6 w-6' aria-hidden='true' />
+                    </span>
+                    <div>
+                      <h3 className='text-base font-bold sm:mt-4'>{title}</h3>
+                      <p className='mt-1 text-slate-600 sm:mt-1.5'>{text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className='mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-              {FEATURES.map(({ icon: Icon, tone, title, text }) => (
-                <div key={title} className='flex gap-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:block'>
-                  <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}>
-                    <Icon className='h-6 w-6' aria-hidden='true' />
-                  </span>
+          </section>
+
+          <section data-landing-chapter className='bg-white'>
+            <div className='mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:py-20'>
+              <div className='order-2 overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950 to-violet-800 p-2.5 shadow-xl lg:order-1'>
+                <Photo
+                  name='phoneme-pop'
+                  width={1600}
+                  height={1105}
+                  alt='Phoneme Pop: a word to split into its sounds'
+                  className='block h-auto w-full rounded-2xl'
+                />
+              </div>
+              <div className='order-1 lg:order-2'>
+                <Eyebrow>Interactive activities</Eyebrow>
+                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>Make practice fun and effective</h2>
+                <p className='mt-4 text-lg leading-relaxed text-slate-600'>
+                  Phoneme Pop helps students hear a word, break it into its sounds, and put them back in the right order.
+                </p>
+                <Ticks
+                  className='mt-6'
+                  items={['Builds phonemic awareness', 'Every word is read aloud', 'Levels up as students improve', 'Play together during a live lesson']}
+                />
+                <div className='mt-8'>
+                  <Button
+                    to='/phoneme-pop'
+                    kind='demo'
+                    className='group min-h-14 w-full focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-violet-500 sm:w-auto'
+                  >
+                    <PlayCircle className='h-6 w-6 shrink-0' aria-hidden='true' />
+                    Play Phoneme Pop
+                    <ArrowRight className='h-5 w-5 shrink-0 transition-transform motion-safe:group-hover:translate-x-1 motion-reduce:transition-none' aria-hidden='true' />
+                  </Button>
+                  <p className='mt-3 text-center text-sm text-slate-500 sm:text-left'>Free to play. No sign-up needed.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id='how-it-works' data-landing-chapter className='scroll-mt-20 border-y border-slate-800 bg-slate-900 text-white'>
+            <div className='mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.8fr_2fr] lg:items-center lg:py-20'>
+              <div>
+                <Eyebrow onDark>Three simple steps</Eyebrow>
+                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>How it works</h2>
+                <p className='mt-3 text-lg text-slate-300'>Get started in minutes and start teaching.</p>
+              </div>
+              <ol className='grid gap-8 sm:grid-cols-3'>
+                {STEPS.map(({ icon: Icon, title, text }, i) => (
+                  <li key={title} className='relative flex items-start gap-4 sm:block sm:text-center'>
+                    <span className='relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-violet-200 ring-1 ring-white/15 sm:mx-auto'>
+                      <Icon className='h-6 w-6' aria-hidden='true' />
+                      <span className='absolute -left-1 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-violet-200 text-xs font-bold text-violet-950'>{i + 1}</span>
+                    </span>
+                    <div className='pt-1 sm:pt-0'>
+                      <h3 className='font-bold sm:mt-4'>{title}</h3>
+                      <p className='mt-1 text-sm leading-relaxed text-slate-300'>{text}</p>
+                    </div>
+                    {i < STEPS.length - 1 && (
+                      <ArrowRight className='absolute -right-6 top-4 hidden h-5 w-5 text-violet-300/70 sm:block' aria-hidden='true' />
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+
+          <section id='pricing' data-landing-chapter className='scroll-mt-20 border-y border-violet-300 bg-violet-200'>
+            <div className='mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:py-20'>
+              <div>
+                <Eyebrow strong>Simple pricing</Eyebrow>
+                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>One plan for your live lessons</h2>
+                <p className='mt-3 text-lg text-slate-600'>Everything you need to run effective, engaging lessons. Your students join free.</p>
+              </div>
+              <div className='rounded-3xl border border-violet-200 bg-white p-6 shadow-xl shadow-violet-900/10 sm:p-8'>
+                <div className='flex flex-wrap items-start justify-between gap-6'>
                   <div>
-                    <h3 className='text-base font-bold sm:mt-4'>{title}</h3>
-                    <p className='mt-1 text-slate-600 sm:mt-1.5'>{text}</p>
+                    <Eyebrow>Tutor plan</Eyebrow>
+                    <p className='mt-2 flex items-baseline gap-1'>
+                      <span className='text-4xl font-extrabold'>$19</span>
+                      <span className='text-slate-500'>/ month</span>
+                    </p>
+                    <p className='mt-1 inline-block rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700'>14-day free trial</p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className='bg-white'>
-          <div className='mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:py-24'>
-            <div className='order-2 overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950 to-violet-800 p-2.5 shadow-xl lg:order-1'>
-              <Photo
-                name='phoneme-pop'
-                width={1600}
-                height={1105}
-                alt='Phoneme Pop: a word to split into its sounds'
-                className='block h-auto w-full rounded-2xl'
-              />
-            </div>
-            <div className='order-1 lg:order-2'>
-              <Eyebrow>Interactive activities</Eyebrow>
-              <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>Make practice fun and effective</h2>
-              <p className='mt-4 text-lg leading-relaxed text-slate-600'>
-                Phoneme Pop helps students hear a word, break it into its sounds, and put them back in the right order.
-              </p>
-              <Ticks
-                className='mt-6'
-                items={['Builds phonemic awareness', 'Every word is read aloud', 'Levels up as students improve', 'Play together during a live lesson']}
-              />
-              <div className='mt-8'>
-                <Button
-                  to='/phoneme-pop'
-                  kind='demo'
-                  className='group min-h-14 w-full focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-violet-500 sm:w-auto'
-                >
-                  <PlayCircle className='h-6 w-6 shrink-0' aria-hidden='true' />
-                  Play Phoneme Pop
-                  <ArrowRight className='h-5 w-5 shrink-0 transition-transform motion-safe:group-hover:translate-x-1 motion-reduce:transition-none' aria-hidden='true' />
-                </Button>
-                <p className='mt-3 text-center text-sm text-slate-500 sm:text-left'>Free to play. No sign-up needed.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id='how-it-works' className='scroll-mt-20 border-y border-violet-100 bg-violet-50'>
-          <div className='mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.8fr_2fr] lg:items-center lg:py-24'>
-            <div>
-              <Eyebrow>Three simple steps</Eyebrow>
-              <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>How it works</h2>
-              <p className='mt-3 text-lg text-slate-600'>Get started in minutes and start teaching.</p>
-            </div>
-            <ol className='grid gap-8 sm:grid-cols-3'>
-              {STEPS.map(({ icon: Icon, title, text }, i) => (
-                <li key={title} className='relative flex items-start gap-4 sm:block sm:text-center'>
-                  <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-violet-700 ring-1 ring-violet-200 sm:mx-auto'>{i + 1}</span>
-                  <span className='flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-violet-600 shadow-sm ring-1 ring-slate-200 sm:mx-auto sm:mt-4'>
-                    <Icon className='h-7 w-7' aria-hidden='true' />
-                  </span>
-                  <div className='pt-1 sm:pt-0'>
-                    <h3 className='font-bold sm:mt-4'>{title}</h3>
-                    <p className='mt-1 text-sm text-slate-600'>{text}</p>
-                  </div>
-                  {i < STEPS.length - 1 && (
-                    <ArrowRight className='absolute -right-6 top-[4.6rem] hidden h-5 w-5 text-slate-300 sm:block' aria-hidden='true' />
-                  )}
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-
-        <section id='pricing' className='scroll-mt-20 bg-white'>
-          <div className='mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24'>
-            <div>
-              <Eyebrow>Simple pricing</Eyebrow>
-              <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>One plan for your live lessons</h2>
-              <p className='mt-3 text-lg text-slate-600'>Everything you need to run effective, engaging lessons. Your students join free.</p>
-            </div>
-            <div className='rounded-3xl border border-violet-200 bg-white p-6 shadow-xl shadow-violet-900/10 sm:p-8'>
-              <div className='flex flex-wrap items-start justify-between gap-6'>
-                <div>
-                  <Eyebrow>Tutor plan</Eyebrow>
-                  <p className='mt-2 flex items-baseline gap-1'>
-                    <span className='text-4xl font-extrabold'>$19</span>
-                    <span className='text-slate-500'>/ month</span>
-                  </p>
-                  <p className='mt-1 inline-block rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700'>14-day free trial</p>
+                <Ticks
+                  className='mt-6 text-sm'
+                  items={['Unlimited lessons', 'All whiteboard tools', 'Phoneme Pop and Alphabet Bridge', 'Use your own materials', 'Students join with a code, no accounts']}
+                />
+                <div className='mt-6'>
+                  <Button to={START} compact className='w-full'>
+                    Start 14-day free trial <ArrowRight className='h-5 w-5' aria-hidden='true' />
+                  </Button>
+                  <p className='mt-2 text-center text-sm text-slate-500'>14 days free · No credit card required</p>
                 </div>
               </div>
-              <Ticks
-                className='mt-6 text-sm'
-                items={['Unlimited lessons', 'All whiteboard tools', 'Phoneme Pop and Alphabet Bridge', 'Use your own materials', 'Students join with a code, no accounts']}
-              />
-              <div className='mt-6'>
-                <Button to={START} className='w-full'>
-                  Start 14-day free trial <ArrowRight className='h-5 w-5' aria-hidden='true' />
-                </Button>
-                <p className='mt-2 text-center text-sm text-slate-500'>14 days free · No credit card required</p>
-              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         <section className='bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-950 text-white'>
           <div className='mx-auto max-w-6xl px-4 py-16 text-center sm:px-6 lg:py-20'>
