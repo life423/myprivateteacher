@@ -6,6 +6,7 @@ import { BOX_COUNTS, MAX_TILES, cleanTileText } from '../../shared/tiles.js';
 import { MAX_PICTURES, MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
 import { findPicturePlacement, picturePlacement, picturePlacementObstacles, PICTURE_RESERVATION_MS } from './picturePlacement.js';
 import { newPictureId, pictureUrl, shrinkPicture } from './pictures.js';
+import { createPictureUploads, uploadPicture } from './pictureUploads.js';
 
 const FLUSH_MS = 40; // stroke points go out about 25 times a second
 const THROTTLE_MS = 33; // pointers and dragged tiles about 30 times a second
@@ -13,19 +14,10 @@ const CHUNK = 128; // numbers per message
 const round1 = (n) => Math.round(n * 10) / 10;
 const makeId = (prefix) => `${prefix[0]}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
-// Sends a shrunk picture to the room; the tutor's room key proves who is asking. True once it's there.
-async function sendPicture(room, id, { blob, w, h, material, title }) {
-  try {
-    const query = new URLSearchParams({ w, h, ...cleanPictureMetadata({ material, title }) });
-    const res = await fetch(`${pictureUrl(room.code, id)}?${query}`, {
-      method: 'POST',
-      body: blob,
-      headers: { 'Content-Type': 'image/jpeg', 'X-Room-Key': room.key },
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+// Reconnect restoration uses exactly the retained bytes, including PDF page PNGs.
+async function sendPicture(room, id, image) {
+  try { return (await uploadPicture(room, id, image)).ok; }
+  catch { return false; }
 }
 
 // Copies a card from the picture library into the room as one of its pictures. True once it's there.
@@ -86,9 +78,27 @@ export function useWhiteboard(role, send) {
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   const renderTiles = useCallback(() => setTileFrame(performance.now()), [setTileFrame]);
 
+  const pictureUploads = useRef(null);
+  if (!pictureUploads.current) pictureUploads.current = createPictureUploads({
+    role, getPictures: () => pictures.current, prepare: shrinkPicture, createId: newPictureId,
+    onAdded: (picture, copy) => {
+      kept.current.set(picture.id, copy);
+      pictures.current.set(picture.id, picture);
+      renderTiles();
+    },
+  });
+  const cancelPictureWrites = useCallback(() => {
+    pictureUploads.current.invalidate();
+    libraryGeneration.current++;
+    libraryRequests.current.clear();
+    bump();
+  }, [bump]);
+
   useEffect(
     () => () => {
       clearTimeout(flushTimer.current);
+      pictureUploads.current.invalidate();
+      libraryGeneration.current++;
       for (const channel of Object.values(channels.current)) clearTimeout(channel.timer);
     },
     [],
@@ -314,26 +324,10 @@ export function useWhiteboard(role, send) {
     [role, renderTiles, sendThrottled, cancelThrottled],
   );
 
-  // Tutor only: shrink a picture, send it to the room, and keep a copy in case the server restarts.
-  const addPicture = useCallback(async (file, room, { material, title = file?.name } = {}) => {
-    if (!room?.code || !room?.key) return { error: 'Not connected yet. Try again in a moment.' };
-    const uploads = [...pictures.current.values()].filter((p) => !p.library).length;
-    if (uploads >= MAX_PICTURES) return { error: `Up to ${MAX_PICTURES} uploaded pictures per session.` };
-    let shrunk;
-    try {
-      shrunk = await shrinkPicture(file);
-    } catch {
-      return { error: 'That file isn’t a picture this browser can open.' };
-    }
-    Object.assign(shrunk, cleanPictureMetadata({ material, title }));
-    const id = newPictureId();
-    if (!(await sendPicture(room, id, shrunk))) return { error: 'The picture couldn’t be added. Try again.' };
-    kept.current.set(id, shrunk);
-    const picture = { id, w: shrunk.w, h: shrunk.h, ...cleanPictureMetadata(shrunk) };
-    pictures.current.set(id, picture);
-    renderTiles();
-    return picture;
-  }, [renderTiles]);
+  // PDF pages are already rendered and encoded, so retain their resolution and
+  // format. Ordinary images still use the same bounded shrink path.
+  const addPicture = useCallback((file, room, options) => pictureUploads.current.addFile(file, room, options), []);
+  const addPreparedPicture = useCallback((image, room, options) => pictureUploads.current.addPrepared(image, room, options), []);
 
   // Tutor only: which parts the student may take.
   const offerActions = useMemo(
@@ -391,11 +385,10 @@ export function useWhiteboard(role, send) {
   );
 
   const clearPictures = useCallback(() => {
-    libraryGeneration.current += 1;
-    libraryRequests.current.clear();
+    cancelPictureWrites();
     kept.current.clear();
     sendRef.current({ t: 'pieces:clear' });
-  }, []);
+  }, [cancelPictureWrites]);
 
   // Tutor controls. Spaces separate tiles, so sh stays one tile and c a t makes three.
   const addTiles = useCallback((input) => {
@@ -451,8 +444,7 @@ export function useWhiteboard(role, send) {
       };
       switch (msg.t) {
         case 'board':
-          libraryGeneration.current += 1;
-          libraryRequests.current.clear();
+          cancelPictureWrites();
           active.current = null;
           pendingPieces.current.clear();
           lastPlacement.current = null;
@@ -517,7 +509,10 @@ export function useWhiteboard(role, send) {
           renderTiles();
           return true;
         case 'pic:add':
-          if (msg.pic?.id) pictures.current.set(msg.pic.id, msg.pic);
+          if (msg.pic?.id) {
+            pictures.current.set(msg.pic.id, msg.pic);
+            pictureUploads.current.acceptPicture(msg.pic);
+          }
           renderTiles();
           return true;
         case 'piece:add':
@@ -560,8 +555,7 @@ export function useWhiteboard(role, send) {
           renderTiles();
           return true;
         case 'pieces':
-          libraryGeneration.current += 1;
-          libraryRequests.current.clear();
+          cancelPictureWrites();
           pendingPieces.current.clear();
           lastPlacement.current = null;
           pieces.current = new Map((msg.pieces || []).map((p) => [p.id, p]));
@@ -583,7 +577,7 @@ export function useWhiteboard(role, send) {
           return false;
       }
     },
-    [board, bump, renderTiles],
+    [board, bump, renderTiles, cancelPictureWrites],
   );
 
   return {
@@ -603,6 +597,9 @@ export function useWhiteboard(role, send) {
     offers: [...offers.current.values()],
     offerActions,
     addPicture,
+    addPreparedPicture,
+    cancelPictureWrites,
+    pictureWriteContext: pictureUploads.current.context,
     addLibraryCard,
     addLibraryCards,
     clearPictures,
