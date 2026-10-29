@@ -20,6 +20,7 @@ export default function Tile({ tile, mine, selected = false, removable = false }
   if (selected) edge = '#7c3aed';
   return (
     <g
+      data-letter-tile={tile.id}
       pointerEvents='none'
       className={draggingHere ? '' : SMOOTH}
       style={{ transform: `translate(${tile.x}px, ${tile.y}px)` }}

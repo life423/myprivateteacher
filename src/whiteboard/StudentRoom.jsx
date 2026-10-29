@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eraser, Image as ImageIcon, Pencil, Undo2 } from 'lucide-react';
+import { Eraser, Image as ImageIcon, LayoutGrid, Pencil, Undo2 } from 'lucide-react';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
@@ -8,6 +8,8 @@ import { INK } from './board.js';
 import { STAGE } from './stage.js';
 import { useHands } from './useHands.js';
 import WhiteboardLayout from './WhiteboardLayout.jsx';
+import MaterialsWorkspace from './MaterialsWorkspace.jsx';
+import TileBar from './TileBar.jsx';
 import AlphabetBar from './AlphabetBar.jsx';
 import { HandsSwitch, ToolButton, ToolRail } from './Toolbar.jsx';
 import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
@@ -39,6 +41,7 @@ export default function StudentRoom({ code }) {
   const stageApi = useRef(null);
   const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
+  const [pictureOpenRequest, setPictureOpenRequest] = useState(null);
   const [viewingPic, setViewingPic] = useState(null); // the picture open in the slide-out
   const [guidePic, setGuidePic] = useState(null); // the picture the tutor is pointing at
   const layout = useRef(null); // the shared layout: open a panel, focus mode
@@ -223,7 +226,7 @@ export default function StudentRoom({ code }) {
       header={
         <TopBar
           title='Alphabet Whiteboard'
-          menu={<FocusButton onClick={() => layout.current?.setFocus(true)} />}
+          menu={<>{toolsOn && <section aria-label='Board settings' className='flex flex-col items-start gap-2'><h2 className='text-xs font-bold uppercase tracking-wide text-slate-500'>Board settings</h2><HandsSwitch hands={hands.hands} onToggle={hands.show} /></section>}<FocusButton onClick={() => layout.current?.setFocus(true)} /></>}
           end={
             <button
               type='button'
@@ -241,9 +244,8 @@ export default function StudentRoom({ code }) {
       tools={
         toolsOn && (
           <ToolRail label='Your tools'>
-            <HandsSwitch hands={hands.hands} onToggle={hands.show} />
-            <ToolButton icon={Pencil} label='Pen' swatch={INK.student} pressed={tool === 'pen'} onClick={() => chooseTool(tool === 'pen' ? 'none' : 'pen')} />
-            <ToolButton icon={Eraser} label='Eraser' pressed={tool === 'eraser'} onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')} />
+            <ToolButton icon={Pencil} label='Draw' swatch={INK.student} pressed={tool === 'pen'} onClick={() => chooseTool(tool === 'pen' ? 'none' : 'pen')} />
+            <ToolButton icon={Eraser} label='Erase' pressed={tool === 'eraser'} onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')} />
             <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           </ToolRail>
         )
@@ -299,21 +301,13 @@ export default function StudentRoom({ code }) {
       peerName='your tutor'
       alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='student' canHold={toolsOn} handActions={holdActions} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
-      // While a game is on it has the whole board: no pictures panel to take up the screen
-      panels={
-        game
-          ? []
-          : [
-              {
-                id: 'pictures',
-                label: 'Pictures',
-                icon: ImageIcon,
-                content: (
-                  <PicturesPanel {...pictureProps} notice={guidePic && !browsing ? { text: 'Your tutor picked a picture for you.', tone: 'sky' } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={() => layout.current?.closeSheet()} />
-                ),
-              },
-            ]
-      }
+      // Games keep the whole board; materials only contain this lesson's shared images.
+      panels={game ? [] : [{ id: 'materials', label: 'Materials', icon: LayoutGrid, content: <MaterialsWorkspace key={`student-${code}-${keyRef.current || 'pending'}`} scope={`student-${code}-${keyRef.current || 'pending'}`} tabs={[
+        { id: 'letters', label: 'Letters', content: (query) => <TileBar canAdd={false} toolsOn={toolsOn} query={query} tiles={wb.tiles} /> },
+        { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} onBrowse={() => setBrowsing(true)} onViewPicture={(request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); }} onPlaced={() => layout.current?.closeSheet()} /> },
+        { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={(request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); }} onPlaced={() => layout.current?.closeSheet()} /> },
+      ]} /> }]}
+
     />
     <PictureDrawer
       dismissOnEmptyBackground
@@ -321,10 +315,12 @@ export default function StudentRoom({ code }) {
       onClose={() => {
         setBrowsing(false);
         setViewingPic(null);
+        setPictureOpenRequest(null);
       }}
     >
       <PicturesPanel
         {...pictureProps}
+        openPictureRequest={pictureOpenRequest}
         layout='drawer'
         browseOnly
         onOpenChange={setViewingPic}
@@ -332,6 +328,7 @@ export default function StudentRoom({ code }) {
         onPlaced={() => {
           setBrowsing(false);
           setViewingPic(null);
+          setPictureOpenRequest(null);
         }}
       />
     </PictureDrawer>

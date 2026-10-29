@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Crosshair, Eraser, Eye, EyeOff, Image as ImageIcon, LayoutGrid, Milestone, MousePointer2, Pencil, Trash2, Type, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import TutorGamesPanel from './TutorGamesPanel.jsx';
+import MaterialsWorkspace from './MaterialsWorkspace.jsx';
 import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
 import { usePhonemeTutor } from '../phoneme-pop/game/usePhonemeTutor.js';
 import { useTutorBridge } from '../bridge/useTutorBridge.js';
@@ -62,21 +63,20 @@ export default function TutorRoom() {
   const [studentView, setStudentView] = useState(null);
   const [showStudentView, setShowStudentView] = useState(true);
   const myView = useRef(null);
-  // Picking a tile to change opens the tiles panel (on narrower screens, its sheet).
-  useEffect(() => {
-    if (selectedTileId) layout.current?.show('tiles');
-  }, [selectedTileId]);
   const stageApi = useRef(null);
   const barApi = useRef(null); // the phone alphabet bar, for hands dragged between it and the board
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
   const [picturePreviewOpen, setPicturePreviewOpen] = useState(false);
+  const [pictureOpenRequest, setPictureOpenRequest] = useState(null);
+  const [gamesOpen, setGamesOpen] = useState(false);
+  const openPicture = (request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); };
   const [pictureLibraryView, setPictureLibraryView] = useState(loadPictureLibraryView);
   const updatePictureLibraryView = useCallback((patch) => setPictureLibraryView((current) => {
     const next = cleanPictureLibraryView({ ...current, ...patch });
     return Object.keys(next).every((key) => next[key] === current[key]) ? current : next;
   }), []);
   useEffect(() => { savePictureLibraryView(pictureLibraryView); }, [pictureLibraryView]);
-  const closePictureLibrary = () => { setBrowsing(false); setPicturePreviewOpen(false); };
+  const closePictureLibrary = () => { setBrowsing(false); setPicturePreviewOpen(false); setPictureOpenRequest(null); };
   const [studentBrowse, setStudentBrowse] = useState({ open: false, pic: null }); // where the student is browsing
   const [guidePic, setGuidePic] = useState(null); // the picture this tutor is pointing at
   // The picture library, which this tutor's live room can draw from.
@@ -317,7 +317,7 @@ export default function TutorRoom() {
     pictures: wb.pictures,
     srcFor: (id) => pictureUrl(room.code, id),
     canAdd: true,
-    onAddFile: (file) => wb.addPicture(file, room),
+    onAddFile: (file, options) => wb.addPicture(file, room, options),
     onClear: wb.clearPictures,
     library,
     libraryState,
@@ -367,7 +367,11 @@ export default function TutorRoom() {
           title='Alphabet Whiteboard'
           menu={
             <>
-              {room.code && <CopyButton text={`${window.location.origin}/whiteboard/${room.code}`} label='Copy link' />}
+              <section aria-label='Board settings' className='flex flex-col items-start gap-2'>
+                <h2 className='text-xs font-bold uppercase tracking-wide text-slate-500'>Board settings</h2>
+                <HandsSwitch hands={hands.hands} onToggle={hands.show} />
+                <LinesButton size={wb.lines} onChoose={chooseLines} />
+              </section>
               <Switch checked={studentTools} onChange={(on) => send({ t: 'tools', on })} label='Student tools' />
               <Switch checked={wb.strip} onChange={wb.setStrip} label='Alphabet strip' />
               <p className='text-base text-slate-700'>
@@ -418,6 +422,7 @@ export default function TutorRoom() {
             <span title='Room code' className='rounded-lg bg-violet-600 px-2 py-1 font-mono text-xl font-bold tracking-wider text-white sm:px-3 sm:text-2xl sm:tracking-widest'>
               {room.code || '····'}
             </span>
+            {room.code && <CopyButton compact text={`${window.location.origin}/whiteboard/${room.code}`} label='Copy lesson link' />}
           </div>
           {pill}
           {pictureLibraryShortcut(true)}
@@ -425,22 +430,20 @@ export default function TutorRoom() {
       }
       tools={
         <ToolRail label='Your tools'>
-          <ToolButton icon={MousePointer2} label='Watch' pressed={tool === 'none'} onClick={() => chooseTool('none')} />
-          <HandsSwitch hands={hands.hands} onToggle={hands.show} />
+          <ToolButton icon={MousePointer2} label='Select' pressed={tool === 'none'} onClick={() => chooseTool('none')} />
           <ToolButton
             icon={Pencil}
-            label='Pen'
+            label='Draw'
             swatch={INK.tutor}
             pressed={tool === 'pen'}
             onClick={() => chooseTool(tool === 'pen' ? 'none' : 'pen')}
           />
           <ToolButton
             icon={Eraser}
-            label='Eraser'
+            label='Erase'
             pressed={tool === 'eraser'}
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
-          <LinesButton size={wb.lines} onChoose={chooseLines} />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
           <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
         </ToolRail>
@@ -465,7 +468,7 @@ export default function TutorRoom() {
             tiles={wb.tiles}
             selectedTile={selectedTileId}
             canManageTiles
-            tileActions={{ ...wb.tileActions, select: setSelectedTileId }}
+            tileActions={{ ...wb.tileActions, select: (id) => { setSelectedTileId(id); if (id) chooseTool('none'); } }}
             pieces={wb.pieces}
             pictures={wb.pictures}
             pictureSrc={(id) => pictureUrl(room.code, id)}
@@ -473,6 +476,7 @@ export default function TutorRoom() {
             canEditPieces
             canDeletePieces
             canDuplicatePieces
+            onCropPiece={(piece) => openPicture({ id: piece.pic, pieceId: piece.id, crop: piece.crop })}
             onSelectPiece={() => setTool('none')}
             onView={(rect) => {
               myView.current = rect;
@@ -499,53 +503,25 @@ export default function TutorRoom() {
       }
       call={call}
       peerName='your student'
-      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canHold handActions={hands} api={barApi} stageApi={stageApi} /> : null}
+      alphabet={wb.strip ? <AlphabetBar hands={hands.visible} me='tutor' canAddLetters canHold handActions={hands} api={barApi} stageApi={stageApi} /> : null}
       controls={layout}
       onPanelChange={setActivePanel}
-      panels={[
-        {
-          id: 'tiles',
-          label: 'Letter tiles',
-          icon: Type,
-          content: (
-            <TileBar
-              count={wb.tiles.length}
-              selected={wb.tiles.find((t) => t.id === selectedTileId) || null}
-              onAdd={wb.addTiles}
-              onEdit={(text) => {
-                const ok = wb.editTile(selectedTileId, text);
-                if (ok) setSelectedTileId(null);
-                return ok;
-              }}
-              onCancelEdit={() => setSelectedTileId(null)}
-              onReset={wb.resetTiles}
-              onClear={wb.clearTiles}
-              boxes={wb.boxes}
-              onBoxes={wb.setBoxes}
-            />
-          ),
-        },
-        {
-          id: 'games',
-          label: 'Games',
-          icon: Milestone,
-          content: (
-            <TutorGamesPanel bridge={bridge} phoneme={phoneme} startBridge={startBridge} startPhoneme={startPhoneme} visible={activePanel === 'games'} />
-          ),
-        },
-        {
-          id: 'pictures',
-          label: 'Pictures',
-          icon: ImageIcon,
-          content: (
-            <PicturesPanel {...pictureProps} notice={studentBrowsing ? { text: browseText, tone: 'violet', action: { label: 'View with them', onClick: () => setBrowsing(true) } } : null} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('pictures')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} />
-          ),
-        },
-      ]}
+      panels={[{
+        id: 'materials', label: 'Materials', icon: LayoutGrid,
+        content: <MaterialsWorkspace key={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} scope={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} tabs={[
+          { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} /> },
+          { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
+          { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
+        ]} supplement={<button type='button' aria-haspopup='dialog' aria-expanded={gamesOpen} aria-controls='tutor-games' onClick={() => setGamesOpen(true)} className='flex min-h-11 shrink-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-violet-50'><span className='flex items-center gap-2'><Milestone className='h-4 w-4' aria-hidden='true' />Games</span>{bridge.game || phoneme.active ? <span className='text-xs font-semibold text-violet-700'>Playing · Open controls</span> : <span className='text-xs font-semibold text-slate-500'>Open</span>}</button>} />,
+      }]}
+
     />
     <PictureDrawer id='tutor-picture-library' open={browsing} onClose={closePictureLibrary} previewOpen={picturePreviewOpen} catalogReady={libraryState.status === 'ready'} catalogScrollTop={pictureLibraryView.scrollTop} onCatalogScroll={(scrollTop) => updatePictureLibraryView({ scrollTop })}>
       <PicturesPanel
         {...pictureProps}
+        openPictureRequest={pictureOpenRequest}
+        onCropPiece={wb.pieceActions.crop}
+        onCancelCrop={() => setPictureOpenRequest(null)}
         layout='drawer'
         browseOnly
         catalogView={pictureLibraryView}
@@ -555,6 +531,9 @@ export default function TutorRoom() {
         notice={studentBrowsing ? { text: browseText, tone: 'violet' } : { text: 'Add a library card to the board, or open a session picture to show your student.', tone: 'sky' }}
         onPlaced={(options) => { if (!options?.keepOpen) closePictureLibrary(); }}
       />
+    </PictureDrawer>
+    <PictureDrawer id='tutor-games' title='Games' icon={Milestone} open={gamesOpen} onClose={() => setGamesOpen(false)}>
+      <TutorGamesPanel bridge={bridge} phoneme={phoneme} startBridge={startBridge} startPhoneme={startPhoneme} visible={gamesOpen} />
     </PictureDrawer>
     </>
   );

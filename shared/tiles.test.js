@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TILE_HEIGHT, cleanTileText, nextHome, snapTile, soundBoxes, tileKind, tileWidth } from './tiles.js';
+import { TILE_HEIGHT, cleanTileText, duplicateTilePosition, nextHome, snapTile, soundBoxTarget, soundBoxes, tileKind, tileWidth } from './tiles.js';
 
 describe('letter tiles', () => {
   it('accepts letters and graphemes up to four characters', () => {
@@ -34,4 +34,21 @@ describe('sound boxes', () => {
     expect(snapTile({ id: 'c', text: 'p', x: 800, y: 800 }, 3, [])).toBeNull();
     expect(soundBoxes(0)).toEqual([]);
   });
+});
+
+it('uses the same free target for the drag preview and authoritative snap', () => {
+  const box = soundBoxes(3)[1];
+  const tile = { id: 'moving', text: 'sh', x: box.x, y: box.y };
+  expect(soundBoxTarget(tile, 3, [tile])).toMatchObject({ index: 1, ...snapTile(tile, 3, [tile]) });
+  const occupied = { id: 'other', text: 't', ...snapTile({ ...tile, text: 't' }, 3, []) };
+  expect(soundBoxTarget(tile, 3, [occupied])).toBeNull();
+});
+it('duplicates near an edge without overlapping existing tiles when space is available', () => {
+  const tile = { id: 'a', text: 'tion', x: 1372, y: 864 };
+  const copy = duplicateTilePosition(tile, [tile]);
+  expect(copy.x).toBeGreaterThanOrEqual(24);
+  expect(copy.y).toBeGreaterThanOrEqual(24);
+  expect(copy.x + tileWidth(tile.text)).toBeLessThanOrEqual(1576);
+  expect(copy.y + TILE_HEIGHT).toBeLessThanOrEqual(976);
+  expect(copy.x + tileWidth(tile.text) <= tile.x || copy.x >= tile.x + tileWidth(tile.text) || copy.y + TILE_HEIGHT <= tile.y || copy.y >= tile.y + TILE_HEIGHT).toBe(true);
 });

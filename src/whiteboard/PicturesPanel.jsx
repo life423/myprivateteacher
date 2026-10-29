@@ -6,6 +6,7 @@ import { isFacePiece, MAX_PICTURES, startingWidth } from '../../shared/pieces.js
 import { defaultPictureCrop, picturePlacement } from './picturePlacement.js';
 import { catalogCollections, collectionLabel, filterLibraryCards } from './libraryCatalog.js';
 import './pictureLibrary.css';
+import { matchingMaterials } from './materials.js';
 import { cleanPictureLibraryView, emptyPictureLibraryView, keepPictureLibraryOpen, libraryFaceCrop } from './pictureLibraryView.js';
 
 const DRAG_START = 6; // screen pixels a press moves before it becomes a drag
@@ -150,6 +151,13 @@ export default function PicturesPanel({
   canTake = false,
   stageApi,
   onShow,
+  material = 'picture',
+  searchQuery,
+  embedded = false,
+  openPictureRequest,
+  onViewPicture,
+  onCropPiece,
+  onCancelCrop,
 }) {
   const student = !canAdd;
   const [openId, setOpenId] = useState(null);
@@ -171,7 +179,7 @@ export default function PicturesPanel({
   const [localView, setLocalView] = useState(emptyPictureLibraryView);
   const view = catalogView || localView;
   const updateView = (patch) => onCatalogViewChange ? onCatalogViewChange(patch) : setLocalView((current) => cleanPictureLibraryView({ ...current, ...patch }));
-  const catalogQuery = view.query;
+  const catalogQuery = searchQuery === undefined ? view.query : searchQuery;
   const catalogCollection = view.collection;
   const setCatalogQuery = (query) => updateView({ query, scrollTop: 0 });
   const setCatalogCollection = (collection) => updateView({ collection, scrollTop: 0 });
@@ -207,12 +215,15 @@ export default function PicturesPanel({
   const svgRef = useRef(null);
   const press = useRef(null);
 
-  const catalogVisible = canAdd && showLibrary;
+  const worksheet = material === 'worksheet';
+  const panelTitle = worksheet ? 'Worksheets' : 'Pictures';
+  const scopedPictures = layout === 'drawer' && searchQuery === undefined ? pictures : matchingMaterials(pictures, material, searchQuery || '');
+  const catalogVisible = canAdd && showLibrary && !worksheet;
   const catalogReady = libraryState.status === 'ready';
   const catalogIds = useMemo(() => new Set(library.map((item) => item.id)), [library]);
   // A library card appears once in the tutor's catalog, even after it enters the lesson.
-  const sessionPictures = catalogVisible ? pictures.filter((item) => !item.library || (catalogReady && !catalogIds.has(item.library))) : pictures;
-  const shown = pictures; // both people see every session picture
+  const sessionPictures = catalogVisible ? scopedPictures.filter((item) => !item.library || (catalogReady && !catalogIds.has(item.library))) : scopedPictures;
+  const shown = pictures; // Opening a granted/session picture does not change permissions.
 
   const previewCard = library.find((item) => item.id === previewCardId) || null;
   const pic = previewCard || shown.find((p) => p.id === openId) || null;
@@ -221,6 +232,7 @@ export default function PicturesPanel({
   const size = pic ? `${pic.w}x${pic.h}` : '';
   const picOffers = sessionPic ? offers.filter((o) => o.pic === sessionPic.id) : [];
   const face = libraryFaceCrop(pic);
+  const cropMode = !student && Boolean(openPictureRequest?.pieceId && openPictureRequest.id === pic?.id);
   const guiding = Boolean(sessionPic && guidePic === sessionPic.id);
   useLayoutEffect(() => { onViewerChange?.(Boolean(pic)); }, [Boolean(pic), onViewerChange]);
   useEffect(() => {
@@ -260,7 +272,7 @@ export default function PicturesPanel({
   useEffect(() => {
     setRegions([]);
     setFindingRegions(false);
-    setSelection(null);
+    setSelection(cropMode && openPictureRequest.crop ? { ...openPictureRequest.crop } : null);
     setHover(null);
     if (!src) return undefined;
     // Keep the curated mouth crop ready immediately, but let the tutor select
@@ -279,7 +291,7 @@ export default function PicturesPanel({
     return () => {
       live = false;
     };
-  }, [src, size, student, predefinedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [src, size, student, predefinedKey, cropMode, openPictureRequest?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const working = (value) => {
     busyCount.current = Math.max(0, busyCount.current + (value ? 1 : -1));
@@ -287,8 +299,14 @@ export default function PicturesPanel({
     setBusy(busyRef.current);
   };
 
-  const backToCatalog = () => { setOpenId(null); setPreviewCardId(null); };
-  const viewCard = (item) => { setNote(null); setPlacedNote(null); setOpenId(null); setPreview({ status: 'loading', src: null }); setPreviewCardId(item.id); };
+  const backToCatalog = () => { setOpenId(null); setPreviewCardId(null); if (cropMode) onCancelCrop?.(); };
+  const viewCard = (item) => { if (onViewPicture) { onViewPicture({ id: item.id, library: true }); return; } setNote(null); setPlacedNote(null); setOpenId(null); setPreview({ status: 'loading', src: null }); setPreviewCardId(item.id); };
+  useEffect(() => {
+    if (!openPictureRequest?.id) return;
+    setNote(null); setSelection(null);
+    if (openPictureRequest.library) { setOpenId(null); setPreviewCardId(openPictureRequest.id); }
+    else { setPreviewCardId(null); setOpenId(openPictureRequest.id); }
+  }, [openPictureRequest]);
   const ensureSessionPicture = async (picture) => {
     if (!library.some((item) => item.id === picture.id)) return picture;
     const existing = pictures.find((item) => item.library === picture.id);
@@ -323,7 +341,7 @@ export default function PicturesPanel({
     setNote(null);
     setPlacedNote(null);
     try {
-      const result = await onAddFile(file);
+      const result = await onAddFile(file, { ...(worksheet ? { material: 'worksheet' } : {}), title: file.name || (worksheet ? 'Worksheet image' : 'Uploaded picture') });
       if (result?.error) setNote(result.error);
       else if (result?.id) {
         const picture = { ...pictures.find((p) => p.id === result.id), ...result };
@@ -505,6 +523,16 @@ export default function PicturesPanel({
       pickUp(event, crop, offer?.id, region?.id);
       return;
     }
+    if (cropMode) {
+      if (mode === 'magic') {
+        const region = regionAt(regions, p.x, p.y);
+        if (region) setSelection(partOf(region));
+        return;
+      }
+      press.current = { kind: 'box', start: p };
+      setBox(boxFrom(p, p));
+      return;
+    }
     let part = selection && inside(p, selection) ? selection : null;
     if (!part) {
       const offer = offerAt(picOffers, p);
@@ -580,6 +608,7 @@ export default function PicturesPanel({
       else if (picOffers.length) hint = 'You’ve used the part your tutor gave you.';
       else hint = 'Your tutor hasn’t given you a part of this picture yet.';
     }
+    if (cropMode) hint = 'Choose the area to keep, then apply the crop to the selected picture.';
     const bright = [...available.map((o) => o.crop), ...takeable];
     const dim = `M0 0H${pic.w}V${pic.h}H0Z${bright.map((c) => `M${c.x} ${c.y}h${c.w}v${c.h}h${-c.w}Z`).join('')}`;
     return (
@@ -682,14 +711,18 @@ export default function PicturesPanel({
         )}
         <p data-editor-control className='shrink-0 text-xs text-slate-500'>{hint}</p>
         <div data-editor-control className='flex shrink-0 flex-wrap gap-2 [&>button]:min-h-11 [&>button]:flex-1'>
-        {(!student || (selection && (chosen || chosenRegion) && canTake)) && (
+        {cropMode && <button type='button' disabled={busy || !src || !selection} onClick={() => {
+          if (!onCropPiece?.(openPictureRequest.pieceId, selection)) { setNote('This picture cannot be cropped right now. Try again when it is not being moved.'); return; }
+          onPlaced?.({ keepOpen: false, cropped: true });
+        }} className={primary}><Check className='h-4 w-4' aria-hidden='true' />Apply crop</button>}
+        {!cropMode && (!student || (selection && (chosen || chosenRegion) && canTake)) && (
           <button type='button' disabled={busy || !src} onClick={(event) => place(selection || (!student && face) || defaultPictureCrop(pic), undefined, undefined, chosen?.id, chosenRegion?.id, { keepOpen: !student && keepPictureLibraryOpen(event, view.keepOpen) })} className={primary}>
             <Plus className='h-4 w-4' aria-hidden='true' />
             {selection ? 'Add selected part to board' : face ? 'Add face' : 'Add picture to board'}
           </button>
         )}
-        {!student && face && <button type='button' disabled={busy || !src} onClick={(event) => place(defaultPictureCrop(pic), undefined, undefined, undefined, undefined, { keepOpen: keepPictureLibraryOpen(event, view.keepOpen) })} className={secondary}>Add whole card</button>}
-        {!student && selection && !offered && (
+        {!cropMode && !student && face && <button type='button' disabled={busy || !src} onClick={(event) => place(defaultPictureCrop(pic), undefined, undefined, undefined, undefined, { keepOpen: keepPictureLibraryOpen(event, view.keepOpen) })} className={secondary}>Add whole card</button>}
+        {!cropMode && !student && selection && !offered && (
           <button type='button' disabled={busy || !src} onClick={giveSelection} className={secondary}>
             <Gift className='h-4 w-4' aria-hidden='true' />
             Give to student
@@ -724,16 +757,16 @@ export default function PicturesPanel({
   }
 
   return (
-    <section aria-label='Pictures' data-library-view='catalog' aria-busy={busy || (catalogVisible && libraryState.status === 'loading')} className={card}>
+    <section aria-label={panelTitle} data-library-view='catalog' aria-busy={busy || (catalogVisible && libraryState.status === 'loading')} className={embedded ? 'flex flex-col gap-3' : card}>
       <div className={`flex items-center justify-between ${browseOnly ? 'hidden' : ''}`}>
-        <h2 className='text-sm font-bold text-slate-700'>Pictures</h2>
+        <h2 className='text-sm font-bold text-slate-700'>{panelTitle}</h2>
         {!student && (
           <span className='text-xs font-semibold text-slate-500'>
             {uploads}/{MAX_PICTURES} uploads
           </span>
         )}
       </div>
-      {!student && layout === 'side' && onBrowse && (
+      {!student && !worksheet && layout === 'side' && onBrowse && (
         <button type='button' onClick={onBrowse} className={secondary}>
           <LayoutGrid className='h-4 w-4' aria-hidden='true' />
           Open picture library
@@ -748,7 +781,7 @@ export default function PicturesPanel({
             className={primary}
           >
             <Plus className='h-4 w-4' aria-hidden='true' />
-            {busy ? 'Adding…' : 'Upload picture'}
+            {busy ? 'Adding…' : worksheet ? 'Upload worksheet image' : 'Upload picture'}
           </button>
           <input
             ref={fileRef}
@@ -761,13 +794,13 @@ export default function PicturesPanel({
               addFile(file);
             }}
           />
-          <p className='-mt-1 text-xs leading-relaxed text-slate-500'>Upload or paste to add straight to the board. Choose a part afterwards if you need it. Pictures stay for this session only.</p>
+          <p className='-mt-1 text-xs leading-relaxed text-slate-500'>{worksheet ? 'Upload a worksheet as a JPG, PNG or another browser-supported image. It stays for this session.' : 'Upload or paste to add straight to the board. Choose a part afterwards if you need it. Pictures stay for this session only.'}</p>
         </>
       )}
       {placedNote && !catalogVisible && (
         <div role='status' className='rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900'>
           <p className='flex items-start gap-2'><Check className='mt-0.5 h-4 w-4 shrink-0' aria-hidden='true' />{placedNote.text}</p>
-          <button type='button' onClick={() => setOpenId(placedNote.id)} className='mt-1 min-h-10 rounded-lg px-2 text-xs font-bold underline underline-offset-2 hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700'>
+          <button type='button' onClick={() => onViewPicture ? onViewPicture({ id: placedNote.id }) : setOpenId(placedNote.id)} className='mt-1 min-h-10 rounded-lg px-2 text-xs font-bold underline underline-offset-2 hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700'>
             Choose a part of this picture
           </button>
         </div>
@@ -788,7 +821,7 @@ export default function PicturesPanel({
               <button type='button' onClick={onRetryLibrary} className='mt-2 inline-flex min-h-11 items-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-bold hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700'>Retry picture library</button>
             </div>
           )}
-          <div className='flex items-center justify-between gap-2'>
+          {!embedded && <><div className='flex items-center justify-between gap-2'>
             <h3 className='text-xs font-bold uppercase tracking-wide text-slate-500'>Library</h3>
             {onGiveAll && (
               <button
@@ -803,7 +836,8 @@ export default function PicturesPanel({
             )}
           </div>
           <div className='flex flex-wrap items-center justify-between gap-x-3'><label className='inline-flex min-h-11 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700'><input type='checkbox' checked={view.keepOpen} onChange={(event) => updateView({ keepOpen: event.target.checked })} className='h-4 w-4 accent-violet-600' />Keep library open</label><span className='text-[11px] text-slate-500'>Ctrl/⌘-click keeps it open</span></div>
-          <div data-catalog-filters className='min-w-0'>
+          </>}
+          {searchQuery === undefined && <div data-catalog-filters className='min-w-0'>
             <div className='flex min-h-11 items-center gap-1.5'>
               <button ref={filtersTrigger} type='button' onClick={toggleFilters} aria-expanded={filtersOpen} aria-controls={filtersId}
                 className={`inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${filtersActive ? 'border-violet-200 bg-violet-50 text-violet-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
@@ -846,13 +880,13 @@ export default function PicturesPanel({
                 </div>
               </div>
             </div>
-          </div>
+          </div>}
           {libraryNote && (
             <p role='status' className='text-xs font-semibold text-slate-600'>
               {libraryNote}
             </p>
           )}
-          <ul aria-label='Library cards' className='grid grid-cols-1 gap-3 min-[350px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'>
+          <ul aria-label='Library cards' className={embedded ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-3 min-[350px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}>
             {filteredLibrary.map((item) => {
               const existing = pictures.find((picture) => picture.library === item.id);
               const showing = existing?.id === guidePic;
@@ -901,10 +935,10 @@ export default function PicturesPanel({
       )}
       {sessionPictures.length === 0 ? (catalogVisible ? null : (
         <p className='text-sm text-slate-500'>
-          {student ? 'Your tutor hasn’t added any pictures yet.' : 'Pick a library picture or upload your own. It appears on the board, ready to move and resize.'}
+          {searchQuery ? 'No materials match your search.' : worksheet ? (student ? 'Your tutor hasn’t added any worksheets yet.' : 'Upload a worksheet image to view it, add it to the board, or choose a part with Magic Select.') : student ? 'Your tutor hasn’t added any pictures yet.' : 'Pick a library picture or upload your own. It appears on the board, ready to move and resize.'}
         </p>
       )) : (
-        <ul aria-label='Session pictures' className={layout === 'drawer' ? 'grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3' : '-mx-1 flex max-h-[45vh] flex-col gap-2 overflow-y-auto px-1'}>
+        <ul aria-label='Session pictures' className={layout === 'drawer' ? 'grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3' : embedded ? 'flex flex-col gap-2' : '-mx-1 flex max-h-[45vh] flex-col gap-2 overflow-y-auto px-1'}>
           {sessionPictures.map((p, i) => (
             <li
               key={p.id}
@@ -934,6 +968,7 @@ export default function PicturesPanel({
                 type='button'
                 aria-label={student ? `Open ${p.title || `picture ${i + 1}`}` : `Choose a part of ${p.title || `picture ${i + 1}`}`}
                 onClick={() => {
+                  if (onViewPicture) { onViewPicture({ id: p.id }); return; }
                   setNote(null);
                   setOpenId(p.id);
                 }}
@@ -947,7 +982,7 @@ export default function PicturesPanel({
                   decoding='async'
                   className={layout === 'drawer' ? 'block aspect-square h-auto w-full object-contain' : 'mx-auto block max-h-40 w-auto'}
                 />
-                {layout === 'drawer' && p.title && (
+                {(layout === 'drawer' || embedded) && p.title && (
                   <span className='block truncate border-t border-slate-100 px-2 py-1.5 text-left text-sm font-bold text-slate-800'>{p.title}</span>
                 )}
               </button>
@@ -994,7 +1029,7 @@ export default function PicturesPanel({
           onBlur={() => setArmed(false)}
           className={`rounded-full px-3 py-2 text-sm font-semibold ${armed ? 'bg-rose-600 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'}`}
         >
-          {armed ? 'Sure? Pictures and their pieces go' : 'Remove all pictures'}
+          {armed ? 'Sure? All session images and their board pieces go' : 'Remove all session images'}
         </button>
       )}
     </section>
@@ -1003,7 +1038,7 @@ export default function PicturesPanel({
 
 // The picture library slide-out: the session's pictures as a grid, and a big view of the one
 // opened, sliding in over the board from the right (the whole screen on phones).
-export function PictureDrawer({ id, open, onClose, title = 'Picture library', children, previewOpen = false, catalogReady = true, catalogScrollTop = 0, onCatalogScroll, dismissOnEmptyBackground = false }) {
+export function PictureDrawer({ id, open, onClose, title = 'Picture library', children, previewOpen = false, catalogReady = true, catalogScrollTop = 0, onCatalogScroll, dismissOnEmptyBackground = false, icon: Icon = LayoutGrid }) {
   const closeButton = useRef(null);
   const dialog = useRef(null);
   const scrollArea = useRef(null);
@@ -1087,7 +1122,7 @@ export function PictureDrawer({ id, open, onClose, title = 'Picture library', ch
       >
         <header className='picture-library-header flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-4'>
           <span className='flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white'>
-            <LayoutGrid className='h-5 w-5' aria-hidden='true' />
+            <Icon className='h-5 w-5' aria-hidden='true' />
           </span>
           <h2 className='text-lg font-extrabold text-slate-900'>{title}</h2>
           <button

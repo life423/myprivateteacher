@@ -7,7 +7,7 @@ export function ToolRail({ label, children }) {
   return (
     <nav
       aria-label={label}
-      className='flex shrink-0 flex-col justify-center gap-1 self-center rounded-2xl bg-white p-1.5 shadow lg:gap-1.5 lg:p-2'
+      className='flex shrink-0 flex-col justify-center gap-1 self-center rounded-2xl border border-slate-200/80 bg-white p-1 shadow-sm'
     >
       {children}
     </nav>
@@ -27,10 +27,11 @@ export function ToolButton({ icon: Icon, label, pressed, expanded, controls, dis
       aria-expanded={expanded}
       aria-controls={controls}
       title={label}
-      className={`flex min-h-11 w-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-xs font-bold transition-colors disabled:opacity-30 sm:w-14 lg:w-16 ${tone}`}
+      aria-label={label}
+      className={`flex min-h-11 w-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] font-semibold transition-colors disabled:opacity-30 ${tone}`}
     >
       <span className='relative'>
-        <Icon className='h-6 w-6' aria-hidden='true' />
+        <Icon className='h-5 w-5' aria-hidden='true' />
         {swatch && (
           <span
             className='absolute -bottom-1 -right-1 h-3 w-3 rounded-full ring-2 ring-white'
@@ -38,7 +39,7 @@ export function ToolButton({ icon: Icon, label, pressed, expanded, controls, dis
           />
         )}
       </span>
-      <span className='max-sm:sr-only'>{label}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -73,7 +74,7 @@ export function HandsSwitch({ hands, onToggle }) {
 }
 
 // Clearing needs a second tap within three seconds, so it never happens by accident.
-export function ClearButton({ icon, onClear }) {
+export function ClearButton({ icon, onClear, label = 'Clear board' }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return undefined;
@@ -81,16 +82,16 @@ export function ClearButton({ icon, onClear }) {
     return () => clearTimeout(timer);
   }, [armed]);
   return (
-    <ToolButton
+    <div className='mt-2 border-t border-slate-200 pt-2'><ToolButton
       icon={icon}
-      label={armed ? 'Sure?' : 'Clear'}
+      label={armed ? 'Clear now?' : label}
       danger={armed}
       onClick={() => {
         if (!armed) return setArmed(true);
         setArmed(false);
         onClear();
       }}
-    />
+    /></div>
   );
 }
 

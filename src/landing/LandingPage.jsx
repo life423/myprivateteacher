@@ -1,7 +1,11 @@
 import Photo from './Photo.jsx';
 import LessonJoinForm from './LessonJoinForm.jsx';
+import LessonPreview from './LessonPreview.jsx';
+import LessonDemoDialog from './LessonDemoDialog.jsx';
+import LessonWalkthrough from './LessonWalkthrough.jsx';
+import LandingDialog from './LandingDialog.jsx';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, BookOpen, Check, Gamepad2, Image as ImageIcon, LayoutGrid, Menu, PlayCircle, Users, Video, Volume2, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Check, Gamepad2, Menu, PlayCircle, Users, Volume2, X } from 'lucide-react';
 import { Link } from '../router.jsx';
 import AccountMenu from '../account/AccountMenu.jsx';
 import SiteFooter from './SiteFooter.jsx';
@@ -43,19 +47,6 @@ function Ticks({ items, className = '' }) {
 
 const Eyebrow = ({ children }) => <p className='text-xs font-bold uppercase tracking-[0.14em] text-violet-700'>{children}</p>;
 
-const FEATURES = [
-  { icon: Video, tone: 'bg-violet-100 text-violet-700', title: 'Live, interactive lessons', text: 'See and hear each other while you teach on one shared board.' },
-  { icon: LayoutGrid, tone: 'bg-violet-100 text-violet-700', title: 'Structured literacy tools', text: 'Letter tiles, sound boxes, the alphabet strip, and more.' },
-  { icon: ImageIcon, tone: 'bg-violet-100 text-violet-700', title: 'Use your own materials', text: 'Add worksheets and pictures, then lift out just the part you need.' },
-  { icon: Gamepad2, tone: 'bg-violet-100 text-violet-700', title: 'Engaging practice', text: 'Practice sounds with Phoneme Pop and letter order with Alphabet Bridge.' },
-];
-
-const STEPS = [
-  { title: 'Start a lesson', text: 'Open your whiteboard and choose the materials you want to use.' },
-  { title: 'Share the code', text: 'Your student enters a 4-digit code or opens your link. No account needed.' },
-  { title: 'Teach together', text: 'Talk, move letters, and work through your materials on the same board.' },
-];
-
 const SECTIONS = [
   ['#features', 'Features'],
   ['#how-it-works', 'How it works'],
@@ -64,6 +55,10 @@ const SECTIONS = [
 
 export default function LandingPage() {
   const [menu, setMenu] = useState(false); // the phone menu
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const demoTriggerRef = useRef(null);
+  const joinReturnRef = useRef(null);
   const { tutor } = useAccount();
   const headerRef = useRef(null);
   const menuButtonRef = useRef(null);
@@ -86,7 +81,16 @@ export default function LandingPage() {
       requestAnimationFrame(() => target.scrollIntoView({ block: 'start', behavior: 'instant' }));
     }, delay);
   };
-  const showJoinLesson = (event) => showSection(event, '#join-lesson', () => joinFormRef.current?.open());
+  const showJoinLesson = (event) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    joinReturnRef.current = menu ? menuButtonRef.current : event.currentTarget;
+    setMenu(false);
+    setJoinOpen(true);
+  };
+  useEffect(() => {
+    if (window.location.hash === '#join-lesson') setJoinOpen(true);
+  }, []);
   useEffect(() => () => window.clearTimeout(anchorTimerRef.current), []);
   useEffect(() => {
     if (!menu) return undefined;
@@ -128,7 +132,7 @@ export default function LandingPage() {
                 Sign in
               </Link>
             )}
-            <a href='#join-lesson' onClick={showJoinLesson} className='rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100'>
+            <a href='#join-lesson' onClick={showJoinLesson} className='inline-flex min-h-11 items-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100'>
               Join a lesson
             </a>
             {hasAccess(tutor) && (
@@ -217,60 +221,30 @@ export default function LandingPage() {
                 className='mt-6 hidden sm:flex'
                 items={['Live whiteboard with video', 'Letter tiles, sound boxes, and manipulatives', 'Use your own worksheets and pictures', 'Engaging activities like Phoneme Pop']}
               />
-              <div className='mt-6 grid grid-cols-2 items-start gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:gap-3'>
-                <Button to={START} compact className='min-w-0 sm:w-auto'>
+              <div className='mt-6 flex flex-wrap items-center gap-x-3 gap-y-2'>
+                <Button to={START} compact className='w-full min-w-0 sm:w-auto'>
                   Start free trial <ArrowRight className='h-4 w-4 shrink-0 sm:h-5 sm:w-5' aria-hidden='true' />
                 </Button>
-                <LessonJoinForm ref={joinFormRef} />
-                <p className='order-3 col-span-full text-center text-xs leading-5 text-slate-600 sm:basis-full sm:text-left'>
+                <button ref={demoTriggerRef} type='button' onClick={() => setDemoOpen(true)} className='inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-3 text-sm font-semibold text-violet-800 transition-colors hover:border-violet-400 hover:bg-violet-50 focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-violet-500 sm:w-auto sm:px-4'>
+                  <PlayCircle className='h-4 w-4 shrink-0' aria-hidden='true' /> Watch a 30-second demo
+                </button>
+                <p className='basis-full text-xs leading-5 text-slate-600'>
                   14 days free · No credit card required
                 </p>
               </div>
-              <p className='text-center text-[13px] leading-5 text-slate-600 sm:text-left lg:hidden'>
-                {tutor ? 'Welcome back. ' : 'Already have an account? '}
-                <Link to={accountPath} className='inline-flex min-h-11 items-center rounded-lg px-1 font-semibold text-violet-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600'>
-                  {accountLabel}
+              {!tutor && <p className='text-center text-[13px] leading-5 text-slate-600 sm:text-left lg:hidden'>
+                Already have an account?{' '}
+                <Link to='/login' className='inline-flex min-h-11 items-center rounded-lg px-1 font-semibold text-violet-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600'>
+                  Sign in
                 </Link>
-              </p>
+              </p>}
             </div>
-            <div className='rounded-[1.75rem] bg-slate-900 p-2 shadow-2xl shadow-violet-900/20 ring-1 ring-slate-900/10 sm:p-2.5'>
-              <Photo
-                name='whiteboard'
-                width={1600}
-                height={1000}
-                first
-                alt='The My Private Teacher whiteboard: letter tiles c a t, sound boxes, a mouth picture and the alphabet strip'
-                className='block h-auto w-full rounded-[1.3rem] bg-slate-100'
-              />
-            </div>
+            <LessonPreview />
           </div>
         </section>
 
         <div data-landing-chapters>
-          <section id='features' aria-labelledby='features-title' data-landing-chapter className='scroll-mt-20 bg-gradient-to-b from-[#f8f6fc] to-[#f2eff9]'>
-            <div className='mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pt-14 lg:pb-24'>
-              <div className='flex flex-col justify-between gap-4 border-t border-violet-200/80 pt-8 lg:flex-row lg:items-end lg:gap-12'>
-                <div className='max-w-xl'>
-                  <Eyebrow>Your lesson toolkit</Eyebrow>
-                  <h2 id='features-title' className='mt-3 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl'>Keep the lesson in one place.</h2>
-                </div>
-                <p className='max-w-sm text-base leading-relaxed text-slate-600'>Move between conversation, letter work, and your own materials on one shared board.</p>
-              </div>
-              <div className='mt-8 grid overflow-hidden rounded-3xl border border-violet-200/80 bg-white shadow-sm shadow-violet-950/5 sm:grid-cols-2'>
-                {FEATURES.map(({ icon: Icon, tone, title, text }, index) => (
-                  <div key={title} className={`flex items-start gap-4 p-5 sm:p-7 lg:gap-5 lg:p-8 ${index ? 'border-t border-slate-200/80' : ''} ${index === 1 ? 'sm:border-t-0' : ''} ${index % 2 ? 'sm:border-l' : ''}`}>
-                    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${tone}`}>
-                      <Icon className='h-6 w-6' aria-hidden='true' />
-                    </span>
-                    <div>
-                      <h3 className='text-lg font-bold leading-snug'>{title}</h3>
-                      <p className='mt-2 max-w-sm text-sm leading-relaxed text-slate-600 sm:text-base'>{text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
+          <LessonWalkthrough />
 
           <section aria-labelledby='activity-title' data-landing-chapter className='bg-gradient-to-b from-[#f2eff9] via-[#faf9fd] to-[#fcfbfe]'>
             <div className='mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24'>
@@ -313,28 +287,6 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
-
-          <section id='how-it-works' aria-labelledby='steps-title' data-landing-chapter className='scroll-mt-20 bg-[#fcfbfe]'>
-            <div className='mx-auto max-w-6xl border-y border-slate-200/80 px-4 py-16 sm:px-6 lg:py-20'>
-              <div className='mx-auto max-w-xl text-center'>
-                <Eyebrow>How it works</Eyebrow>
-                <h2 id='steps-title' className='mt-3 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl'>Less setup. More teaching.</h2>
-                <p className='mt-4 text-base leading-relaxed text-slate-600'>Three steps from opening the app to working together.</p>
-              </div>
-              <ol className='mt-10 grid gap-8 sm:mt-12 sm:grid-cols-3 sm:gap-10'>
-                {STEPS.map(({ title, text }, index) => (
-                  <li key={title} className='relative flex items-start gap-5 sm:block sm:text-center'>
-                    {index < STEPS.length - 1 && <span className='absolute bottom-[-2rem] left-7 top-14 w-px bg-violet-200 sm:bottom-auto sm:left-[calc(50%+1.75rem)] sm:top-7 sm:h-px sm:w-[calc(100%-1rem)]' aria-hidden='true' />}
-                    <span className='relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-white font-mono text-xl font-semibold text-violet-700 sm:mx-auto' aria-hidden='true'>{String(index + 1).padStart(2, '0')}</span>
-                    <div className='pt-1 sm:mt-5 sm:pt-0'>
-                      <h3 className='text-lg font-bold'>{title}</h3>
-                      <p className='mt-2 max-w-xs text-sm leading-relaxed text-slate-600 sm:mx-auto sm:text-base'>{text}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
             </div>
           </section>
 
@@ -386,6 +338,10 @@ export default function LandingPage() {
       </main>
 
       <SiteFooter />
+      <LessonDemoDialog open={demoOpen} onClose={() => setDemoOpen(false)} returnFocusRef={demoTriggerRef} />
+      <LandingDialog open={joinOpen} onClose={() => setJoinOpen(false)} onOpen={() => joinFormRef.current?.open()} returnFocusRef={joinReturnRef} title='Join a lesson' keepMounted>
+        <div className='p-4 sm:p-5'><LessonJoinForm ref={joinFormRef} onDismiss={() => setJoinOpen(false)} inDialog /></div>
+      </LandingDialog>
     </div>
   );
 }

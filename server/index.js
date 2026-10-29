@@ -5,6 +5,7 @@ import express from 'express';
 import compression from 'compression';
 import { attachRealtime } from './realtime.js';
 import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
+import { cleanPictureMetadata } from '../shared/pictureMetadata.js';
 import { connectLibrary } from './library.js';
 import { SESSION_COOKIE, SESSION_DAYS, connectAccounts, publicTutor, tutorAccess } from './accounts.js';
 import { connectWords } from './words.js';
@@ -139,6 +140,7 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
         h: Number(req.query.h),
         type,
         bytes: req.body,
+        ...cleanPictureMetadata(req.query),
         writeToken: req.pictureWriteToken,
       });
       res.status(status).json({ ok: status < 300 });
