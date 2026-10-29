@@ -5,29 +5,47 @@ import { useEffect, useState } from 'react';
 let current = null;
 const listeners = new Set();
 
-async function load() {
-  try {
-    const res = await fetch('/api/me', { cache: 'no-store' });
-    current = res.ok ? await res.json() : { tutor: null, signIn: null };
-  } catch {
-    current = { tutor: null, signIn: null };
-  }
-  listeners.forEach((listener) => listener(current));
-  return current;
+let pending = null;
+let requestVersion = 0;
+
+function load({ fresh = false } = {}) {
+  if (pending && !fresh) return pending;
+  const version = ++requestVersion;
+  // Publish only the latest request. An initial anonymous lookup must not overwrite
+  // a newer sign-in or sign-out response that completed first.
+  const request = Promise.resolve().then(async () => {
+    let next;
+    try {
+      const res = await fetch('/api/me', { cache: 'no-store' });
+      next = res.ok ? await res.json() : { tutor: null, signIn: null };
+    } catch {
+      next = { tutor: null, signIn: null };
+    }
+    if (version !== requestVersion) return pending || current;
+    current = next;
+    listeners.forEach((listener) => listener(current));
+    return current;
+  }).finally(() => {
+    if (pending === request) pending = null;
+  });
+  pending = request;
+  return request;
 }
 
-export const refreshAccount = () => load();
+export const refreshAccount = () => load({ fresh: true });
 
 export async function signOut() {
   await fetch('/auth/logout', { method: 'POST' }).catch(() => {});
-  return load();
+  return refreshAccount();
 }
 
 export function useAccount() {
   const [state, setState] = useState(current);
   useEffect(() => {
     listeners.add(setState);
-    if (!current) load();
+    // A shared refresh may finish between render and subscribing. Catch up to it.
+    if (current) setState(current);
+    else load();
     return () => listeners.delete(setState);
   }, []);
   return {

@@ -11,14 +11,14 @@ import ObjectToolbar from './ObjectToolbar.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
-import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileKind, tileWidth } from '../../shared/tiles.js';
+import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileWidth } from '../../shared/tiles.js';
 import { clampPiece, isFacePiece, pieceSize } from '../../shared/pieces.js';
 import { Minus, Plus, Scan } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
 import { picturePlacementBounds } from './picturePlacement.js';
 import { pictureOverlapState } from './pictureGeometry.js';
+import { pictureDragPosition, usePointerLifecycle } from './pointerLifecycle.js';
 
-const VIEW_BOX = `0 0 ${STAGE.width} ${STAGE.height}`;
 // Handwriting guides (top line, dashed midline, baseline) stay put even when the board grows.
 const PALM_MS = 1500; // touches this soon after an Apple Pencil event count as a resting palm
 const CLICK_SLOP = 6; // a tile that moves less than this was clicked, not dragged
@@ -162,12 +162,10 @@ export default function Stage({
   const holding = useRef(new Map()); // pointer id -> { side, dx, dy }: the hands this screen is moving
   const tileDrag = useRef(null);
   const pieceDrag = useRef(null);
-  const letterDrag = useRef(null);
   const counterTap = useRef(null);
-  const [letterPreview, setLetterPreview] = useState(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
-  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, canManageTiles, strip, boxes, boxTaps, boxEpoch, onToggleSoundBox, canTapSoundBoxes, tool };
+  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, pieceActions, canManageTiles, strip, boxes, boxTaps, boxEpoch, onToggleSoundBox, canTapSoundBoxes, tool };
   // The board's frame on screen: all of it fitted (view is null), or zoomed and panned by this
   // person alone. The board's own coordinates never change, so the other screen never notices.
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -188,6 +186,13 @@ export default function Stage({
   const sizeRef = useRef(size);
   sizeRef.current = size;
   const gesture = useRef({ touches: new Map(), pinch: null, pan: null });
+  const pointers = usePointerLifecycle(event => onPointerMove(event), event => finishPointer(event));
+  const handEpoch = handActions?.interactionEpoch;
+  const previousHandEpoch = useRef(handEpoch);
+  useEffect(() => {
+    if (previousHandEpoch.current !== handEpoch) pointers.cancelAll('authority');
+    previousHandEpoch.current = handEpoch;
+  }, [handEpoch, pointers]);
 
   // The part of the board this screen shows, for the other person's outline.
   const seen = layout.scale
@@ -357,11 +362,11 @@ export default function Stage({
     live.current.onStroke?.end();
   }, [tool]);
 
-  const toStage = (clientX, clientY, lift = 0) => {
+  const toStage = (clientX, clientY) => {
     const matrix = svgRef.current?.getScreenCTM();
     if (!matrix) return null;
     const p = new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse());
-    return { x: clamp(p.x, 0, STAGE.width), y: clamp(p.y - lift, 0, STAGE.height) };
+    return { x: clamp(p.x, 0, STAGE.width), y: clamp(p.y, 0, STAGE.height) };
   };
 
   const withLetter = (p) => ({ ...p, letter: letterAt(p.x, p.y, live.current.strip) });
@@ -371,14 +376,8 @@ export default function Stage({
     return event.pointerType === 'touch' && performance.now() - lastPen.current < PALM_MS;
   };
 
-  // Capture keeps a stroke or drag going if the finger slides off the stage; some browsers refuse it.
-  const capture = (event) => {
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // it still works without capture
-    }
-  };
+  // Window fallback listeners preserve the gesture if native capture is unavailable.
+  const capture = event => pointers.capture(event);
 
   // Tile deletion belongs to the selected object's contextual toolbar.
   const pickTile = (p) => {
@@ -398,34 +397,6 @@ export default function Stage({
     const control = pieceControl(p);
     if (control?.handle) return HANDLE_CURSOR[`${control.handle.hx},${control.handle.hy}`];
     return pickPiece(p) ? 'grab' : null;
-  };
-
-  const previewLetter = (text, clientX, clientY) => {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
-    const point = inside ? toStage(clientX, clientY) : null;
-    if (!canManageTiles || !point || !insideBoard(point, boardRect(strip))) { setLetterPreview(null); setActiveBox(null); return false; }
-    const at = clampTile(text, point.x - tileWidth(text) / 2, point.y - TILE_HEIGHT / 2);
-    const preview = { id: 'alphabet-preview', text, ...at, z: Infinity, kind: tileKind(text), heldBy: me };
-    setLetterPreview(preview);
-    setActiveBox(soundBoxTarget(preview, boxes, tiles)?.index ?? null);
-    return true;
-  };
-  const clearLetterPreview = () => { setLetterPreview(null); setActiveBox(null); };
-  const addLetter = (text, point) => {
-    if (!canManageTiles || !tileActions?.addAt) return null;
-    const at = clampTile(text, point.x - tileWidth(text) / 2, point.y - TILE_HEIGHT / 2);
-    const target = snapTile({ id: 'alphabet-new', text, ...at }, boxes, tiles) || at;
-    const id = tileActions.addAt(text, target.x, target.y);
-    if (id) selectLetter(id);
-    return id;
-  };
-  const dropLetter = (text, clientX, clientY) => {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    const inside = rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
-    const point = inside ? toStage(clientX, clientY) : null;
-    clearLetterPreview();
-    return point && insideBoard(point, boardRect(strip)) ? addLetter(text, point) : null;
   };
 
   // The hand under a point that this person may hold (the right one wins where they overlap):
@@ -450,14 +421,16 @@ export default function Stage({
   };
 
   const onPointerDown = (event) => {
-    if (isPalm(event)) return;
-    if (grabHand(event)) return;
+    if (isPalm(event) || event.button !== 0) return;
+    pointers.start(event);
+    const initialPoint = toStage(event.clientX, event.clientY);
+    // A visible tile wins over a glove covering its edge; the cuff remains grabbable.
+    if (!(initialPoint && live.current.tileActions && pickTile(initialPoint)) && grabHand(event)) return;
     if (event.pointerType === 'touch') {
       const g = gesture.current;
       g.touches.set(event.pointerId, local(event.clientX, event.clientY));
       if (g.touches.size === 2) {
         // A second finger: stop whatever the first was doing, and pinch or pan instead.
-        if (letterDrag.current) { letterDrag.current = null; clearLetterPreview(); }
         for (const id of g.touches.keys()) if (id !== event.pointerId) endAction({ pointerId: id });
         g.pan = null;
         const [a, b] = [...g.touches.values()];
@@ -528,12 +501,6 @@ export default function Stage({
       if (tool !== 'none') point?.({ ...raw, letter: null });
       return;
     }
-    const letter = canManageTiles && !fillTop ? letterAt(raw.x, raw.y, strip) : null;
-    if (letter) {
-      capture(event);
-      letterDrag.current = { pointerId: event.pointerId, text: letter, x: event.clientX, y: event.clientY, moved: false };
-      return;
-    }
     if (movable) clearSelection();
     const target = event.button === 0 && movable && canTapSoundBoxes && onToggleSoundBox ? soundBoxAt(raw, live.current.boxes, layoutRef.current.scale) : null;
     if (target && !live.current.hands.some((hand) => overHand(raw, hand))) {
@@ -557,15 +524,7 @@ export default function Stage({
   };
 
   const onPointerMove = (event) => {
-    const ld = letterDrag.current;
-    if (ld && ld.pointerId === event.pointerId) {
-      if (Math.hypot(event.clientX - ld.x, event.clientY - ld.y) > CLICK_SLOP) ld.moved = true;
-      if (ld.moved && !previewLetter(ld.text, event.clientX, event.clientY)) {
-        const point = toStage(event.clientX, event.clientY);
-        if (point) setLetterPreview({ id: 'alphabet-preview', text: ld.text, x: point.x - tileWidth(ld.text) / 2, y: point.y - TILE_HEIGHT / 2, z: Infinity, kind: tileKind(ld.text), heldBy: me });
-      }
-      return;
-    }
+    if (event.pointerType === 'pen') lastPen.current = performance.now();
     const held = holding.current.get(event.pointerId);
     if (held) {
       const hand = live.current.hands.find((h) => h.side === held.side);
@@ -616,23 +575,9 @@ export default function Stage({
     if (pd && pd.pointerId === event.pointerId) {
       const raw = toStage(event.clientX, event.clientY);
       if (!raw) return;
-      if (pd.mode === 'move') {
-        const pos = clampPiece({ w: pd.w, h: pd.h }, raw.x + pd.dx, raw.y + pd.dy);
-        pd.x = pos.x;
-        pd.y = pos.y;
-        pieceActions?.move(pd.id, pos.x, pos.y);
-      } else {
-        // Resizing keeps the shape and pins the opposite side (or the middle, for edge handles).
-        const ratio = pd.crop.h / pd.crop.w;
-        const dx = Math.abs(raw.x - pd.ax);
-        const dy = Math.abs(raw.y - pd.ay) / ratio;
-        const size = pieceSize(pd.crop, pd.hx && pd.hy ? Math.max(dx, dy) : pd.hx ? dx : dy);
-        const x = pd.hx === 1 ? pd.ax : pd.hx === -1 ? pd.ax - size.w : pd.ax - size.w / 2;
-        const y = pd.hy === 1 ? pd.ay : pd.hy === -1 ? pd.ay - size.h : pd.ay - size.h / 2;
-        const pos = clampPiece(size, x, y);
-        Object.assign(pd, pos, { w: size.w });
-        pieceActions?.move(pd.id, pos.x, pos.y, size.w);
-      }
+      const pos = pictureDragPosition(pd, raw);
+      Object.assign(pd, pos);
+      pieceActions?.move(pd.id, pos.x, pos.y, pd.mode === 'resize' ? pos.w : undefined);
       if (tool !== 'none') point?.({ ...raw, letter: null });
       return;
     }
@@ -641,7 +586,7 @@ export default function Stage({
       const raw = toStage(event.clientX, event.clientY);
       if (!raw) return;
       if (Math.abs(raw.x - td.sx) + Math.abs(raw.y - td.sy) > CLICK_SLOP) td.moved = true;
-      const pos = clampTile(td.text, raw.x + td.dx, raw.y + td.dy);
+      const pos = clampTile(td.text, raw.x + td.dx, Math.max(boardRect(live.current.strip).y, raw.y + td.dy));
       td.x = pos.x;
       td.y = pos.y;
       tileOps?.move(td.id, pos.x, pos.y);
@@ -651,7 +596,7 @@ export default function Stage({
       return;
     }
     if (drawing.current === event.pointerId) {
-      const coalesced = event.nativeEvent.getCoalescedEvents?.() ?? [];
+      const coalesced = event.nativeEvent?.getCoalescedEvents?.() ?? event.getCoalescedEvents?.() ?? [];
       const pts = (coalesced.length ? coalesced : [event]).map((e) => toStage(e.clientX, e.clientY)).filter(Boolean);
       stroke?.move(pts);
       if (pts.length) point?.({ ...pts[pts.length - 1], letter: null });
@@ -677,19 +622,23 @@ export default function Stage({
   // Ends what a pointer was doing (a stroke, a drag). Also used when a second finger arrives.
   const endAction = (event) => {
     if (counterTap.current?.pointerId === event.pointerId) { counterTap.current = null; return; }
+    const released = event.type === 'pointerup' && Number.isFinite(event.clientX) && Number.isFinite(event.clientY) ? toStage(event.clientX, event.clientY) : null;
     const held = holding.current.get(event.pointerId);
     if (held) {
       holding.current.delete(event.pointerId);
       setGrip(null);
+      if (released) {
+        const overBar = live.current.barApi?.current?.pointAt(event.clientX, event.clientY);
+        live.current.handActions?.move(held.side, overBar || withLetter({ x: clamp(released.x + held.dx, 0, STAGE.width), y: clamp(released.y + held.dy, 0, STAGE.height) }));
+      }
       live.current.handActions?.drop(held.side);
-      return;
     }
     const pd = pieceDrag.current;
     if (pd && pd.pointerId === event.pointerId) {
       pieceDrag.current = null;
       setGrip(null);
-      pieceActions?.drop(pd.id, pd.x, pd.y, pd.mode === 'resize' ? pd.w : undefined);
-      return;
+      if (released) Object.assign(pd, pictureDragPosition(pd, released));
+      if (event.reason !== 'authority') live.current.pieceActions?.drop(pd.id, pd.x, pd.y, pd.mode === 'resize' ? pd.w : undefined);
     }
     const td = tileDrag.current;
     if (td && td.pointerId === event.pointerId) {
@@ -697,45 +646,43 @@ export default function Stage({
       setGrip(null);
       const { tileActions: tileOps, canManageTiles: manage } = live.current;
       setActiveBox(null);
+      // The final movement may be coalesced or omitted; release is the final position.
+      if (released) {
+        if (Math.abs(released.x - td.sx) + Math.abs(released.y - td.sy) > CLICK_SLOP) td.moved = true;
+        Object.assign(td, clampTile(td.text, released.x + td.dx, Math.max(boardRect(live.current.strip).y, released.y + td.dy)));
+      }
       if (!td.moved && manage) tileOps?.select?.(td.id);
       const at = snapTile(td, live.current.boxes, live.current.tiles) || { x: td.x, y: td.y };
-      tileOps?.move(td.id, at.x, at.y);
-      tileOps?.drop(td.id, at.x, at.y);
-      return;
+      if (event.reason !== 'authority') {
+        tileOps?.move(td.id, at.x, at.y);
+        tileOps?.drop(td.id, at.x, at.y);
+      }
     }
     if (drawing.current === event.pointerId) {
       drawing.current = null;
+      if (released) live.current.onStroke?.move([released]);
       live.current.onStroke?.end();
     }
   };
 
-  const onRelease = (event) => {
+  const finishPointer = (event) => {
+    const g = gesture.current, pinching = Boolean(g.pinch);
+    g.touches.delete(event.pointerId);
+    if (!g.touches.size) g.pinch = null;
     const tap = counterTap.current;
     if (tap?.pointerId === event.pointerId) {
       counterTap.current = null;
-      const g = gesture.current, pinching = Boolean(g.pinch);
-      if (g.touches.delete(event.pointerId) && !g.touches.size) g.pinch = null;
       if (soundTapCanFinish(tap, event, { canTap: live.current.canTapSoundBoxes, tool: live.current.tool, count: live.current.boxes, epoch: live.current.boxEpoch, pinching, point: toStage(event.clientX, event.clientY), scale: layoutRef.current.scale })) live.current.onToggleSoundBox?.(tap.index, tap.pressed);
-      return;
     }
-    const ld = letterDrag.current;
-    if (ld && ld.pointerId === event.pointerId) {
-      letterDrag.current = null;
-      gesture.current.touches.delete(event.pointerId);
-      if (!gesture.current.touches.size) gesture.current.pinch = null;
-      if (ld.moved && event.type !== 'pointercancel') dropLetter(ld.text, event.clientX, event.clientY);
-      else clearLetterPreview();
-      return;
-    }
-    if (holding.current.has(event.pointerId)) return endAction(event);
-    const g = gesture.current;
-    if (g.touches.delete(event.pointerId) && g.touches.size === 0) g.pinch = null;
-    if (g.pinch) return;
     if (g.pan && g.pan.id === event.pointerId) {
+      if (event.type === 'pointerup' && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+        const point = local(event.clientX, event.clientY);
+        zoomTo(layoutRef.current.scale, g.pan.at.x, g.pan.at.y, point.x, point.y);
+      }
       g.pan = null;
-      return;
     }
     endAction(event);
+    setGrip(null);
   };
 
   const onPointerLeave = (event) => {
@@ -761,8 +708,7 @@ export default function Stage({
   };
 
   // Lets the Pictures panel drop a part exactly where the pointer lets go over the board.
-  if (stageApi) {
-    stageApi.current = {
+  const publicStageApi = {
       scale: layout.width / STAGE.width,
       bounds: visibleBounds,
       placementStatus: () => pieceActions?.placementStatus?.(),
@@ -772,8 +718,7 @@ export default function Stage({
         return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
       },
       selectPiece, showSoundBoxes,
-      previewLetter, clearLetterPreview, dropLetter,
-      addLetter(text) { const bounds = visibleBounds(); return addLetter(text, { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }); },
+      cancelInteractions: pointers.cancelAll,
       pointAt(clientX, clientY) {
         const box = wrapRef.current?.getBoundingClientRect();
         if (!box || !layout.width) return null;
@@ -784,7 +729,11 @@ export default function Stage({
         return { x: (x / layout.width) * STAGE.width, y: (y / layout.height) * STAGE.height };
       },
     };
-  }
+  useLayoutEffect(() => {
+    if (!stageApi) return undefined;
+    stageApi.current = publicStageApi;
+    return () => { if (stageApi.current === publicStageApi) stageApi.current = null; };
+  }, [stageApi, publicStageApi]);
   const clip = boardRect(strip);
   const stacked = [...tiles].sort((a, b) => a.z - b.z);
   const paperTop = Math.max(8, layout.top + clip.y * layout.scale + 8);
@@ -816,15 +765,15 @@ export default function Stage({
         aria-label={letters.length ? `Alphabet strip, pointing at ${letters.join(' and ')}` : 'Alphabet strip and whiteboard'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onRelease}
-        onPointerCancel={onRelease}
+        onPointerUp={pointers.end}
+        onPointerCancel={pointers.end}
+        onLostPointerCapture={event => pointers.cancel(event.pointerId, 'capture-lost')}
         onPointerLeave={onPointerLeave}
       >
         <rect width={STAGE.width} height={STAGE.height} fill='transparent' />
         {stacked.map((tile) => (
           <Tile key={tile.id} tile={tile} mine={me} selected={tile.id === selectedLetter?.id} />
         ))}
-        {letterPreview && <g opacity='.8' data-alphabet-preview><Tile tile={letterPreview} mine={me} /></g>}
         {peerView && (peerView.w < STAGE.width - 10 || peerView.h < STAGE.height - 10) && (
           <g className='pointer-events-none'>
             <rect
@@ -895,7 +844,7 @@ export default function Stage({
             style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}><span className='sr-only'>Sound {index + 1}</span></button>;
         })}
       </div>}
-      {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && !letterDrag.current && !letterPreview && (selectedPiece || selectedLetter) && <ObjectToolbar
+      {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && (selectedPiece || selectedLetter) && <ObjectToolbar
         object={selectedPiece || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
         kind={selectedPiece ? 'picture' : 'tile'}
         label={selectedPiece ? picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}

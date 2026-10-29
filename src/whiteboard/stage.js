@@ -13,10 +13,6 @@ export const BOARD = { x: 24, y: 184, width: 1552, height: 792 };
 export const OPEN_BOARD = { x: 24, y: 24, width: 1552, height: 952 };
 export const boardRect = (strip) => (strip ? BOARD : OPEN_BOARD);
 
-// On touch screens the fingertip sits this far above the finger, so the child
-// can still see the letter they're pointing at.
-export const TOUCH_LIFT = 48;
-
 export const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
 export const isRoomCode = (value) =>
@@ -27,6 +23,3 @@ export function letterAt(x, y, strip = true) {
   const index = Math.floor((x - STRIP.x) / CELL_WIDTH);
   return index >= 0 && index < LETTERS.length ? LETTERS[index] : null;
 }
-
-// Where the student's hand waits until someone moves it. Both screens start it here,
-// so the tutor always has a hand to grab.

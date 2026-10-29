@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eraser, Image as ImageIcon, LayoutGrid, Pencil, Undo2 } from 'lucide-react';
+import { Eraser, LayoutGrid, Pencil, Undo2 } from 'lucide-react';
 import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
@@ -69,7 +69,7 @@ export default function StudentRoom({ code }) {
   const sendRef = useRef(() => {});
 
   const wb = useWhiteboard('student', (msg) => sendRef.current(msg));
-  const hands = useHands({ me: 'student', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
+  const hands = useHands({ me: 'student', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
   const call = useVideoCall('student', (msg) => sendRef.current(msg));
   const joinMessage = () => ({ t: 'join', code, key: keyRef.current || undefined });
 
@@ -133,6 +133,9 @@ export default function StudentRoom({ code }) {
     },
   });
   sendRef.current = send;
+  useEffect(() => {
+    if (status !== 'open') hands.disconnect();
+  }, [status, hands.disconnect]);
 
   // Ending/replacement screens do not unmount the room. Stop local tracks and
   // cancel pending camera startup before leaving video hidden behind that screen.

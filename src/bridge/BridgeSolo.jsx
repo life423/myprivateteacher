@@ -33,7 +33,7 @@ export default function BridgeSolo() {
 
   return (
     <div className='min-h-dvh bg-gradient-to-b from-sky-50 to-violet-50'>
-      <TopBar back='/bridge' title='Alphabet Bridge' />
+      <TopBar back='/activities' title='Alphabet Bridge' />
       <main className='mx-auto max-w-3xl px-4 py-8'>
         <div className='flex flex-wrap items-center justify-center gap-2' role='group' aria-label='Level'>
           {LEVELS.map((l, i) => (

@@ -25,12 +25,15 @@ export function useRealtime({ hello, onMessage }) {
     const connect = () => {
       const socket = new WebSocket(socketUrl());
       socketRef.current = socket;
+      const current = () => !stopped && socketRef.current === socket;
       socket.onopen = () => {
+        if (!current()) return;
         attempt = 0;
         setStatus('open');
         socket.send(JSON.stringify(helloRef.current()));
       };
       socket.onmessage = (event) => {
+        if (!current()) return;
         let msg;
         try {
           msg = JSON.parse(event.data);
@@ -40,7 +43,8 @@ export function useRealtime({ hello, onMessage }) {
         onMessageRef.current(msg);
       };
       socket.onclose = (event) => {
-        if (stopped) return;
+        if (!current()) return;
+        socketRef.current = null;
         if (event.code === REPLACED) {
           setStatus('replaced');
           return;
@@ -55,7 +59,9 @@ export function useRealtime({ hello, onMessage }) {
     return () => {
       stopped = true;
       clearTimeout(retryTimer);
-      socketRef.current?.close();
+      const socket = socketRef.current;
+      socketRef.current = null;
+      socket?.close();
     };
   }, []);
 

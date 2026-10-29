@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Minimize2, Pencil, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Minimize2, Pencil, X } from 'lucide-react';
 import { BOARD_SHAPE } from './stage.js';
 import VideoPanel from './VideoPanel.jsx';
 import { BoardFit } from './viewport.js';
@@ -22,7 +22,11 @@ const STACKED_WITH_BAR = { fill: true, bar: true, align: 'end', sticky: true };
 // The board is always the same 1600 x 1000 stage, scaled to fit, so both people see the
 // same thing whatever their screens. `controls` lets a room open a panel or start focus mode.
 function useArrangement() {
-  const pick = () => chooseArrangement(window.innerWidth, window.innerHeight);
+  const pick = () => ({
+    arrangement: chooseArrangement(window.innerWidth, window.innerHeight),
+    shortLandscape: window.innerHeight < 500 && window.innerWidth > window.innerHeight && window.innerWidth >= 568,
+    viewportWidth: window.innerWidth,
+  });
   const [arrangement, setArrangement] = useState(pick);
   useEffect(() => {
     const update = () => setArrangement(pick());
@@ -33,7 +37,7 @@ function useArrangement() {
 }
 
 // The drawing tools on narrower screens: a labelled Tools button that opens the tool rail.
-function FloatingTools({ tools, focus }) {
+function FloatingTools({ tools, focus, docked = false }) {
   // Open by default on tablets; closed on a phone held sideways, where it would cover the short board
   const [open, setOpen] = useState(() => window.innerWidth >= 640 && window.innerHeight >= 500);
   const trigger = useRef(null);
@@ -60,7 +64,7 @@ function FloatingTools({ tools, focus }) {
     return () => document.removeEventListener('keydown', escape);
   }, [open]);
   return (
-    <div className='pointer-events-none absolute bottom-[calc(var(--board-footer-height,0px)+0.75rem)] left-3 z-40 flex max-h-[calc(100%-var(--board-footer-height,0px)-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col items-start gap-2 landscape:bottom-auto landscape:top-3'>
+    <div style={docked ? { minWidth: 100 } : undefined} className={`pointer-events-none z-40 flex flex-col items-start gap-2 ${docked ? 'relative h-full min-w-0 flex-1' : 'absolute bottom-[calc(var(--board-footer-height,0px)+0.75rem)] left-3 max-h-[calc(100%-var(--board-footer-height,0px)-1.5rem)] max-w-[calc(100%-1.5rem)] landscape:bottom-auto landscape:top-3'}`}>
       <button
         ref={trigger}
         type='button'
@@ -79,9 +83,9 @@ function FloatingTools({ tools, focus }) {
       </button>
       {/* Held upright, the tools sit in a grid that wraps, so every button stays on the screen */}
       {open && (
-        <section ref={panel} id={id} aria-label='Drawing tools' className='pointer-events-auto flex max-h-full max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl portrait:w-56'>
-          <header className='flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 pl-3 pr-1'>
-            <h2 className='text-sm font-bold text-slate-800'>Drawing tools</h2>
+        <section ref={panel} id={id} aria-label='Drawing tools' className='pointer-events-auto flex w-full max-h-full max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl portrait:w-56'>
+          <header className='flex shrink-0 items-center justify-between gap-1 border-b border-slate-100 pl-2 pr-1'>
+            <h2 className='min-w-0 truncate text-sm font-bold text-slate-800'>{docked ? 'Tools' : 'Drawing tools'}</h2>
             <button type='button' onClick={close} aria-label='Close drawing tools' className='inline-flex h-11 min-w-11 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'>
               <X className='h-5 w-5' aria-hidden='true' />
             </button>
@@ -96,14 +100,20 @@ function FloatingTools({ tools, focus }) {
 }
 
 // A small video window over the board that can be dragged anywhere in its area.
-const VIDEO_CORNER = 'absolute right-3 top-3 z-20 flex w-40 touch-none justify-end sm:w-52';
+const VIDEO_CORNER = 'absolute right-3 top-3 z-20 flex w-48 max-w-[calc(100%-1.5rem)] touch-none justify-end sm:w-52';
 
-function FloatingVideo({ children, place = VIDEO_CORNER }) {
+function FloatingVideo({ children, place = VIDEO_CORNER, docked = false }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const box = useRef(null);
   const drag = useRef(null);
+  useLayoutEffect(() => {
+    // A short landscape material panel opens on the right; move video back into
+    // the exposed board area, including a window the tutor previously dragged.
+    drag.current = null;
+    setOffset({ x: 0, y: 0 });
+  }, [place, docked]);
   const onDown = (event) => {
-    if (event.target.closest('button')) return;
+    if (docked || event.target.closest('button')) return;
     drag.current = { id: event.pointerId, x: event.clientX - offset.x, y: event.clientY - offset.y };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -137,132 +147,139 @@ function FloatingVideo({ children, place = VIDEO_CORNER }) {
   );
 }
 
-// The bar at the bottom of narrower screens, and the sheet it opens. It has three positions:
-// collapsed (just the bar), half open and expanded. It follows the finger while dragged and
-// glides to a position when let go: a short swipe moves one position, a long one all the way.
-// Tap the handle to open or close it; tap a tab to open that panel. The sheet takes its room
-// from the board area rather than covering it, so the board glides along with it.
-const PULLED = {
-  up: { closed: 'open', open: 'full', full: 'full' },
-  down: { closed: 'closed', open: 'closed', full: 'open' },
-};
-const SHARE = { open: 0.5, full: 0.88 }; // of the screen's height
-const TABLET_SHARE = { open: 0.34, full: 0.88 }; // docked open on upright tablets, leaving the board room
+// Narrow screens have a compact, labelled opener. The sheet remains modeless: tutors
+// can keep using the board beside it. Native buttons provide the complete interaction;
+// opening or closing never depends on finding a drag handle or making a precise gesture.
+const SHARE = { open: 0.5, full: 0.88 };
+const TABLET_SHARE = { open: 0.34, full: 0.88 };
+// Leave a100px labelled Tools lane,208px video controls,12px gap and32px
+// outer space exposed. Narrow landscape phones therefore get a smaller panel.
+export const shortLandscapePanelWidth = (width) => Math.max(0, Math.min(320, width * 0.55, width - 352));
 const GLIDE = 'transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none';
 
-function PanelSheet({ panels, active, state, onState, onTab, hidden, panelNodes, shares = SHARE }) {
-  const sheet = useRef(null);
+export function PanelSheet({ panels, active, state, onState, onTab, hidden, panelNodes, shares = SHARE, landscape = false, landscapeWidth = 320 }) {
+  const slot = useRef(null);
   const bar = useRef(null);
-  const pull = useRef(null);
-  const [barHeight, setBarHeight] = useState(78);
-  const [dragHeight, setDragHeight] = useState(null); // while a finger is moving it
+  const trigger = useRef(null);
+  const restoreFrame = useRef(null);
+  const [barHeight, setBarHeight] = useState(56);
+  const [landscapeTop, setLandscapeTop] = useState(0);
+  const uid = useId();
   const open = state !== 'closed';
+  const title = panels.length === 1 ? panels[0].label : 'Board materials';
+  const bodyId = `${uid}-content`;
+  const titleId = `${uid}-title`;
   useLayoutEffect(() => {
-    if (bar.current) setBarHeight(bar.current.offsetHeight);
+    const element = bar.current;
+    if (!element) return undefined;
+    const measure = () => { if (element.offsetHeight) setBarHeight(element.offsetHeight); };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
-  // The bar keeps following the finger even when it leaves the bar, so a tap on a tab is
-  // handled here too, once it's clear the finger didn't pull.
-  const onDown = (event) => {
-    pull.current = {
-      id: event.pointerId,
-      y: event.clientY,
-      start: sheet.current.offsetHeight,
-      moved: false,
-      tab: event.target.closest('[role=tab]')?.dataset.panel,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
+  useLayoutEffect(() => {
+    if (!landscape || !slot.current) return undefined;
+    const element = slot.current;
+    const room = element.previousElementSibling;
+    const parent = element.parentElement;
+    // Anchor below the actual header, rather than estimating its height. Keep
+    // the collapsed bar's space reserved so the visible board does not resize.
+    const measure = () => setLandscapeTop(Math.max(0, room.getBoundingClientRect().top - parent.getBoundingClientRect().top));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(parent);
+    observer.observe(room);
+    return () => observer.disconnect();
+  }, [landscape]);
+  useEffect(() => () => cancelAnimationFrame(restoreFrame.current), []);
+  const close = () => {
+    onState('closed');
+    cancelAnimationFrame(restoreFrame.current);
+    restoreFrame.current = requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true }));
   };
-  const onMove = (event) => {
-    const p = pull.current;
-    if (!p || p.id !== event.pointerId) return;
-    const dy = event.clientY - p.y;
-    if (!p.moved && Math.abs(dy) < 8) return;
-    p.moved = true;
-    const room = sheet.current.parentElement.clientHeight;
-    setDragHeight(Math.min(room * 0.92, Math.max(barHeight, p.start - dy)));
-  };
-  const onUp = (event) => {
-    const p = pull.current;
-    pull.current = null;
-    setDragHeight(null); // glide from wherever the finger left it
-    if (!p) return;
-    const dy = event.clientY - p.y;
-    if (p.moved) {
-      if (Math.abs(dy) < 24) return; // barely moved: it glides back
-      const far = Math.abs(dy) > 160;
-      if (dy < 0) onState(far ? 'full' : PULLED.up[state]);
-      else onState(far ? 'closed' : PULLED.down[state]);
-      return;
-    }
-    if (p.tab) onTab(p.tab);
-    else onState(open ? 'closed' : 'open'); // a tap on the handle toggles it
-  };
-  const height = dragHeight !== null ? `${dragHeight}px` : state === 'closed' ? `${barHeight}px` : `${shares[state] * 100}%`;
+  const height = state === 'closed' ? `${barHeight}px` : `${shares[state] * 100}%`;
   return (
-    <div
-      ref={sheet}
-      style={{ height }}
-      className={`relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-3xl bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.12)] ${
-        dragHeight === null ? GLIDE : ''
-      } ${hidden ? 'hidden' : ''}`}
+    <div ref={slot} data-panel-sheet-slot style={{ height: landscape ? `${barHeight}px` : height }} className={`shrink-0 ${landscape ? '' : GLIDE} ${hidden ? 'hidden' : ''}`}>
+    <section
+      data-panel-sheet
+      aria-labelledby={titleId}
+      style={landscape && open ? { top: landscapeTop, bottom: 0, width: landscapeWidth } : { height: '100%' }}
+      onKeyDown={(event) => {
+        if (!open || event.defaultPrevented || event.key !== 'Escape' || event.target.closest?.('[role="dialog"], [role="menu"]')) return;
+        event.preventDefault();
+        close();
+      }}
+      className={`${landscape && open ? 'absolute right-0 rounded-l-2xl border-l' : 'relative rounded-t-2xl'} z-30 flex max-w-full flex-col overflow-hidden border-t border-slate-200 bg-white shadow-[0_-4px_16px_rgba(15,23,42,0.08)]`}
     >
-      <div
-        ref={bar}
-        className='shrink-0 cursor-grab touch-none select-none'
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={() => {
-          pull.current = null;
-          setDragHeight(null);
-        }}
-      >
-        <div
-          role='button'
-          tabIndex={0}
-          aria-label={open ? 'Close the panel' : 'Open the panel'}
-          aria-expanded={open}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') onState(open ? 'closed' : 'open');
-          }}
-          className='flex justify-center pb-2 pt-3'
-        >
-          <span className='h-1.5 w-12 rounded-full bg-slate-300' aria-hidden='true' />
+      <div ref={bar} className='shrink-0'>
+        <div className='flex min-h-14 items-center justify-between gap-2 px-3 py-1.5'>
+          <h2 id={titleId} className='min-w-0 flex-1 text-sm font-bold text-slate-800'>
+            <button
+              ref={trigger}
+              type='button'
+              aria-expanded={open}
+              aria-controls={bodyId}
+              onClick={() => open ? close() : onState(window.innerHeight < 500 ? 'full' : 'open')}
+              className='inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg px-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'
+            >
+              <span className='truncate'>{title}</span>
+              {!open && <ChevronUp className='h-4 w-4 shrink-0 text-violet-600' aria-hidden='true' />}
+            </button>
+          </h2>
+          {open && <>
+            {!landscape && <button
+              type='button'
+              aria-label={`${state === 'full' ? 'Reduce' : 'Expand'} ${title} panel`}
+              aria-controls={bodyId}
+              title={`${state === 'full' ? 'Reduce' : 'Expand'} panel`}
+              onClick={() => onState(state === 'full' ? 'open' : 'full')}
+              className='inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'
+            >
+              {state === 'full' ? <ChevronDown className='h-5 w-5' aria-hidden='true' /> : <ChevronUp className='h-5 w-5' aria-hidden='true' />}
+            </button>}
+            <button
+              type='button'
+              aria-label={`Close ${title}`}
+              onClick={close}
+              className='inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500'
+            >
+              <X className='h-4 w-4' aria-hidden='true' />
+              Close
+            </button>
+          </>}
         </div>
-        <div
+        {open && panels.length > 1 && <div
           role='tablist'
           aria-label='Things for the board'
-          className='mx-3 mb-2 grid gap-1 rounded-2xl bg-slate-100 p-1'
+          className='mx-3 mb-2 grid gap-1 rounded-xl bg-slate-100 p-1'
           style={{ gridTemplateColumns: `repeat(${panels.length}, minmax(0, 1fr))` }}
         >
-          {panels.map(({ id, label, icon: Icon }) => (
+          {panels.map(({ id, label }) => (
             <button
               key={id}
+              id={`${uid}-${id}-tab`}
               type='button'
               role='tab'
-              aria-selected={open && active === id}
-              data-panel={id}
-              onClick={(event) => {
-                if (event.detail === 0) onTab(id); // the keyboard; taps are handled by the bar
-              }}
-              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold ${
-                open && active === id ? 'bg-violet-600 text-white shadow' : 'text-slate-700 hover:bg-white'
-              }`}
+              aria-selected={active === id}
+              aria-controls={`whiteboard-panel-${id}`}
+              onClick={() => onTab(id)}
+              className={`min-h-11 rounded-lg px-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500 ${active === id ? 'bg-violet-600 text-white' : 'text-slate-700 hover:bg-white'}`}
             >
-              {Icon && <Icon className='h-4 w-4' aria-hidden='true' />}
               {label}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
-      {/* The panels stay in place while the sheet slides, so closing it glides rather than emptying first. */}
-      <div aria-hidden={!open} inert={open ? undefined : ''} className={`min-h-0 flex-1 px-3 pb-3 ${panels.length === 1 ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      {/* MaterialsWorkspace owns its content scroller; the sheet adds no competing one. */}
+      <div id={bodyId} aria-hidden={!open} inert={open ? undefined : ''} className={`min-h-0 flex-1 px-3 pb-3 ${panels.length === 1 ? 'overflow-hidden' : 'overflow-y-auto'} [&_[data-workspace-heading]]:sr-only`}>
         {panels.map(({ id, label, content }) => (
-          <div key={id} id={`whiteboard-panel-${id}`} role='tabpanel' aria-label={label} tabIndex={-1} ref={(node) => { panelNodes.current[id] = node; }} className={id === active ? `${panels.length === 1 ? 'flex h-full min-h-0 flex-col ' : ''}outline-none` : 'hidden'}>
+          <div key={id} id={`whiteboard-panel-${id}`} role={panels.length > 1 ? 'tabpanel' : undefined} aria-label={panels.length > 1 ? label : undefined} aria-labelledby={panels.length > 1 ? `${uid}-${id}-tab` : undefined} tabIndex={-1} ref={(node) => { panelNodes.current[id] = node; }} className={id === active ? `${panels.length === 1 ? 'flex h-full min-h-0 flex-col ' : ''}outline-none` : 'hidden'}>
             {content}
           </div>
         ))}
       </div>
+    </section>
     </div>
   );
 }
@@ -281,13 +298,12 @@ function ExitFocus({ onClick, inline = false }) {
 }
 
 export default function WhiteboardLayout({ header, banner, tools, board, alphabet, call, peerName, panels = [], controls, onPanelChange, persistentControls }) {
-  const arrangement = useArrangement();
+  const { arrangement, shortLandscape, viewportWidth } = useArrangement();
+  const landscapeWidth = shortLandscapePanelWidth(viewportWidth);
   const [active, setActive] = useState(panels[0]?.id);
   // The bottom sheet: closed, open or full. Upright tablets have room for it docked open.
   const [sheet, setSheet] = useState(() => (arrangement === 'stacked' ? 'open' : 'closed'));
-  useEffect(() => {
-    setSheet(arrangement === 'stacked' ? 'open' : 'closed');
-  }, [arrangement]);
+  // Keep the tutor's open/closed choice when resizing or rotating the workspace.
   const [focus, setFocus] = useState(false);
   const panelNodes = useRef({});
   const revealFrame = useRef(null);
@@ -320,6 +336,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
     };
   }
 
+  const toolsBesideVideo = shortLandscape && sheet !== 'closed' && !focus;
   const sheetFor = (shares) =>
     panels.length > 0 && (
       <PanelSheet
@@ -327,6 +344,8 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
         active={current}
         state={sheet}
         shares={shares}
+        landscape={shortLandscape}
+        landscapeWidth={landscapeWidth}
         hidden={focus}
         panelNodes={panelNodes}
         onState={setSheet}
@@ -359,7 +378,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
           <div className='flex min-w-0 flex-1 flex-col gap-2'>
             {alphabet}
             <div className='relative min-h-0 flex-1'>
-              <main className='relative h-full w-full overflow-hidden rounded-2xl bg-slate-100 shadow'>
+              <main className='relative isolate h-full w-full overflow-hidden rounded-2xl bg-slate-100 shadow'>
                 <BoardFit.Provider value={alphabet ? STACKED_WITH_BAR : STACKED}>{board}</BoardFit.Provider>
               </main>
               <FloatingVideo place='absolute right-3 top-14 z-20 flex w-52 touch-none justify-end'>
@@ -382,10 +401,10 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
         {!focus && banner}
         <div className='relative flex min-h-0 flex-1 items-start justify-center gap-4 p-4'>
           {tools}
-          <main className='wb-board relative min-w-0 rounded-2xl bg-slate-100 shadow' style={BOARD_SHAPE}>
+          <main className='wb-board relative isolate min-w-0 rounded-2xl bg-slate-100 shadow' style={BOARD_SHAPE}>
             {board}
           </main>
-          <div className={`-m-1 flex h-full min-h-0 w-64 shrink-0 flex-col gap-3 overflow-hidden p-1 xl:w-72 ${focus ? 'hidden' : ''}`}>
+          <aside data-workspace-sidebar aria-label='Lesson tools' className={`-m-1 flex h-full min-h-0 w-64 shrink-0 flex-col gap-2 overflow-hidden p-1 xl:w-72 ${focus ? 'hidden' : ''}`}>
             <div className='shrink-0'><VideoPanel call={call} peerName={peerName} fill /></div>
             {panels.length > 1 && (
               <div role='tablist' aria-label='Things for the board' className='sticky top-0 z-10 grid shrink-0 grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow'>
@@ -404,11 +423,11 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
               </div>
             )}
             {panels.map(({ id, label, content }) => (
-              <div key={id} id={`whiteboard-panel-${id}`} role='tabpanel' aria-label={label} tabIndex={-1} ref={(node) => { panelNodes.current[id] = node; }} className={id === current ? `${panels.length === 1 ? 'flex min-h-0 flex-1 flex-col ' : ''}scroll-mt-24 outline-none` : 'hidden'}>
+              <div key={id} id={`whiteboard-panel-${id}`} role={panels.length > 1 ? 'tabpanel' : undefined} aria-label={panels.length > 1 ? label : undefined} tabIndex={-1} ref={(node) => { panelNodes.current[id] = node; }} className={id === current ? `${panels.length === 1 ? 'flex min-h-0 flex-1 flex-col ' : ''}scroll-mt-24 outline-none` : 'hidden'}>
                 {content}
               </div>
             ))}
-          </div>
+          </aside>
           {focus && !persistentControls && <ExitFocus onClick={() => setFocus(false)} />}
         </div>
       </div>
@@ -423,15 +442,22 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
       <div className='relative min-h-0 flex-1 p-2'>
         {/* The floating tools and video live in the same space as the board, above the bottom bar. */}
         <div className='relative flex h-full w-full flex-col gap-2'>
-          {/* On a short screen (a phone held sideways) the alphabet would take most of the board's height, so it steps aside */}
-          {alphabet && <div className='[@media(max-height:500px)]:hidden'>{alphabet}</div>}
-          <main className='relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-slate-100 shadow [&:has([data-board-footer])]:[--board-footer-height:44px]'>
+          {/* The board omits its own strip whenever this bar is present. Keep the bar visible
+              in landscape too, with compact rows that leave room for the writing area. */}
+          {alphabet && <div data-external-alphabet className='shrink-0 [@media(max-height:500px)]:[&_[aria-label=Alphabet]]:gap-0.5 [@media(max-height:500px)]:[&_[aria-label=Alphabet]]:p-1 [@media(max-height:500px)]:[&_[data-letter]]:h-7 [@media(max-height:500px)]:[&_[data-letter]]:rounded-md [@media(max-height:500px)]:[&_[data-letter]]:text-base'>{alphabet}</div>}
+          <main className='relative isolate min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-slate-100 shadow [&:has([data-board-footer])]:[--board-footer-height:44px]'>
             <BoardFit.Provider value={alphabet ? FILL_WITH_BAR : FILL}>{board}</BoardFit.Provider>
             {/* Inside the board, so they never sit over the alphabet bar */}
-            {tools && <FloatingTools tools={tools} focus={focus} />}
-            <FloatingVideo>
-              <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
-            </FloatingVideo>
+            <div
+              data-video-boundary={toolsBesideVideo ? '' : undefined}
+              style={toolsBesideVideo ? { right: landscapeWidth + 4, bottom: 'calc(var(--board-footer-height,0px) + 0.75rem)' } : undefined}
+              className={toolsBesideVideo ? 'pointer-events-none absolute left-3 top-3 z-40 flex items-start gap-3' : 'contents'}
+            >
+              {tools && <FloatingTools tools={tools} focus={focus} docked={toolsBesideVideo} />}
+              <FloatingVideo docked={toolsBesideVideo} place={toolsBesideVideo ? 'pointer-events-none relative flex h-full w-48 shrink-0 items-start justify-end sm:w-52 [&>aside]:pointer-events-auto' : VIDEO_CORNER}>
+                <VideoPanel call={call} peerName={peerName} floating collapse={focus} />
+              </FloatingVideo>
+            </div>
           </main>
           {focus && !persistentControls && <ExitFocus onClick={() => setFocus(false)} />}
         </div>

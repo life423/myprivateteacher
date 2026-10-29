@@ -1,5 +1,5 @@
 // The two shared hands, right and left: one cartoon glove, the left a mirror of the right, both
-// the same colour. The fingertip sits exactly on (x, y). While someone holds a hand, a soft
+// the same colour. The pointing fingertip sits exactly on (x, y). While someone holds a hand, a soft
 // glow in their colour (the tutor blue, the student violet) shows who has it.
 const GLOVE = { glove: '#dbeafe', line: '#1e3a8a', cuff: '#2563eb' };
 export const HOLD_GLOW = { tutor: '#3b82f6', student: '#8b5cf6' };

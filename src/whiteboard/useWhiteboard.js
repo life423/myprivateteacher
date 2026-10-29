@@ -1,10 +1,9 @@
-import { cleanPictureMetadata } from '../../shared/pictureMetadata.js';
 import { DEFAULT_LINES, isLineSize } from '../../shared/lines.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
 import { BOX_COUNTS, MAX_TILES, cleanTileText } from '../../shared/tiles.js';
 import { cleanBoxTap, cleanSoundBoxState } from '../../shared/soundBoxes.js';
-import { MAX_PICTURES, MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
+import { MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
 import { findPicturePlacement, picturePlacement, picturePlacementObstacles, PICTURE_RESERVATION_MS } from './picturePlacement.js';
 import { newPictureId, pictureUrl, shrinkPicture } from './pictures.js';
 import { createPictureUploads, uploadPicture } from './pictureUploads.js';
@@ -39,15 +38,33 @@ export function useFrameState(initial) {
   const [value, setValue] = useState(initial);
   const next = useRef(initial);
   const frame = useRef(0);
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
-  const set = useCallback((v) => {
-    next.current = v;
-    if (frame.current) return;
+  const pending = useRef(false);
+  const mounted = useRef(false);
+  const schedule = useCallback(() => {
+    if (!mounted.current || frame.current || !pending.current) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
+      if (!mounted.current || !pending.current) return;
+      pending.current = false;
       setValue(next.current);
     });
   }, []);
+  useEffect(() => {
+    mounted.current = true;
+    // StrictMode and Fast Refresh replay effects while retaining refs. A canceled
+    // frame must not block future updates, and its latest value still needs paint.
+    schedule();
+    return () => {
+      mounted.current = false;
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
+    };
+  }, [schedule]);
+  const set = useCallback((v) => {
+    next.current = v;
+    pending.current = true;
+    schedule();
+  }, [schedule]);
   return [value, set];
 }
 
@@ -95,16 +112,6 @@ export function useWhiteboard(role, send) {
     bump();
   }, [bump]);
 
-  useEffect(
-    () => () => {
-      clearTimeout(flushTimer.current);
-      pictureUploads.current.invalidate();
-      libraryGeneration.current++;
-      for (const channel of Object.values(channels.current)) clearTimeout(channel.timer);
-    },
-    [],
-  );
-
   // Strokes
   const flush = useCallback(() => {
     clearTimeout(flushTimer.current);
@@ -125,6 +132,21 @@ export function useWhiteboard(role, send) {
     board.finish(current.id);
     sendRef.current({ t: 'e', id: current.id });
   }, [board, flush]);
+
+  useEffect(() => () => {
+    // Effect replay retains these refs. Finish pending ink, then discard obsolete pointer
+    // movement and reset timer handles so the next gesture can schedule fresh transport.
+    end();
+    clearTimeout(flushTimer.current);
+    flushTimer.current = null;
+    for (const channel of Object.values(channels.current)) {
+      clearTimeout(channel.timer);
+      channel.timer = null;
+      channel.message = null;
+    }
+    pictureUploads.current.invalidate();
+    libraryGeneration.current++;
+  }, [end]);
 
   const start = useCallback(
     (tool, { x, y }) => {
@@ -176,7 +198,9 @@ export function useWhiteboard(role, send) {
       () => {
         channel.timer = null;
         channel.last = performance.now();
-        sendRef.current(channel.message);
+        const message = channel.message;
+        channel.message = null;
+        if (message) sendRef.current(message);
       },
       Math.max(0, THROTTLE_MS - (performance.now() - channel.last)),
     );
@@ -187,6 +211,7 @@ export function useWhiteboard(role, send) {
     if (!channel) return;
     clearTimeout(channel.timer);
     channel.timer = null;
+    channel.message = null;
   }, []);
 
   const sendPointer = useCallback((message) => sendThrottled('p', message), [sendThrottled]);
@@ -219,13 +244,6 @@ export function useWhiteboard(role, send) {
       },
       remove(id) {
         if (role === 'tutor') sendRef.current({ t: 'tile:delete', id });
-      },
-      addAt(text, x, y) {
-        const value = cleanTileText(text);
-        if (role !== 'tutor' || !value || !Number.isFinite(x) || !Number.isFinite(y) || tiles.current.size >= MAX_TILES) return null;
-        const id = makeId('tile');
-        sendRef.current({ t: 'tile:add-at', tile: { id, text: value, x, y } });
-        return id;
       },
       duplicate(id) {
         if (role !== 'tutor' || !tiles.current.has(id) || tiles.current.size >= MAX_TILES) return null;
@@ -497,7 +515,9 @@ export function useWhiteboard(role, send) {
           return true;
         case 'tile:add':
           for (const tile of msg.tiles || []) putTile(tile);
-          renderTiles();
+          // Creation is a discrete server-confirmed change, not pointer motion.
+          // Render it immediately; tile movement remains animation-frame batched.
+          bump();
           return true;
         case 'tile:grab': {
           const tile = tiles.current.get(msg.id);
@@ -605,6 +625,7 @@ export function useWhiteboard(role, send) {
     canUndo: board.lastBy(role) !== null,
     sendPointer,
     sendThrottled,
+    cancelThrottled,
     restore,
     tiles: [...tiles.current.values()],
     tileActions,

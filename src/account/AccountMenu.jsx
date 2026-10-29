@@ -44,7 +44,7 @@ export default function AccountMenu({ tutor }) {
         className='flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm font-semibold text-slate-700 hover:bg-slate-100'
       >
         <Avatar tutor={tutor} size={30} />
-        <span className='max-w-[9rem] truncate'>{tutor.name.split(' ')[0] || tutor.email}</span>
+        <span className='max-w-[9rem] truncate'>{(tutor.name || '').split(' ')[0] || tutor.email}</span>
       </button>
       {open && (
         <div role='menu' className='absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl bg-white p-2 text-left shadow-xl ring-1 ring-slate-200'>

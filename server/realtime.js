@@ -174,8 +174,9 @@ export function attachRealtime(server, options = {}) {
     return bucket.count <= perSecond;
   };
 
-  const boardMessage = (room) => ({
+  const boardMessage = (room, reason = 'sync') => ({
     t: 'board',
+    reason,
     tools: room.tools,
     hands: publicHands(room),
     strip: room.strip,
@@ -225,8 +226,8 @@ export function attachRealtime(server, options = {}) {
 
   const isTutor = (ws) => Boolean(ws.room && ws.room.tutor === ws);
 
-  const broadcastBoard = (room) => {
-    const msg = boardMessage(room);
+  const broadcastBoard = (room, reason) => {
+    const msg = boardMessage(room, reason);
     send(room.tutor, msg);
     send(room.student, msg);
   };
@@ -272,6 +273,9 @@ export function attachRealtime(server, options = {}) {
 
   const closeRoom = (room, reason) => {
     clearTimeout(room.closeTimer);
+    // The sockets may enter another lesson. No old ownership timer may send
+    // this room’s hand state through them after the lesson has ended.
+    for (const side of HAND_SIDES) letGo(room.hands[side]);
     forgetPictures(room);
     if (rooms.get(room.code) === room) rooms.delete(room.code);
     for (const ws of [room.tutor, room.student]) {
@@ -571,6 +575,17 @@ export function attachRealtime(server, options = {}) {
       }
       if (hand.by !== role) return;
       if (msg.a === 'drop') {
+        // A release commits its final point atomically, even if the preceding motion
+        // exhausted the stream budget. Legacy drops omit the point and keep the last one.
+        // A malformed final point is discarded as a whole, but still releases the holder
+        // at its last valid point so invalid input cannot leave a glove stuck in use.
+        const hasPoint = ['x', 'y', 'letter'].some((key) => Object.hasOwn(msg, key));
+        const validLetter = msg.letter === undefined || msg.letter === null || cleanLetter(msg.letter) === msg.letter;
+        if (hasPoint && Number.isFinite(msg.x) && Number.isFinite(msg.y) && validLetter) {
+          hand.x = clamp01(msg.x);
+          hand.y = clamp01(msg.y);
+          hand.letter = cleanLetter(msg.letter);
+        }
         letGo(hand);
         return sendHand(room, msg.side);
       }
@@ -645,7 +660,7 @@ export function attachRealtime(server, options = {}) {
       room.strokeById.clear();
       resetBoxTaps(room);
       for (const w of [room.tutor, room.student]) if (w) w.openStroke = null;
-      broadcastBoard(room);
+      broadcastBoard(room, 'clear');
     },
 
     // Tutor only: turn the student's toolbar on or off.
@@ -683,7 +698,7 @@ export function attachRealtime(server, options = {}) {
       room.strip = msg.strip !== false;
       Object.assign(room, cleanSoundBoxState(msg));
       room.lines = isLineSize(msg.lines) ? msg.lines : DEFAULT_LINES;
-      broadcastBoard(room);
+      broadcastBoard(room, 'restore');
     },
 
     // Tutor only: new tiles line up on the tray, in the order typed.
@@ -702,23 +717,6 @@ export function attachRealtime(server, options = {}) {
         added.push(tile);
       }
       if (added.length) broadcast(room, { t: 'tile:add', tiles: added });
-    },
-
-    // A tutor dragging from the alphabet creates one tile at a validated drop point.
-    'tile:add-at'(ws, msg) {
-      if (!isTutor(ws)) return;
-      const room = ws.room;
-      const item = msg.tile;
-      const text = cleanTileText(item?.text);
-      const at = text && clampTile(text, item.x, item.y);
-      if (!at || room.tiles.size >= MAX_TILES || !isStrokeId(item.id) || room.tiles.has(item.id)) return;
-      const home = nextHome([...room.tiles.values()], text);
-      room.zTop += 1;
-      room.order += 1;
-      const tile = { id: item.id, text, kind: tileKind(text), ...home, ...at, z: room.zTop, order: room.order, heldBy: null };
-      Object.assign(tile, snapTile(tile, room.boxes, [...room.tiles.values()]) || {});
-      room.tiles.set(tile.id, tile);
-      broadcast(room, { t: 'tile:add', tiles: [tile] });
     },
 
     // Tutor only: a copy has its own id/home and starts in nearby free board space.
@@ -1098,7 +1096,12 @@ export function attachRealtime(server, options = {}) {
 
   // Only this site may open a socket, and only on /ws.
   server.on('upgrade', (req, socket, head) => {
-    const { pathname } = new URL(req.url, 'http://localhost');
+    let pathname;
+    try {
+      pathname = new URL(req.url, 'http://localhost').pathname;
+    } catch {
+      // A malformed request target is rejected like any other invalid upgrade.
+    }
     if (pathname !== '/ws' || !allowedOrigins.has(req.headers.origin)) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
@@ -1125,7 +1128,10 @@ export function attachRealtime(server, options = {}) {
   // On shutdown (a deploy), close sockets with 1012 so clients reconnect to the new version.
   const close = () => {
     clearInterval(heartbeat);
-    for (const room of rooms.values()) clearTimeout(room.closeTimer);
+    for (const room of rooms.values()) {
+      clearTimeout(room.closeTimer);
+      for (const side of HAND_SIDES) letGo(room.hands[side]);
+    }
     for (const ws of wss.clients) ws.close(1012, 'restarting');
     wss.close();
   };

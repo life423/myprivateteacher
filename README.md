@@ -14,7 +14,14 @@ npm ci
 npm run dev      # starts both the .env-aware backend :8080 and Vite :3000
 npm run build    # production build in dist/
 npm test         # game logic, whiteboard geometry, realtime rooms, web server (build first)
+npm run test:whiteboard # isolated Chrome desktop/phone teaching checks (build first)
+node scripts/check-frame-state.mjs  # actual-hook StrictMode repaint regression on an isolated Vite server
+node scripts/check-lesson-controls.mjs # isolated menu, permissions, keyboard and responsive checks (build first)
 ```
+
+The lesson-controls check supports the same `--dev`, `--browser` and `--output` flags; it checks labeled access, inline writing-line changes, role permissions, focus handling, reduced motion and screen bounds.
+
+The whiteboard regression uses its own ephemeral, in-memory lesson server and no database, accounts, billing, or cloud storage. Use `--browser webkit` for WebKit, `--dev` for Vite/StrictMode, and `--output /path/to/results` to retain its JSON report and screenshots. The frame-state check verifies pending updates survive effect replay, server-added tiles appear without a second click, and unmount cancels outstanding frames.
 
 Open http://localhost:3000. `npm run dev` starts the API/WebSocket backend before Vite and stops both on Ctrl+C. It refuses to start if either development port is occupied, so a different app cannot silently receive picture, account, or room requests. For separate terminals, use `npm run server` and `npm run dev:client` instead.
 
@@ -35,7 +42,7 @@ The image builds the client, runs the tests (a failing test fails the build), an
 
 The shared picture catalog keeps the 16 original mouth-position families and adds 12 missing vowel/sequence cards, for 28 main cards. Every card uses one mouth photo and one anatomy diagram in the same layout. Glide instructions and a single-diagram motion cue describe moving sounds. A developer reference inventory tracks individual sounds and optional accent/sequence targets separately; it is not an official Take Flight deck. The source inventory and references are in `src/data/phonemeArticulation.js`.
 
-Materials sits below video with Letters, Pictures and Worksheets tabs. Search is directly below the tabs; each tab remembers its search and scroll position. Letters includes quick letter/team choices and the existing custom tile entry. Worksheets accepts images and PDFs. A private page picker previews a PDF locally; only explicitly selected pages enter the lesson as worksheet images and use the same Magic Select editor. Every imported page consumes one of the eight upload slots shared with ordinary pictures. Games has a separate launcher beside Materials, and its active game's controls stay first.
+Materials sits below video with Letters, Pictures and Worksheets tabs. Search is directly below the tabs; each tab remembers its search and scroll position. Letters includes quick letter/team choices and the existing custom tile entry. Worksheets accepts images and PDFs. A private page picker previews a PDF locally; only explicitly selected pages enter the lesson as worksheet images and use the same Magic Select editor. Every imported page consumes one of the eight upload slots shared with ordinary pictures. Games opens inline in the same side area, with the active game's controls first and a Return to materials action that preserves the previous tab, search, scroll and tile draft. Idle video is a compact start row; an active call keeps its controls available when minimized. On mobile, Materials has explicit open, Close and Expand/Reduce controls.
 
 The landing page has an isolated interactive lesson preview with Letter tiles, Sound boxes and Magic Select modes. It creates no room or lesson writes. Watch a 30-second demo opens a captioned video dialog; Join a lesson remains in navigation and opens the four-digit entry. A three-step walkthrough below the hero shows preparing materials, sharing the code and teaching together.
 
@@ -49,9 +56,11 @@ Because rooms live in memory, the Container App runs exactly one replica.
 
 Tools: the compact rail has Select, Draw, Erase and Undo, with the tutor's two-tap Clear board separated below them. Hands and writing lines are in session options. The tutor can still drag either shared glove to guide the student. Student drawing tools and hand controls appear only while Student tools is on, and the server enforces those permissions. The board is one ordered list of strokes: ink sits on two layers so the student's eraser can't touch the tutor's writing, and each person's undo only takes back their own strokes. After a restart, the tutor's browser hands the board back to the server.
 
-Letter tiles: the tutor can drag a letter from the alphabet onto the board, choose a quick letter/team in Materials, or type tiles into the custom entry (spaces separate them, so sh stays one tile). Tapping the alphabet alone does not create a tile; Enter or Space on a focused tutor alphabet letter is the keyboard alternative. Existing tiles line up on a tray along the bottom. Both people can drag them; whoever is dragging a tile holds it until they drop it. The tutor can duplicate or delete a selected tile, or edit its letters in Materials (for word chains like map, mat, sat), send them all back to the tray, or clear them, and can turn on 2 to 5 sound boxes that tiles snap into. Tiles are coloured by kind (vowel, consonant, letter team), stored on each tile so a different scheme can be added later. The tutor can also hide the alphabet strip for both screens; the board grows into its space without moving anything. Tile rules and geometry live in shared/tiles.js, used by both the browser and the server.
+Letter tiles: the tutor adds letters or letter teams from Materials, or enters custom tiles separated by spaces (so sh stays one tile). The alphabet strip is a pointing reference. Existing tiles can be moved by either person when their tools permit it, and their final drop coordinates are shared with both screens. The tutor can duplicate, delete, edit, return tiles to the tray, and choose 2–5 sound boxes for snapping. Tile rules and geometry live in shared/tiles.js. Hiding the alphabet expands the board without moving its contents.
 
 Sound boxes is at the top of Materials → Letters. Layers shares the existing zoom footer, so no extra control row reduces the board. The tutor chooses Off or 2–5 boxes and can reset counters without moving tiles or erasing ink. With Select active, tap an empty part of a box to mark a sound; tap again to unmark it. Native keyboard counters support Tab, Enter and Space. Tutor and student see the same marks; student taps require Student tools. Drawing, erasing, dragging an object, and two-finger gestures take priority over counter taps. Show boxes in view adjusts only the current viewer’s zoom. The tutor chooses the phoneme count; the app does not derive it from the number of letters. Shared counters survive room reconnect and tutor restoration after a server restart.
+
+The workspace layout follows the recorded [teaching workspace design decisions](docs/teaching-workspace.md), with the complete research ledger retained in the repository.
 
 ## Video calls
 
@@ -103,3 +112,16 @@ Teaching-tool design follows the source-backed requirements and audit backlog in
 Azure Container Apps: `phoneme-pop` in the `portfolio-apps` resource group. `.github/workflows/deploy.yml` runs the tests on every pull request. Pushes to `main` build the image (tagged with the commit), deploy it, wait until https://myprivateteacher.com/version.txt reports that commit, then run the realtime smoke test against the live site.
 
 Repo secrets: `PHONEMEPOP_AZURE_CLIENT_ID`, `PHONEMEPOP_AZURE_TENANT_ID`, `PHONEMEPOP_AZURE_SUBSCRIPTION_ID` (OIDC sign-in, no password), `DOCKERHUB_USERNAME`, and `DOCKERHUB_TOKEN`.
+
+## Maintenance notes
+
+The October 2026 cleanup removed alphabet-strip tile creation. The strip remains a shared pointing reference; Materials owns tile creation. Stage owns object/ink interactions through the shared pointer lifecycle, useWhiteboard owns local board state and outgoing updates, and the realtime server validates and broadcasts lesson state. Lesson pictures are temporary room data; the reusable library keeps metadata in MongoDB/Cosmos and image bytes in private Azure Blob Storage.
+
+The source review also identified follow-ups that need their own integration work:
+
+- `lessonGate` deliberately permits anonymous teaching when account or billing adapters are absent. Keep both configured for a paid public deployment; changing that fallback needs a deployment/configuration test.
+- Stripe customer creation is deduplicated, but concurrent Checkout-session creation is not. Add idempotency before changing the billing workflow.
+- Library Blob bytes are downloaded before the HTTP image-size check. Bound the storage download and test that adapter before expanding the catalog's upload trust boundary.
+- The tutors' unique Google-subject index is requested asynchronously and failures are currently ignored. Verify existing database/index compatibility before enforcing readiness.
+
+Dependency audit: compatible request-parser and development-tool security updates are included. Two npm audit entries remain for Azure Identity/MSAL. The [upstream MSAL advisory](https://github.com/AzureAD/microsoft-authentication-library-for-js/security/advisories/GHSA-xcx6-jx8p-x3h5) affects its authorization-code flow; this app uses DefaultAzureCredential for Blob access and Google ID tokens for tutor sign-in. The current Azure Identity version requires MSAL 6, while the fix is in MSAL 7.1. A major transitive override or SDK downgrade has not been forced; validate a supported SDK upgrade separately.
