@@ -69,10 +69,12 @@ async function stopServer() {
 async function instrument(page) {
   page.on('pageerror', error => report.pageErrors.push(error.message));
   await page.addInitScript(() => {
-    window.dragReceived = []; window.dragSent = []; window.dragCSP = []; window.dragKeys = [];
+    window.dragReceived = []; window.dragSent = []; window.dragCSP = []; window.dragKeys = []; window.dragPointerMoves = 0;
     window.addEventListener('keydown', event => window.dragKeys.push({ key: event.key, focused: document.hasFocus() }), true);
     document.addEventListener('securitypolicyviolation', event => window.dragCSP.push(`${event.effectiveDirective}:${event.blockedURI}`));
-    document.addEventListener('pointerdown', event => { window.dragPointerId = event.pointerId; }, true);
+    document.addEventListener('pointerdown', event => { window.dragPointerId = event.pointerId; window.dragLastDown = { x: event.clientX, y: event.clientY }; }, true);
+    document.addEventListener('pointerup', event => { window.dragLastUp = { x: event.clientX, y: event.clientY }; }, true);
+    document.addEventListener('pointermove', () => { window.dragPointerMoves += 1; }, true);
     const Native = window.WebSocket;
     window.WebSocket = class extends Native {
       constructor(...args) {
@@ -81,6 +83,12 @@ async function instrument(page) {
         this.addEventListener('message', event => {
           try {
             const message = JSON.parse(event.data);
+            if (window.dragDelayInbound && !event.dragReplayed) {
+              const delay = window.dragDelayInbound;
+              event.stopImmediatePropagation();
+              setTimeout(() => { const replay = new MessageEvent('message', { data: event.data }); replay.dragReplayed = true; this.dispatchEvent(replay); }, delay);
+              return;
+            }
             // A controlled network-delivery delay verifies that the UI waits for the
             // authoritative echo rather than announcing success immediately on release.
             if (message.t === 'tile:add' && window.dragDelayNextTileAdd && !event.dragReplayed) {
@@ -112,7 +120,7 @@ async function setup(viewport, mobile) {
   await tutor.goto(`${base}/whiteboard/teach`);
   await tutor.waitForFunction(() => window.dragReceived.some(message => message.t === 'room'));
   const code = await tutor.evaluate(() => window.dragReceived.find(message => message.t === 'room').code);
-  const session = { tutorContext, studentContext, tutor, student, mobile, touch: mobile && browserName !== 'webkit', viewport, cdp: mobile && browserName !== 'webkit' ? await tutorContext.newCDPSession(tutor) : null };
+  const session = { tutorContext, studentContext, tutor, student, mobile, touch: mobile && browserName !== 'webkit', viewport, cdp: browserName !== 'webkit' ? await tutorContext.newCDPSession(tutor) : null };
   if (viewport.width === 1024) await noticeCase(session);
   await student.goto(`${base}/whiteboard/${code}`);
   await tutor.getByText('Student connected', { exact: true }).waitFor();
@@ -168,10 +176,10 @@ async function release(session, cancelled = false) {
   else await session.tutor.mouse.up();
 }
 
-async function pickup(session, letter, point) {
+async function pickup(session, letter, point, withHand = true) {
   const portal = session.tutor.locator('[data-alphabet-pickup]');
   await portal.waitFor({ state: 'visible', timeout: 2000 });
-  assert.equal(await portal.locator('[data-hand-pose="grab"]').count(), 1, 'Immediate pickup must contain the fist pose');
+  assert.equal(await portal.locator('[data-hand-pose="grab"]').count(), withHand ? 1 : 0, withHand ? 'Immediate pickup must show the borrowed fist' : 'Fallback must show the letter without inventing a glove');
   assert((await portal.textContent()).includes(letter), 'Immediate pickup must identify the selected letter');
   const rect = await portal.boundingBox(); assert(rect);
   assert(point.x >= rect.x - 120 && point.x <= rect.x + rect.width + 120, 'Pickup should be near the pointer');
@@ -319,14 +327,18 @@ async function success(session) {
     const adds = messages.filter(message => message.t === 'tile:add-at');
     assert.equal(adds.length, 1, 'One drag must send exactly one tile creation');
     assert.equal(adds[0].tile.text, 'L');
-    assert.equal(messages.filter(message => message.t === 'hand' && message.a === 'grab').length, 0, 'Letter press must win over the shared glove');
+    const borrowed = messages.filter(message => message.t === 'hand' && message.a === 'grab');
+    assert.equal(borrowed.length, 1, 'Letter carry should borrow exactly one existing shared glove');
+    assert.equal(new Set(borrowed.map(message => message.side)).size, 1);
+    const at = await releasedCoordinates(tutor);
+    await handsAt(tutor, { [borrowed[0].side]: { on: true, by: null, x: at.x / 1600, y: at.y / 1000 } });
     const tile = adds[0].tile;
     for (const page of [tutor, student]) {
       const actual = await page.evaluate(id => window.dragReceived.filter(message => message.t === 'tile:add').flatMap(message => message.tiles).find(value => value.id === id), tile.id);
       assert(actual && actual.text === 'L' && Number.isFinite(actual.x) && Number.isFinite(actual.y));
       await page.locator(`[data-letter-tile="${tile.id}"]`).waitFor();
     }
-    return { immediateFistAndLetter: true, followedPointer: true, tileMessages: adds.length, tutorStudentSameTile: true, sharedHandNotGrabbed: true };
+    return { immediateFistAndLetter: true, followedPointer: true, tileMessages: adds.length, tutorStudentSameTile: true, existingSharedGloveBorrowed: true, sharedGloveEndsAtDrop: true };
   });
 }
 
@@ -342,6 +354,266 @@ async function invalidStatus(session) {
   const status = session.tutor.locator('[data-letter-drop-status="error"]');
   await status.waitFor({ state: 'visible' });
   assert((await status.textContent()).includes('white writing area'));
+}
+
+
+
+async function boardCoordinates(page, point) {
+  return page.evaluate(point => {
+    const svg = document.querySelector('[data-board-surface] > svg[role="img"]');
+    const p = new DOMPoint(point.x, point.y).matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
+  }, point);
+}
+
+async function releasedCoordinates(page) {
+  const delivered = await page.evaluate(() => window.dragLastUp);
+  assert(delivered, 'Expected a delivered pointerup event');
+  return boardCoordinates(page, delivered);
+}
+
+async function handsState(page) {
+  return page.evaluate(() => {
+    let hands = {};
+    for (const message of window.dragReceived) {
+      if ((message.t === 'board' || message.t === 'hands') && message.hands) hands = { ...message.hands };
+      if (message.t === 'hand') hands[message.side] = { on: message.on, x: message.x, y: message.y, by: message.by, letter: message.letter };
+    }
+    return hands;
+  });
+}
+
+async function handsAt(page, expected) {
+  await page.waitForFunction(expected => {
+    let hands = {};
+    for (const message of window.dragReceived) {
+      if ((message.t === 'board' || message.t === 'hands') && message.hands) hands = { ...message.hands };
+      if (message.t === 'hand') hands[message.side] = message;
+    }
+    return Object.entries(expected).every(([side, hand]) => {
+      const actual = hands[side];
+      return actual && actual.on === hand.on && actual.by === hand.by && Math.abs(actual.x - hand.x) < 0.001 && Math.abs(actual.y - hand.y) < 0.001;
+    });
+  }, expected, { timeout: 3000 });
+}
+
+async function noFreeGloveCase(session) {
+  await recordCase(session, 'Letter carry works without enabling a shared glove when both are off', async () => {
+    await resetGlove(session, false);
+    const sentBefore = await session.tutor.evaluate(() => window.dragSent.length);
+    const start = await sourcePoint(session, 'D'), end = await dropPoint(session);
+    await press(session, start); await pickup(session, 'D', start, false); await move(session, start, end); await release(session);
+    await confirmedStatus(session, 'D');
+    const events = await session.tutor.evaluate(n => window.dragSent.slice(n), sentBefore);
+    assert(!events.some(message => message.t === 'hand' && message.a === 'grab'));
+    const hands = await handsState(session.tutor); assert(!hands.r.on && !hands.l.on);
+    await resetGlove(session);
+    return { localLetterCarryStillWorks: true, noInventedGlove: true, noSharedHandEnabled: true };
+  });
+}
+
+async function pointerUpAt(session, point) {
+  // Chromium can deliver a trusted release at a new coordinate without a preceding
+  // move. Other engines use the same pointerup contract through a synthetic event.
+  if (session.cdp && !session.touch) {
+    await session.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1 });
+  } else {
+    await session.tutor.evaluate(({ point, mobile, touch }) => {
+      const target = mobile ? document.querySelector('[role="group"][aria-label="Alphabet"]') : document.querySelector('[data-board-surface] > svg[role="img"]');
+      target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: window.dragPointerId, pointerType: touch ? 'touch' : 'mouse', isPrimary: true, button: 0, buttons: 0, clientX: point.x, clientY: point.y }));
+    }, { point, mobile: session.mobile, touch: session.touch });
+  }
+  const delivered = await session.tutor.evaluate(() => window.dragLastUp);
+  // Clear Playwright/CDP's input bookkeeping after the independently delivered up.
+  await release(session);
+  return delivered;
+}
+
+async function noIntermediateMoveCase(session) {
+  await recordCase(session, 'Distant pointerup creates a letter even if no pointermove was delivered', async () => {
+    await resetGlove(session);
+    const { tutor, student } = session;
+    const count = await tutor.locator('[data-letter-tile]').count(), sentBefore = await tutor.evaluate(() => window.dragSent.length);
+    const start = await sourcePoint(session, 'L'), end = await dropPoint(session);
+    await press(session, start); await pickup(session, 'L', start);
+    const movesBeforeUp = await tutor.evaluate(() => window.dragPointerMoves);
+    await pointerUpAt(session, end);
+    assert.equal(await tutor.evaluate(() => window.dragPointerMoves), movesBeforeUp, 'The missing-move test must not deliver a pointermove'); await cleared(session); await confirmedStatus(session, 'L');
+    for (const page of [tutor, student]) await page.waitForFunction(count => document.querySelectorAll('[data-letter-tile]').length === count + 1, count);
+    const adds = await tutor.evaluate(n => window.dragSent.slice(n).filter(message => message.t === 'tile:add-at'), sentBefore);
+    assert.equal(adds.length, 1);
+    return { noPointermoveDelivered: true, releaseCreatedExactlyOneTile: true, tutorStudentSynchronized: true, syntheticPointerup: !session.cdp || session.touch };
+  });
+}
+
+async function differentLetterHandCase(session) {
+  await recordCase(session, 'Picking another letter borrows the glove without showing a cloned hand', async () => {
+    await resetGlove(session);
+    const { tutor } = session, start = await sourcePoint(session, 'D'), end = await dropPoint(session);
+    await press(session, start); await pickup(session, 'D', start);
+    const originals = tutor.locator('[data-board-surface] [data-hand], [data-bar-hand] [data-hand]');
+    assert.equal(await originals.filter({ visible: true }).count(), 0, 'The original shared glove must be hidden locally while the carry fist is visible');
+    await move(session, start, end);
+    assert.equal(await originals.filter({ visible: true }).count(), 0, 'Moving another letter must not reveal a second local hand');
+    await tutor.screenshot({ path: `${out}/different-letter-carry-${session.viewport.width}.png` });
+    await release(session); await cleared(session); await confirmedStatus(session, 'D');
+    const at = await releasedCoordinates(tutor);
+    await handsAt(tutor, { r: { on: true, by: null, x: at.x / 1600, y: at.y / 1000 } });
+    await tutor.screenshot({ path: `${out}/different-letter-after-drop-${session.viewport.width}.png` });
+    return { sameOriginalSideAtDrop: true, differentLetter: 'D', sharedPointerStartedOn: 'L', oneVisibleCarryHand: true };
+  });
+}
+
+async function fastRepeatCase(session) {
+  await recordCase(session, 'Repeated fast and hover releases keep the accepted tiles at their drop points', async () => {
+    const { tutor, student } = session;
+    const traces = [];
+    for (const [n, letter] of ['D', 'L', 'A', 'P'].entries()) {
+      await resetGlove(session);
+      const count = await tutor.locator('[data-letter-tile]').count(), sentBefore = await tutor.evaluate(() => window.dragSent.length);
+      const start = await sourcePoint(session, letter), end = await dropPoint(session);
+      await press(session, start);
+      if (session.touch) await session.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...end, id: 1 }] });
+      else await tutor.mouse.move(end.x, end.y, { steps: 1 });
+      const dwell = [0, 0, 80, 250][n]; if (dwell) await pause(dwell);
+      await release(session); await confirmedStatus(session, letter);
+      const up = await releasedCoordinates(tutor);
+      const expected = { x: Math.max(24, Math.min(1492, up.x - 42)), y: Math.max(184, Math.min(864, up.y - 56)) };
+      const adds = await tutor.evaluate(n => window.dragSent.slice(n).filter(message => message.t === 'tile:add-at'), sentBefore);
+      assert.equal(adds.length, 1);
+      const tile = adds[0].tile;
+      await student.locator(`[data-letter-tile="${tile.id}"]`).waitFor();
+      assert.equal(await tutor.locator('[data-letter-tile]').count(), count + 1);
+      const echoes = await tutor.evaluate(id => window.dragReceived.filter(message => message.t === 'tile:add').flatMap(message => message.tiles).filter(tile => tile.id === id), tile.id);
+      assert.equal(echoes.length, 1);
+      assert(Math.abs(echoes[0].x - expected.x) < 0.2 && Math.abs(echoes[0].y - expected.y) < 0.2, 'Accepted tile must settle at its release coordinate');
+      await pause(100);
+      const rendered = await tutor.locator(`[data-letter-tile="${tile.id}"]`).boundingBox();
+      const expectedScreen = await stagePoint(tutor, expected);
+      assert(rendered && Math.abs(rendered.x - expectedScreen.x) < 3 && Math.abs(rendered.y - expectedScreen.y) < 3, 'Rendered accepted tile jumped away from its echoed position');
+      traces.push({ letter, dwell, x: echoes[0].x, y: echoes[0].y, renderMatchesEcho: true });
+    }
+    return { successfulReleases: traces.length, noAcceptedTileSnappedBack: true, traces };
+  });
+}
+
+async function makeExistingTile(session, point) {
+  const sentBefore = await session.tutor.evaluate(() => window.dragSent.length);
+  const start = await sourcePoint(session, 'L'), end = await stagePoint(session.tutor, point);
+  await press(session, start); await move(session, start, end); await release(session); await confirmedStatus(session, 'L');
+  return session.tutor.evaluate(n => window.dragSent.slice(n).find(message => message.t === 'tile:add-at').tile, sentBefore);
+}
+
+async function upperTilePriorityCase(session) {
+  await recordCase(session, 'An existing tile upper edge wins over the old glove hit area', async () => {
+    const { tutor, student } = session;
+    const tile = await makeExistingTile(session, { x: 24 + 11.5 * 1552 / 26, y: 185 });
+    await resetGlove(session);
+    const element = tutor.locator(`[data-letter-tile="${tile.id}"]`), rect = await element.boundingBox();
+    const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height * 0.22 }, end = await stagePoint(tutor, { x: 1050, y: 550 });
+    const sentBefore = await tutor.evaluate(() => window.dragSent.length);
+    await press(session, start); await tutor.mouse.move(end.x, end.y, { steps: 1 }); await release(session);
+    await tutor.waitForFunction(({ n, id }) => window.dragReceived.slice(n).some(message => message.t === 'tile:drop' && message.tile.id === id), { n: 0, id: tile.id });
+    const events = await tutor.evaluate(n => window.dragSent.slice(n).filter(message => message.t.startsWith('tile:') || message.t === 'hand'), sentBefore);
+    assert(events.some(message => message.t === 'tile:grab' && message.id === tile.id));
+    assert(!events.some(message => message.t === 'hand' && message.a === 'grab'), 'Pressing the tile must not move the shared glove instead');
+    await student.waitForFunction(id => window.dragReceived.some(message => message.t === 'tile:drop' && message.tile.id === id), tile.id);
+    const echoed = await student.evaluate(id => window.dragReceived.filter(message => message.t === 'tile:drop' && message.tile.id === id).at(-1)?.tile, tile.id);
+    assert(echoed && echoed.x > 900 && echoed.y > 400);
+    return { tileGrabbed: true, sharedGloveNotGrabbed: true, movedOnStudent: true };
+  });
+}
+
+async function finalTileReleaseCase(session) {
+  await recordCase(session, 'Existing tile uses pointerup on paper instead of its last move in the alphabet', async () => {
+    const { tutor, student } = session;
+    const tile = await makeExistingTile(session, { x: 1000, y: 500 }); await resetGlove(session);
+    const element = tutor.locator(`[data-letter-tile="${tile.id}"]`), rect = await element.boundingBox();
+    const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    const lastMove = await stagePoint(tutor, { x: 800, y: 90 }), end = await stagePoint(tutor, { x: 1100, y: 650 });
+    const sentBefore = await tutor.evaluate(() => window.dragSent.length);
+    await press(session, start);
+    const down = await boardCoordinates(tutor, await tutor.evaluate(() => window.dragLastDown));
+    await tutor.mouse.move(lastMove.x, lastMove.y, { steps: 1 });
+    const movesBeforeUp = await tutor.evaluate(() => window.dragPointerMoves);
+    const up = await boardCoordinates(tutor, await pointerUpAt(session, end));
+    const expected = { x: Math.max(24, Math.min(1492, up.x + tile.x - down.x)), y: Math.max(184, Math.min(864, up.y + tile.y - down.y)) };
+    assert.equal(await tutor.evaluate(() => window.dragPointerMoves), movesBeforeUp, 'The final-up test must not deliver another pointermove');
+    await tutor.waitForFunction(({ n, id }) => window.dragSent.slice(n).some(message => message.t === 'tile:drop' && message.id === id), { n: sentBefore, id: tile.id });
+    const drop = await tutor.evaluate(({ n, id }) => window.dragSent.slice(n).find(message => message.t === 'tile:drop' && message.id === id), { n: sentBefore, id: tile.id });
+    assert(Math.abs(drop.x - expected.x) < 0.2 && Math.abs(drop.y - expected.y) < 0.2, `Tile used stale move coordinates: ${JSON.stringify({ x: drop.x, y: drop.y })}`);
+    await student.waitForFunction(id => window.dragReceived.some(message => message.t === 'tile:drop' && message.tile.id === id), tile.id);
+    const actual = await student.evaluate(id => window.dragReceived.filter(message => message.t === 'tile:drop' && message.tile.id === id).at(-1).tile, tile.id);
+    assert(Math.abs(actual.x - expected.x) < 0.2 && Math.abs(actual.y - expected.y) < 0.2);
+    return { lastMoveWasInAlphabet: true, finalPointerupSampled: true, finalPosition: { x: actual.x, y: actual.y }, syntheticPointerup: !session.cdp };
+  });
+  await recordCase(session, 'An existing tile cannot finish above the writing paper', async () => {
+    const { tutor } = session;
+    const tile = await makeExistingTile(session, { x: 1000, y: 500 }); await resetGlove(session);
+    const element = tutor.locator(`[data-letter-tile="${tile.id}"]`), rect = await element.boundingBox();
+    const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }, end = await stagePoint(tutor, { x: 800, y: 90 });
+    const sentBefore = await tutor.evaluate(() => window.dragSent.length);
+    await press(session, start); await tutor.mouse.move(end.x, end.y, { steps: 1 }); await release(session);
+    const drop = await tutor.evaluate(({ n, id }) => window.dragSent.slice(n).find(message => message.t === 'tile:drop' && message.id === id), { n: sentBefore, id: tile.id });
+    assert(drop && drop.y >= 184, 'Existing tile escaped above paper while the alphabet strip was visible');
+    return { stayedInsidePaper: true, top: drop.y };
+  });
+}
+
+
+async function delayedConsecutiveCarryCase(session) {
+  await recordCase(session, 'Consecutive carries survive delayed acknowledgments without cloning the hand', async () => {
+    const { tutor, student } = session;
+    await resetGlove(session);
+    const count = await tutor.locator('[data-letter-tile]').count(), sentBefore = await tutor.evaluate(() => window.dragSent.length);
+    const endA = await stagePoint(tutor, { x: 700, y: 450 }), endB = await stagePoint(tutor, { x: 1100, y: 650 });
+    await tutor.evaluate(() => { window.dragDelayInbound = 400; });
+    try {
+      const a = await sourcePoint(session, 'L'); await press(session, a); await pickup(session, 'L', a);
+      await tutor.mouse.move(endA.x, endA.y, { steps: 1 }); await release(session);
+      const b = await sourcePoint(session, 'D'); await press(session, b); await pickup(session, 'D', b);
+      await tutor.mouse.move(endB.x, endB.y, { steps: 1 });
+      await pause(550); await pickup(session, 'D', endB);
+      assert.equal(await tutor.locator('[data-board-surface] [data-hand], [data-bar-hand] [data-hand]').filter({ visible: true }).count(), 0);
+      await release(session); await confirmedStatus(session, 'D');
+      for (const page of [tutor, student]) await page.waitForFunction(count => document.querySelectorAll('[data-letter-tile]').length === count + 2, count);
+      const adds = await tutor.evaluate(n => window.dragSent.slice(n).filter(message => message.t === 'tile:add-at'), sentBefore);
+      assert.equal(adds.length, 2); assert.deepEqual(adds.map(message => message.tile.text), ['L', 'D']);
+      const at = await releasedCoordinates(tutor);
+      await handsAt(tutor, { r: { on: true, by: null, x: at.x / 1600, y: at.y / 1000 } });
+      await pause(450);
+      return { orderedInboundDelayMs: 400, consecutiveAcceptedTiles: 2, noCloneDuringOldAcknowledgments: true, handEndsAtSecondDrop: true };
+    } finally { await tutor.evaluate(() => { window.dragDelayInbound = 0; }); }
+  });
+}
+
+async function penPalmCase(session) {
+  if (!session.cdp) return;
+  await recordCase(session, 'A resting palm does not cancel a pen letter pickup', async () => {
+    const { tutor, cdp } = session;
+    await resetGlove(session);
+    const count = await tutor.locator('[data-letter-tile]').count(), sentBefore = await tutor.evaluate(() => window.dragSent.length);
+    const start = await sourcePoint(session, 'P'), end = await stagePoint(tutor, { x: 1100, y: 650 });
+    try {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start, pointerType: 'pen', buttons: 0 });
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, pointerType: 'pen', button: 'left', buttons: 1, clickCount: 1 });
+      await pickup(session, 'P', start);
+      await tutor.evaluate(point => {
+        const target = document.querySelector('[data-board-surface] > svg[role="img"]');
+        target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 987, pointerType: 'touch', isPrimary: false, button: 0, buttons: 1, width: 60, height: 60, clientX: point.x, clientY: point.y }));
+      }, end);
+      await pickup(session, 'P', start);
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...end, pointerType: 'pen', buttons: 1 });
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, pointerType: 'pen', button: 'left', buttons: 0, clickCount: 1 });
+      await cleared(session); await confirmedStatus(session, 'P');
+      assert.equal(await tutor.locator('[data-letter-tile]').count(), count + 1);
+      assert.equal(await tutor.evaluate(n => window.dragSent.slice(n).filter(message => message.t === 'tile:add-at').length, sentBefore), 1);
+      return { nativePenPickup: true, syntheticRestingPalm: true, pickupPreserved: true, exactlyOneTileCreated: true };
+    } finally {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, pointerType: 'pen', button: 'left', buttons: 0, clickCount: 1 });
+      await tutor.evaluate(point => document.querySelector('[data-board-surface] > svg[role="img"]').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 987, pointerType: 'touch', isPrimary: false, button: 0, buttons: 0, clientX: point.x, clientY: point.y })), end);
+    }
+  });
 }
 
 async function pendingConfirmationCase(session) {
@@ -489,6 +761,7 @@ async function releaseGeometryCases(session) {
 async function cancelCase(session, kind) {
   await recordCase(session, kind, async () => {
     const count = await session.tutor.locator('[data-letter-tile]').count();
+    const originalHands = await handsState(session.tutor);
     const start = await sourcePoint(session), end = await dropPoint(session);
     await press(session, start); await pickup(session, 'L', start);
     if (kind !== 'click without movement') await move(session, start, end);
@@ -509,7 +782,8 @@ async function cancelCase(session, kind) {
     const actual = await session.tutor.locator('[data-letter-tile]').count();
     assert.equal(actual, count, `Aborted/non-drag gesture must not create a tile; key events: ${JSON.stringify(await session.tutor.evaluate(() => window.dragKeys.slice(-3)))}`);
     assert.equal(await session.student.locator('[data-letter-tile]').count(), count, 'Student must not receive a tile for an aborted gesture');
-    return { noTileCreated: true, pickupAndPreviewCleared: true, syntheticCancellationEvent: kind === 'window blur cancellation' || (kind === 'pointer cancellation' && !session.touch) };
+    await handsAt(session.tutor, originalHands);
+    return { noTileCreated: true, pickupAndPreviewCleared: true, originalGloveRestored: true, syntheticCancellationEvent: kind === 'window blur cancellation' || (kind === 'pointer cancellation' && !session.touch) };
   });
 }
 
@@ -538,6 +812,16 @@ try {
         await cancelCase(session, 'window blur cancellation');
         if (session.touch) await multiTouchCase(session);
         await success(session);
+      }
+      await noIntermediateMoveCase(session);
+      await differentLetterHandCase(session);
+      await noFreeGloveCase(session);
+      await fastRepeatCase(session);
+      if (session.viewport.width === 1440) {
+        await upperTilePriorityCase(session);
+        await finalTileReleaseCase(session);
+        await delayedConsecutiveCarryCase(session);
+        await penPalmCase(session);
       }
       await edgeCase(session);
       if (session.viewport.width === 1440) {

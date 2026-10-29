@@ -136,7 +136,7 @@ export default function TutorRoom() {
       // storage blocked: the choice lasts for this lesson
     }
   };
-  const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
+  const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
   const bridge = useTutorBridge((msg) => sendRef.current(msg));
   const phoneme = usePhonemeTutor((msg) => sendRef.current(msg));

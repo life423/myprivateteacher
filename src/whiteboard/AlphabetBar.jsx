@@ -84,19 +84,22 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
   });
 
   const cancelPickup = () => {
+    if (letterDrag.current) handActions?.finishLetterPickup?.();
     letterDrag.current = null;
     touches.current.clear();
     setGhost(null);
     stageApi?.current?.clearLetterPreview();
   };
-  usePickupCancellation(ghost?.pointerId ?? null, cancelPickup);
+  usePickupCancellation(ghost?.pointerId ?? null, cancelPickup, ghost?.pointerType);
   const release = (event) => {
     touches.current.delete(event.pointerId);
     const drag = letterDrag.current;
     if (drag?.pointerId === event.pointerId) {
       letterDrag.current = null; setGhost(null);
-      if (drag.moved && event.type !== 'pointercancel') stageApi?.current?.dropLetter(drag.text, event.clientX, event.clientY);
-      else stageApi?.current?.clearLetterPreview();
+      const moved = drag.moved || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 6;
+      const id = moved && event.type !== 'pointercancel' ? stageApi?.current?.dropLetter(drag.text, event.clientX, event.clientY) : null;
+      if (!id) stageApi?.current?.clearLetterPreview();
+      handActions?.finishLetterPickup?.(id ? stageApi?.current?.pointAt(event.clientX, event.clientY) : null);
       return;
     }
     const side = held.current.get(event.pointerId);
@@ -120,8 +123,9 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
         const p = pointAt(event.clientX, event.clientY);
         // Direct letter presses win over the pointer glove and its nearby hit area.
         if (canCreate && p?.letter && !letterDrag.current) {
-          letterDrag.current = { pointerId: event.pointerId, text: p.letter, x: event.clientX, y: event.clientY, moved: false };
-          setGhost({ pointerId: event.pointerId, text: p.letter, x: event.clientX, y: event.clientY, onBoard: false });
+          const side = handActions?.beginLetterPickup?.(p.letter, p);
+          letterDrag.current = { pointerId: event.pointerId, pointerType: event.pointerType, text: p.letter, side: side || null, x: event.clientX, y: event.clientY, moved: false };
+          setGhost({ pointerId: event.pointerId, pointerType: event.pointerType, text: p.letter, side: side || null, x: event.clientX, y: event.clientY, onBoard: false });
           try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
           return;
         }
@@ -152,7 +156,9 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
         if (drag?.pointerId === event.pointerId) {
           if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 6) drag.moved = true;
           const onBoard = drag.moved && stageApi?.current?.previewLetter(drag.text, event.clientX, event.clientY);
-          setGhost({ pointerId: event.pointerId, text: drag.text, x: event.clientX, y: event.clientY, onBoard: Boolean(onBoard) });
+          const point = pointAt(event.clientX, event.clientY) || stageApi?.current?.pointAt(event.clientX, event.clientY);
+          if (point) handActions?.moveLetterPickup?.(point);
+          setGhost({ pointerId: event.pointerId, pointerType: drag.pointerType, text: drag.text, side: drag.side, x: event.clientX, y: event.clientY, onBoard: Boolean(onBoard) });
           return;
         }
         const side = held.current.get(event.pointerId);
@@ -197,7 +203,7 @@ export default function AlphabetBar({ hands = [], canHold = false, handActions =
             </span>
           ))}
           {hands
-            .filter((h) => inBar(h) && barSpot(h).row === r && h.letter !== ghost?.text)
+            .filter((h) => inBar(h) && barSpot(h).row === r)
             .map((h) => (
               <Glove key={h.side} hand={h} grabbable={canHold && holdable(h)} />
             ))}

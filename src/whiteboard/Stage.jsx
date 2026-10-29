@@ -434,21 +434,22 @@ export default function Stage({
   const cancelAlphabetPickup = () => {
     const drag = letterDrag.current;
     letterDrag.current = null;
-    if (drag) gesture.current.touches.delete(drag.pointerId);
+    if (drag) { live.current.handActions?.finishLetterPickup?.(); gesture.current.touches.delete(drag.pointerId); }
     if (!gesture.current.touches.size) gesture.current.pinch = null;
     setAlphabetPickup(null);
     setGrip(null);
     clearLetterPreview();
   };
-  usePickupCancellation(alphabetPickup?.pointerId ?? null, cancelAlphabetPickup);
+  usePickupCancellation(alphabetPickup?.pointerId ?? null, cancelAlphabetPickup, alphabetPickup?.pointerType);
   useEffect(() => { if (!canManageTiles || !strip || fillTop) cancelAlphabetPickup(); }, [canManageTiles, strip, fillTop]); // eslint-disable-line react-hooks/exhaustive-deps
   const startAlphabetPickup = (event, raw) => {
     const letter = live.current.canManageTiles && !fillTop ? letterAt(raw.x, raw.y, live.current.strip) : null;
     if (!letter || letterDrag.current) return false;
     capture(event);
-    letterDrag.current = { pointerId: event.pointerId, text: letter, x: event.clientX, y: event.clientY, moved: false };
+    const side = live.current.handActions?.beginLetterPickup?.(letter, { ...raw, letter });
+    letterDrag.current = { pointerId: event.pointerId, pointerType: event.pointerType, text: letter, side: side || null, x: event.clientX, y: event.clientY, moved: false };
     setLetterDrop(null);
-    setAlphabetPickup({ pointerId: event.pointerId, text: letter, x: event.clientX, y: event.clientY, onBoard: false });
+    setAlphabetPickup({ pointerId: event.pointerId, pointerType: event.pointerType, text: letter, side: side || null, x: event.clientX, y: event.clientY, onBoard: false });
     setGrip('grabbing');
     return true;
   };
@@ -510,13 +511,14 @@ export default function Stage({
       if (event.pointerType === 'touch') gesture.current.touches.set(event.pointerId, local(event.clientX, event.clientY));
       return;
     }
-    if (!letterDrag.current && grabHand(event)) return;
+    // A visible tile wins over a glove covering its edge; the cuff remains grabbable.
+    if (!letterDrag.current && !(initialPoint && live.current.tileActions && pickTile(initialPoint)) && grabHand(event)) return;
     if (event.pointerType === 'touch') {
       const g = gesture.current;
       g.touches.set(event.pointerId, local(event.clientX, event.clientY));
       if (g.touches.size === 2) {
         // A second finger: stop whatever the first was doing, and pinch or pan instead.
-        if (letterDrag.current) { letterDrag.current = null; setAlphabetPickup(null); setGrip(null); clearLetterPreview(); }
+        if (letterDrag.current) { live.current.handActions?.finishLetterPickup?.(); letterDrag.current = null; setAlphabetPickup(null); setGrip(null); clearLetterPreview(); }
         for (const id of g.touches.keys()) if (id !== event.pointerId) endAction({ pointerId: id });
         g.pan = null;
         const [a, b] = [...g.touches.values()];
@@ -614,7 +616,9 @@ export default function Stage({
     if (ld && ld.pointerId === event.pointerId) {
       if (Math.hypot(event.clientX - ld.x, event.clientY - ld.y) > CLICK_SLOP) ld.moved = true;
       const onBoard = ld.moved && previewLetter(ld.text, event.clientX, event.clientY);
-      setAlphabetPickup({ pointerId: event.pointerId, text: ld.text, x: event.clientX, y: event.clientY, onBoard: Boolean(onBoard) });
+      const point = toStage(event.clientX, event.clientY);
+      if (point) live.current.handActions?.moveLetterPickup?.(point);
+      setAlphabetPickup({ pointerId: event.pointerId, pointerType: ld.pointerType, text: ld.text, side: ld.side, x: event.clientX, y: event.clientY, onBoard: Boolean(onBoard) });
       return;
     }
     const held = holding.current.get(event.pointerId);
@@ -692,7 +696,7 @@ export default function Stage({
       const raw = toStage(event.clientX, event.clientY);
       if (!raw) return;
       if (Math.abs(raw.x - td.sx) + Math.abs(raw.y - td.sy) > CLICK_SLOP) td.moved = true;
-      const pos = clampTile(td.text, raw.x + td.dx, raw.y + td.dy);
+      const pos = clampTile(td.text, raw.x + td.dx, Math.max(boardRect(live.current.strip).y, raw.y + td.dy));
       td.x = pos.x;
       td.y = pos.y;
       tileOps?.move(td.id, pos.x, pos.y);
@@ -748,6 +752,12 @@ export default function Stage({
       setGrip(null);
       const { tileActions: tileOps, canManageTiles: manage } = live.current;
       setActiveBox(null);
+      // The final movement may be coalesced or omitted; release is the final position.
+      const released = event.type !== 'pointercancel' && Number.isFinite(event.clientX) && Number.isFinite(event.clientY) ? toStage(event.clientX, event.clientY) : null;
+      if (released) {
+        if (Math.abs(released.x - td.sx) + Math.abs(released.y - td.sy) > CLICK_SLOP) td.moved = true;
+        Object.assign(td, clampTile(td.text, released.x + td.dx, Math.max(boardRect(live.current.strip).y, released.y + td.dy)));
+      }
       if (!td.moved && manage) tileOps?.select?.(td.id);
       const at = snapTile(td, live.current.boxes, live.current.tiles) || { x: td.x, y: td.y };
       tileOps?.move(td.id, at.x, at.y);
@@ -776,8 +786,10 @@ export default function Stage({
       setGrip(null);
       gesture.current.touches.delete(event.pointerId);
       if (!gesture.current.touches.size) gesture.current.pinch = null;
-      if (ld.moved && event.type !== 'pointercancel') dropLetter(ld.text, event.clientX, event.clientY);
-      else clearLetterPreview();
+      const moved = ld.moved || Math.hypot(event.clientX - ld.x, event.clientY - ld.y) > CLICK_SLOP;
+      const id = moved && event.type !== 'pointercancel' ? dropLetter(ld.text, event.clientX, event.clientY) : null;
+      if (!id) clearLetterPreview();
+      live.current.handActions?.finishLetterPickup?.(id ? toStage(event.clientX, event.clientY) : null);
       return;
     }
     if (holding.current.has(event.pointerId)) return endAction(event);
@@ -933,7 +945,7 @@ export default function Stage({
           ))}
         {/* With the alphabet in its own bar, a hand above the board shows there instead. */}
         {hands
-          .filter((h) => !(fillTop && h.y < BOARD.y) && h.letter !== alphabetPickup?.text)
+          .filter((h) => !(fillTop && h.y < BOARD.y))
           .map((h) => (
             <Hand key={h.side} x={h.x} y={h.y} side={h.side} holder={h.by} smooth={h.by !== me} pose={h.by ? 'grab' : 'point'} />
           ))}

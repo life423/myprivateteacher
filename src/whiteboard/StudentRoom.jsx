@@ -69,7 +69,7 @@ export default function StudentRoom({ code }) {
   const sendRef = useRef(() => {});
 
   const wb = useWhiteboard('student', (msg) => sendRef.current(msg));
-  const hands = useHands({ me: 'student', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled });
+  const hands = useHands({ me: 'student', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
   const call = useVideoCall('student', (msg) => sendRef.current(msg));
   const joinMessage = () => ({ t: 'join', code, key: keyRef.current || undefined });
 

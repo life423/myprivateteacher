@@ -11,10 +11,10 @@ export default function AlphabetPickup({ pickup }) {
   return createPortal(
     <div data-alphabet-pickup data-letter={pickup.text} data-drop-ready={pickup.onBoard ? 'true' : 'false'}
       className='pointer-events-none fixed z-[80] flex w-40 flex-col items-center' style={{ left, top }}>
-      <svg viewBox='-60 -56 120 184' width='76' height='116' aria-hidden='true'>
+      <svg viewBox={pickup.side ? '-60 -56 120 184' : '-60 -56 120 80'} width='76' height={pickup.side ? '116' : '50'} aria-hidden='true'>
         <rect x='-29' y='-51' width='58' height='69' rx='12' fill='white' stroke='#7c3aed' strokeWidth='4' />
         <text x='0' y='-16' textAnchor='middle' dominantBaseline='central' fill='#1e293b' fontSize='42' fontWeight='800'>{pickup.text}</text>
-        <Hand x={0} y={-24} pose='grab' />
+        {pickup.side && <Hand x={0} y={-24} side={pickup.side} pose='grab' />}
       </svg>
       <span role='status' className='rounded-lg border border-blue-200 bg-white px-2 py-1 text-center text-xs font-semibold leading-4 text-blue-900 shadow-sm'>
         {pickup.onBoard ? `Release to place ${pickup.text}` : `${pickup.text} grabbed · drag onto the board`}
@@ -28,9 +28,9 @@ export default function AlphabetPickup({ pickup }) {
 const cancelledTouches = new WeakSet();
 export const isPickupCancellation = event => cancelledTouches.has(event.nativeEvent || event);
 
-export function usePickupCancellation(pointerId, cancel) {
+export function usePickupCancellation(pointerId, cancel, pointerType) {
   const live = useRef(null);
-  live.current = { pointerId, cancel };
+  live.current = { pointerId, cancel, pointerType };
   useEffect(() => {
     const cancelCurrent = () => { if (live.current.pointerId != null) live.current.cancel(); };
     const escape = event => {
@@ -40,7 +40,7 @@ export function usePickupCancellation(pointerId, cancel) {
       }
     };
     const anotherTouch = event => {
-      if (event.pointerType !== 'touch' || live.current.pointerId == null || event.pointerId === live.current.pointerId) return;
+      if (live.current.pointerType !== 'touch' || event.pointerType !== 'touch' || live.current.pointerId == null || event.pointerId === live.current.pointerId) return;
       cancelledTouches.add(event);
       event.preventDefault();
       cancelCurrent();
@@ -56,6 +56,8 @@ export function usePickupCancellation(pointerId, cancel) {
       document.removeEventListener('pointerdown', anotherTouch, true);
       window.removeEventListener('blur', cancelCurrent);
       document.removeEventListener('visibilitychange', hidden);
+      // A layout switch or development refresh must also release a borrowed shared glove.
+      cancelCurrent();
     };
   }, []);
 }

@@ -625,6 +625,7 @@ export function useWhiteboard(role, send) {
     canUndo: board.lastBy(role) !== null,
     sendPointer,
     sendThrottled,
+    cancelThrottled,
     restore,
     tiles: [...tiles.current.values()],
     tileActions,
