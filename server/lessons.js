@@ -6,6 +6,7 @@ import { MAX_LESSONS, MAX_LESSON_ASSETS, cleanLessonInput, isLessonId } from '..
 import { MAX_PICTURE_BYTES, MAX_PICTURE_SIDE } from '../shared/pieces.js';
 
 export const LESSONS = 'lessons';
+export const lessonTemplateCopyId = (owner, templateId) => createHash('sha256').update(`${templateId}\0${owner}`).digest('hex');
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 const assetView = ({ id, w, h, type, bytes }) => ({ id, w, h, type, bytes });
 const milliseconds = value => value instanceof Date ? value.getTime() : value;
@@ -15,7 +16,7 @@ const readyReferences = (activities, assets) => {
   if (activities.some(activity => activity.assetIds.some(id => !ready.has(id)))) fail(400, 'Choose worksheet pages already uploaded to this lesson.');
 };
 
-export function createLessonRepository({ collection, assets, ownerExists = async () => true, now = () => new Date() }) {
+export function createLessonRepository({ collection, assets, templates, ownerExists = async () => true, now = () => new Date() }) {
   // Live rooms already require one app replica. Serialize account-local persistence
   // here; single-document CAS also protects revisions/asset lists across processes.
   const queues = new Map();
@@ -69,6 +70,29 @@ export function createLessonRepository({ collection, assets, ownerExists = async
           return lessonView(duplicate);
         }
         if (!(await ownerExists(owner))) { await collection.deleteOne({ _id: doc._id, ownerId: owner }); fail(403, 'This account is unavailable or being deleted.'); }
+        return lessonView(doc);
+      });
+    },
+    createFromTemplate(owner, template) {
+      return serial(owner, async () => {
+        await activeOwner(owner);
+        if (!template || !isLessonId(template.id)) fail(404, 'No such premade lesson.');
+        const id = lessonTemplateCopyId(owner, template.id);
+        const existing = await collection.findOne({ _id: id });
+        // Reusing a template must never reset edits, observations or worksheet choices.
+        if (existing) { if (existing.ownerId !== owner || existing.deletingAt) fail(404, 'No such lesson.'); return lessonView(existing); }
+        if (await collection.countDocuments({ ownerId: owner }) >= MAX_LESSONS) fail(409, `Keep up to ${MAX_LESSONS} saved lessons. Delete one before adding another.`);
+        const clean = cleanLessonInput(template);
+        if (!Array.isArray(template.assets) || template.assets.length > MAX_LESSON_ASSETS) fail(400, 'This premade lesson has unsupported materials.');
+        const references = template.assets.map(asset => {
+          if (!isLessonId(asset.id) || !/^[a-f0-9]{64}$/.test(asset.sha256) || ![asset.w, asset.h].every(side => Number.isInteger(side) && side > 0 && side <= MAX_PICTURE_SIDE) || !Number.isInteger(asset.bytes) || asset.bytes < 1 || asset.bytes > MAX_PICTURE_BYTES || !['image/jpeg', 'image/png', 'image/webp'].includes(asset.type)) fail(400, 'This premade lesson has unsupported materials.');
+          return { id: asset.id, w: asset.w, h: asset.h, type: asset.type, bytes: asset.bytes, sha256: asset.sha256, state: 'ready', origin: { templateId: template.id, assetId: asset.id } };
+        });
+        readyReferences(clean.activities, references);
+        const doc = { _id: id, ownerId: owner, schemaVersion: 1, ...clean, sourceTemplate: { id: template.id, sourceHash: template.sourceHash }, revision: 1, assets: references, assetVersion: 0, createdAt: now(), updatedAt: now() };
+        try { await collection.insertOne(doc); }
+        catch (error) { if (error.code !== 11000) throw error; return lessonView(await owned(owner, id)); }
+        if (!(await ownerExists(owner))) { await collection.deleteOne({ _id: id, ownerId: owner }); fail(403, 'This account is unavailable or being deleted.'); }
         return lessonView(doc);
       });
     },
@@ -134,7 +158,12 @@ export function createLessonRepository({ collection, assets, ownerExists = async
       const doc = await owned(owner, id);
       const asset = doc.assets.find(asset => asset.id === assetId && asset.state === 'ready');
       if (!asset) fail(404, 'No such worksheet page.');
-      const bytes = await assets.get(owner, id, assetId);
+      let bytes;
+      if (asset.origin) {
+        const image = templates && await templates.image(asset.origin.templateId, asset.origin.assetId);
+        if (!image || image.sha256 !== asset.sha256) fail(503, 'The shared worksheet is temporarily unavailable.');
+        bytes = image.data;
+      } else bytes = await assets.get(owner, id, assetId);
       await activeOwner(owner);
       return { ...assetView(asset), data: bytes };
     },
@@ -146,7 +175,7 @@ export function createLessonRepository({ collection, assets, ownerExists = async
         if (!asset) fail(404, 'No such worksheet page.');
         if (doc.activities.some(activity => activity.assetIds.includes(assetId))) fail(409, 'Remove this worksheet from the activities before deleting it.');
         doc = await updateAssets(doc, doc.assets.map(asset => asset.id === assetId ? { ...asset, state: 'deleting' } : asset));
-        await assets.remove(owner, id, assetId);
+        if (!asset.origin) await assets.remove(owner, id, assetId);
         await updateAssets(doc, doc.assets.filter(asset => asset.id !== assetId));
       });
     },
@@ -160,7 +189,7 @@ export function createLessonRepository({ collection, assets, ownerExists = async
   };
 }
 
-export function connectLessons({ uri = process.env.MONGODB_URI, account = process.env.AZURE_STORAGE_ACCOUNT, ownerExists } = {}) {
+export function connectLessons({ uri = process.env.MONGODB_URI, account = process.env.AZURE_STORAGE_ACCOUNT, ownerExists, templates } = {}) {
   if (!uri || !account) return null;
-  return createLessonRepository({ collection: mongoClient(uri).db(DATABASE).collection(LESSONS), assets: connectLessonAssets({ account }), ownerExists });
+  return createLessonRepository({ collection: mongoClient(uri).db(DATABASE).collection(LESSONS), assets: connectLessonAssets({ account }), ownerExists, templates });
 }

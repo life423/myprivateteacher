@@ -708,6 +708,13 @@ export default function Stage({
     zoomTo(scale, STAGE.width / 2, list[0].y + list[0].height / 2, size.width / 2, size.height / 2);
   };
 
+  const showRect = (rect) => {
+    const { width, height } = sizeRef.current;
+    if (!width || !height || !rect || ![rect.x, rect.y, rect.w, rect.h].every(Number.isFinite) || rect.w <= 0 || rect.h <= 0) return false;
+    zoomTo(Math.min(width / rect.w, height / rect.h), rect.x + rect.w / 2, rect.y + rect.h / 2, width / 2, height / 2);
+    return true;
+  };
+
   // Lets the Pictures panel drop a part exactly where the pointer lets go over the board.
   const publicStageApi = {
       scale: layout.width / STAGE.width,
@@ -718,7 +725,8 @@ export default function Stage({
         const bounds = visibleBounds();
         return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
       },
-      selectPiece, showSoundBoxes,
+      selectPiece, showSoundBoxes, showRect,
+      viewport: () => ({ ...sizeRef.current }),
       cancelInteractions: pointers.cancelAll,
       pointAt(clientX, clientY) {
         const box = wrapRef.current?.getBoundingClientRect();

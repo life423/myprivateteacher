@@ -14,6 +14,7 @@ import { PLAN_PRICE_CENTS, TRIAL_DAYS, connectBilling } from './billing.js';
 import { closeDatabases, warmDatabase } from './db.js';
 import { connectLessons } from './lessons.js';
 import { lessonRoutes } from './lessonRoutes.js';
+import { connectLessonTemplates, templateRoutes } from './lessonTemplates.js';
 
 const PORT = Number(process.env.PORT) || 8080;
 const CANONICAL_HOST = process.env.CANONICAL_HOST || 'myprivateteacher.com';
@@ -98,7 +99,7 @@ function sameSite(req) {
   }
 }
 
-export function createApp({ pictures, library, accounts, billing, liveLessons, words, lessons } = {}) {
+export function createApp({ pictures, library, accounts, billing, liveLessons, words, lessons, templates } = {}) {
   const gate = lessonGate({ accounts, billing });
   const app = express();
   app.disable('x-powered-by');
@@ -207,7 +208,8 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
   // Tutor accounts (Sign in with Google). Which tutor this browser is signed in as, if any,
   // and whether sign-in is available.
   const currentTutor = async (req) => (accounts ? accounts.tutorFor(cookieValue(req, SESSION_COOKIE)).catch(() => null) : null);
-  app.use('/api/lessons', lessonRoutes({ lessons, currentTutor, sameSite, library, imageType }));
+  app.use('/api/lesson-templates', templateRoutes({ templates, currentTutor }));
+  app.use('/api/lessons', lessonRoutes({ lessons, templates, currentTutor, sameSite, library, imageType }));
   // Phoneme Pop's words, by level. Anyone may read them; the game falls back to its own if this fails.
   if (words) {
     app.get('/api/words', async (req, res) => {
@@ -359,9 +361,10 @@ export function start(port = PORT) {
   };
   warmDatabase(process.env.MONGODB_URI); // connect now, not on the first visitor's request
   const library = connectLibrary();
+  const templates = connectLessonTemplates();
   let lessons = null;
   const accounts = connectAccounts({ beforeDelete: id => lessons?.deleteOwner(id) });
-  if (accounts) lessons = connectLessons({ ownerExists: id => accounts.isActive(id) });
+  if (accounts) lessons = connectLessons({ templates, ownerExists: id => accounts.isActive(id) });
   if (accounts) console.log('Tutor sign-in connected');
   const words = connectWords();
   if (words) console.log('Word bank connected');
@@ -371,7 +374,7 @@ export function start(port = PORT) {
   if (lessons) console.log('Saved lesson storage configured');
   // Lessons running now, for the admin panel (the realtime server starts just below).
   const liveLessons = () => (realtime ? { lessons: realtime.rooms.size, withStudent: [...realtime.rooms.values()].filter((r) => r.student).length } : null);
-  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons, words, lessons }));
+  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons, words, lessons, templates }));
   realtime = attachRealtime(server, {
     allowedOrigins: ALLOWED_ORIGINS,
     turn: { host: process.env.TURN_HOST, secret: process.env.TURN_SECRET, tls: process.env.TURN_TLS === 'true' },

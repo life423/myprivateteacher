@@ -1060,7 +1060,7 @@ export function attachRealtime(server, options = {}) {
     focus(ws, msg) {
       const rect = viewRect(msg);
       if (!isTutor(ws) || !rect || !allow(ws, 'view', 12)) return;
-      send(otherSide(ws.room, 'tutor'), { t: 'focus', ...rect });
+      send(otherSide(ws.room, 'tutor'), { t: 'focus', ...rect, ...(msg.reading === true ? { reading: true } : {}) });
     },
     // Picture pieces: a window onto one of the session's pictures, placed on the board.
     // The tutor can add any part. The student, while their tools are on, can only take a part

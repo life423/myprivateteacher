@@ -407,3 +407,22 @@ describe('tutor-controlled board pages', () => {
     expect(room.pages.size).toBe(2); expect(room.strokes).toHaveLength(1);
   });
 });
+
+it('shares a tutor reading fit only with its current page activation', async () => {
+  const { tutor, code } = await openRoom({ pageProtocol: 1 });
+  await tutor.take('board');
+  const { student } = await join(code);
+  await change(tutor, { t: 'page:add', id: 'reading-page' });
+  const origin = { ...tutor.scope };
+  tutor.page({ t: 'focus', x: 200, y: 300, w: 300, h: 350, reading: true });
+  expect(await student.take('focus')).toMatchObject({ t: 'focus', ...origin, x: 200, y: 300, w: 300, h: 350, reading: true });
+  const beforeTutor = tutor.received.length;
+  student.page({ t: 'focus', x: 0, y: 0, w: 500, h: 500, reading: true });
+  await barrier(student, tutor, 'student-cannot-frame');
+  expect(tutor.received.slice(beforeTutor).some(message => message.t === 'focus')).toBe(false);
+  await change(tutor, { t: 'page:add' });
+  const beforeStudent = student.received.length;
+  tutor.page({ t: 'focus', x: 200, y: 300, w: 300, h: 350, reading: true }, origin);
+  await barrier(tutor, student, 'old-reading-fit');
+  expect(student.received.slice(beforeStudent).some(message => message.t === 'focus')).toBe(false);
+});

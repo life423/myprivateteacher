@@ -137,9 +137,13 @@ Tutors can use the page counter at the bottom-left of the board to add a blank p
 
 Open **My account → Prepare lesson**, or `/lessons`, to create a private preparation with ordered **Review**, **Build words**, **Dictation** and **Read** activities. Select letters/cards, enter private prompts or targets, and upload an image or selected PDF page. Save, then choose **Teach this lesson**. Inside the whiteboard, the **Lesson** row opens the tutor's tray. **Start activity**, the activity chooser, and **Previous / Next** open the appropriate board page. Returning preserves its live work. A changed selection of public materials gets a fresh page; private review-note edits preserve the existing page.
 
+**Included lessons** appears above **Your lessons** in preparation. **Use this lesson** opens a private editable copy; choosing the same original again reopens that copy without replacing edits or review notes. The first included lesson, **Short a practice**, assumes the learner already knows a, m, s, t and p. It has sound review, a one-change-at-a-time word chain, private dictation prompts and an original four-line reading sheet. Tutors check readiness and enable Student tools when the learner needs to move tiles or write. Opening a Read activity fits the first worksheet to both screens after mobile panels close; it does not change the shared picture size.
+
 **Review next time** and its optional note are saved explicitly. Saving preparation does not record a call or persist the student's live drawing. Plans, private prompts, review notes and worksheet images remain under the authenticated tutor's account until deleted. Student room messages receive only the selected public materials; dictation targets stay private. The application does not prescribe or reproduce a proprietary teaching sequence.
 
 Storage reuses `MONGODB_URI` (`myprivateteacher.lessons`) and the existing private Blob `library` container under a separate `private-lessons/` prefix. The server identity needs read, write and delete access to that prefix. Image bytes stay in Blob Storage; Mongo stores bounded metadata and preparation. Account deletion revokes access before removing saved preparation and files; interrupted cleanup remains retryable. Existing local development credentials were checked with a temporary create/read/delete probe; deployment identity permissions must be checked when deploying this branch.
+
+Included originals use `myprivateteacher.lesson_templates` and immutable, SHA-256-verified images under `library/lesson-templates/`. Private copies reference those image bytes instead of duplicating them. Removing a copy or an account cannot remove the shared original. The public catalog contains summaries; full teaching plans require tutor sign-in. Publish a reviewed original with `node --env-file-if-exists=.env scripts/publish-lesson-template.mjs`; rerunning verifies the same version and creates no duplicate. Content and editable image source are in `content/lessons/short-a-first-practice/`. Published versions are immutable; changed content needs a new version ID.
 
 Verification commands after `npm run build`:
 
@@ -147,6 +151,7 @@ Verification commands after `npm run build`:
 npm test
 node scripts/check-board-pages.mjs --browser chrome
 node scripts/check-saved-lessons.mjs --browser chrome
+node scripts/check-starter-lesson.mjs --browser chrome
 ```
 
 The browser scripts use isolated fixture services and real tutor/student sockets, without a real account, cloud data or live camera/microphone. `--browser webkit` runs the same flows in WebKit. Phone checks are emulated; Chrome uses trusted touch.

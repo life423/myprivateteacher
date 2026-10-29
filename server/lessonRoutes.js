@@ -1,7 +1,7 @@
 import express from 'express';
 import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
 
-export function lessonRoutes({ lessons, currentTutor, sameSite, library, imageType }) {
+export function lessonRoutes({ lessons, currentTutor, sameSite, library, imageType, templates }) {
   const router = express.Router();
   router.use(async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -36,6 +36,12 @@ export function lessonRoutes({ lessons, currentTutor, sameSite, library, imageTy
   }));
   router.get('/', handle(async (req, res) => res.json({ lessons: await lessons.list(req.lessonOwner) })));
   router.post('/', json, handle(async (req, res) => res.status(201).json({ lesson: await lessons.create(req.lessonOwner, req.body) })));
+  router.post('/from-template/:id', handle(async (req, res) => {
+    if (!templates) return res.status(503).json({ error: 'Premade lessons are not available right now.' });
+    const template = await templates.get(req.params.id);
+    if (!template) return res.status(404).json({ error: 'No such premade lesson.' });
+    res.status(201).json({ lesson: await lessons.createFromTemplate(req.lessonOwner, template) });
+  }));
   router.get('/:id', handle(async (req, res) => res.json({ lesson: await lessons.get(req.lessonOwner, req.params.id) })));
   router.put('/:id', json, handle(async (req, res) => res.json({ lesson: await lessons.save(req.lessonOwner, req.params.id, req.body) })));
   router.delete('/:id', json, handle(async (req, res) => { await lessons.remove(req.lessonOwner, req.params.id, req.body?.revision); res.sendStatus(204); }));

@@ -34,13 +34,13 @@ function saveMapping(room, lesson, mapping) {
 
 // The private preparation document stays in this tutor-only hook. Only the explicit
 // studentProjection is passed to existing room actions, with generic image titles.
-export function useLessonRunner(wb, room, ready) {
+export function useLessonRunner(wb, room, ready, { onReadReady } = {}) {
   const [lesson, setLesson] = useState(null), [choices, setChoices] = useState([]);
   const [loading, setLoading] = useState(false), [busy, setBusy] = useState(false);
   const [error, setError] = useState(null), [activeId, setActiveId] = useState(null);
   const [saving, setSaving] = useState(false), [savedMessage, setSavedMessage] = useState(null);
-  const latest = useRef({ wb, room, ready, lesson });
-  latest.current = { wb, room, ready, lesson };
+  const latest = useRef({ wb, room, ready, lesson, onReadReady });
+  latest.current = { wb, room, ready, lesson, onReadReady };
   const generation = useRef(0), loadGeneration = useRef(0), live = useRef(true);
   const mapping = useRef({ bindings: Object.create(null), sources: Object.create(null) }), catalogue = useRef(null), running = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; generation.current++; loadGeneration.current++; }; }, []);
@@ -163,6 +163,13 @@ export function useLessonRunner(wb, room, ready) {
         if (!placed) throw new Error('There is not enough room for this worksheet. Remove a picture and try again.');
         await waitFor(value => value.pieces.some(piece => piece.id === placed), ticket, scope);
         binding.assets.push(id); remember();
+      }
+      if (shared.type === 'read' && shared.assetIds.length && latest.current.onReadReady) {
+        const sourceId = mapping.current.sources[shared.assetIds[0]];
+        const piece = latest.current.wb.pieces.find(item => item.pic === sourceId);
+        const focused = await latest.current.onReadReady(piece, current, scope);
+        if (!current()) throw new Error('The board changed. Choose the activity again.');
+        if (!focused) throw new Error('The reading view was not ready. Try opening the activity again.');
       }
       binding.ready = true; remember();
     } catch (failure) { if (live.current && generation.current === ticket) setError(failure.message); }

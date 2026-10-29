@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LessonError, createLesson, deleteLesson, getLesson, lessonAssetUrl, listLessons, saveLesson, uploadLessonAsset } from './api.js';
+import { LessonError, createLesson, createLessonFromTemplate, deleteLesson, getLesson, lessonAssetUrl, listLessonTemplates, listLessons, saveLesson, uploadLessonAsset } from './api.js';
 afterEach(() => vi.unstubAllGlobals());
 const reply = (data, status = 200) => ({ status, ok: status >= 200 && status < 300, json: async () => data });
 describe('private saved lesson requests', () => {
@@ -32,5 +32,24 @@ describe('private saved lesson requests', () => {
     const cancellation = new DOMException('Canceled', 'AbortError'); vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(cancellation).mockRejectedValueOnce(new Error('offline')));
     await expect(getLesson('lesson-a')).rejects.toBe(cancellation);
     await expect(getLesson('lesson-a')).rejects.toBeInstanceOf(LessonError);
+  });
+});
+
+describe('included lesson requests', () => {
+  it('reads the public catalog separately from tutor-private preparation', async () => {
+    const templates = [{ id: 'short-a', title: 'Short a practice', description: 'Original starter', knownLetters: ['a', 'm'], activityCount: 4 }];
+    const fetcher = vi.fn().mockResolvedValue(reply({ templates })); vi.stubGlobal('fetch', fetcher);
+    expect(await listLessonTemplates()).toEqual(templates);
+    expect(fetcher).toHaveBeenCalledWith('/api/lesson-templates', expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }));
+  });
+  it('requests an idempotent owned copy without sending editable global template fields', async () => {
+    const fetcher = vi.fn().mockResolvedValue(reply({ lesson: { id: 'my-edited-copy', revision: 5 } })); vi.stubGlobal('fetch', fetcher);
+    expect(await createLessonFromTemplate('short-a')).toEqual({ id: 'my-edited-copy', revision: 5 });
+    expect(fetcher.mock.calls[0][0]).toBe('/api/lessons/from-template/short-a');
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ method: 'POST', credentials: 'same-origin' }); expect(fetcher.mock.calls[0][1].body).toBeUndefined();
+  });
+  it('reports unavailable included lessons without replacing them with a fabricated local lesson', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ error: 'Storage unavailable' }, 503)));
+    await expect(createLessonFromTemplate('short-a')).rejects.toMatchObject({ status: 503, name: 'LessonError' });
   });
 });
