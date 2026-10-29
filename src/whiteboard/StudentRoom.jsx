@@ -314,7 +314,7 @@ export default function StudentRoom({ code }) {
       controls={layout}
       // Games keep the whole board; materials only contain this lesson's shared images.
       panels={game ? [] : [{ id: 'materials', label: 'Materials', icon: LayoutGrid, content: <MaterialsWorkspace key={`student-${code}-${keyRef.current || 'pending'}`} scope={`student-${code}-${keyRef.current || 'pending'}`} tabs={[
-        { id: 'letters', label: 'Letters', content: (query) => <TileBar canAdd={false} toolsOn={toolsOn} query={query} tiles={wb.tiles} /> },
+        { id: 'letters', label: 'Letters', content: (query) => <TileBar canAdd={false} toolsOn={toolsOn} query={query} tiles={wb.tiles} boxes={wb.boxes} onShowSoundBoxes={!game ? () => stageApi.current?.showSoundBoxes() : null} /> },
         { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} onBrowse={() => setBrowsing(true)} onViewPicture={(request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); }} onPlaced={() => layout.current?.closeSheet()} /> },
         { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={(request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); }} onPlaced={() => layout.current?.closeSheet()} /> },
       ]} /> }]}

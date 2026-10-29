@@ -480,8 +480,6 @@ export default function TutorRoom() {
             boxTaps={wb.boxTaps}
             boxEpoch={wb.boxEpoch}
             onToggleSoundBox={wb.toggleSoundBox}
-            onBoxes={wb.setBoxes}
-            onResetSoundBoxes={wb.resetSoundBoxes}
             canTapSoundBoxes
             lines={wb.lines}
             tiles={wb.tiles}
@@ -528,7 +526,7 @@ export default function TutorRoom() {
       panels={[{
         id: 'materials', label: 'Materials', icon: LayoutGrid,
         content: <MaterialsWorkspace key={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} scope={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} tabs={[
-          { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} /> },
+          { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} boxTaps={wb.boxTaps} onResetSoundBoxes={wb.resetSoundBoxes} onShowSoundBoxes={!bridge.game && !phoneme.active ? () => stageApi.current?.showSoundBoxes() : null} /> },
           { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
           { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
         ]} supplement={<button type='button' aria-haspopup='dialog' aria-expanded={gamesOpen} aria-controls='tutor-games' onClick={() => setGamesOpen(true)} className='flex min-h-11 shrink-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-violet-50'><span className='flex items-center gap-2'><Milestone className='h-4 w-4' aria-hidden='true' />Games</span>{bridge.game || phoneme.active ? <span className='text-xs font-semibold text-violet-700'>Playing · Open controls</span> : <span className='text-xs font-semibold text-slate-500'>Open</span>}</button>} />,

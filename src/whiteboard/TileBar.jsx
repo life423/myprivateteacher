@@ -4,7 +4,7 @@ import { BOX_COUNTS, MAX_TILES } from '../../shared/tiles.js';
 
 // The tutor's tile controls, a card in the side column: add tiles, change a selected one,
 // send them all home, clear them, and set the sound boxes.
-export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, onReset, onClear, boxes, onBoxes, query = '', embedded = false, canAdd = true, tiles = [], toolsOn = false }) {
+export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, onReset, onClear, boxes, onBoxes, boxTaps = [], onResetSoundBoxes, onShowSoundBoxes, query = '', embedded = false, canAdd = true, tiles = [], toolsOn = false }) {
   const [text, setText] = useState('');
   const [note, setNote] = useState(null);
   const [armed, setArmed] = useState(false);
@@ -45,6 +45,7 @@ export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, 
 
   const choices = matchingLetters(query);
   if (!canAdd) return <section aria-label='Letter tiles' className='flex flex-col gap-3'>
+    {boxes > 0 && onShowSoundBoxes && <button type='button' onClick={onShowSoundBoxes} className='min-h-11 rounded-lg border border-violet-200 px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50'>Show sound boxes in view</button>}
     <p className='text-xs leading-relaxed text-slate-600'>{toolsOn ? 'Move your tutor’s tiles on the board.' : 'Your tutor controls when you can move the letter tiles.'}</p>
     <ul aria-label='Available letter tiles' className='flex flex-wrap gap-2'>{tiles.filter((tile) => tile.text.toLowerCase().includes(query.trim().toLowerCase())).map((tile) => <li key={tile.id} className='rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-lg font-bold text-slate-800'>{tile.text}</li>)}</ul>
     {!tiles.length && <p className='text-sm text-slate-500'>Your tutor hasn’t added letter tiles yet.</p>}
@@ -74,6 +75,13 @@ export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, 
             </button>
           ))}
         </div>
+        {boxes > 0 && <>
+          <p role='status' className='mt-2 text-xs text-slate-600'>{boxTaps.length} of {boxes} sound boxes tapped</p>
+          <div className='mt-1 flex flex-wrap gap-1'>
+            <button type='button' onClick={onResetSoundBoxes} disabled={!boxTaps.length} className='min-h-11 rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-violet-50 disabled:opacity-40'>Reset counters</button>
+            {onShowSoundBoxes && <button type='button' onClick={onShowSoundBoxes} className='min-h-11 rounded-lg px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50'>Show boxes in view</button>}
+          </div>
+        </>}
       </div>
       <form onSubmit={submit} className='flex items-center gap-2'>
         <label htmlFor='tile-input' className='sr-only'>

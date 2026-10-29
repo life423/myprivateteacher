@@ -6,7 +6,6 @@ import InkCanvas from './InkCanvas.jsx';
 import Tile from './Tile.jsx';
 import PieceImage from './PieceImage.jsx';
 import PictureLayers from './PictureLayers.jsx';
-import SoundBoxControls from './SoundBoxControls.jsx';
 import { soundBoxAt, soundBoxButtonRect, soundTapCanFinish, SOUND_TAP_SLOP } from './soundBoxInteraction.js';
 import ObjectToolbar from './ObjectToolbar.jsx';
 import { EraserMarker, PenMarker } from './Markers.jsx';
@@ -127,8 +126,6 @@ export default function Stage({
   boxes = 0,
   boxTaps = [],
   boxEpoch = 0,
-  onBoxes = null,
-  onResetSoundBoxes = null,
   onToggleSoundBox = null,
   canTapSoundBoxes = false,
   lines = DEFAULT_LINES,
@@ -222,7 +219,6 @@ export default function Stage({
   const [localTileId, setLocalTileId] = useState(null);
   const [activeBox, setActiveBox] = useState(null);
   const [layersOpen, setLayersOpen] = useState(false);
-  const [soundControlsOpen, setSoundControlsOpen] = useState(false);
   useEffect(() => { counterTap.current = null; }, [boxes, boxEpoch, canTapSoundBoxes, tool]);
   useEffect(() => setLocalTileId(selectedTile), [selectedTile]);
   const [placementNotice, setPlacementNotice] = useState('');
@@ -236,9 +232,9 @@ export default function Stage({
   const clearSelection = () => { setSelectedPieceId(null); setLocalTileId(null); tileActions?.select?.(null); };
   useEffect(() => {
     if (!selectedPiece && !selectedLetter) return undefined;
-    const escape = event => { if (event.key === 'Escape' && !layersOpen && !soundControlsOpen && !event.target.closest?.('[role=dialog]')) clearSelection(); };
+    const escape = event => { if (event.key === 'Escape' && !layersOpen && !event.target.closest?.('[role=dialog]')) clearSelection(); };
     window.addEventListener('keydown', escape); return () => window.removeEventListener('keydown', escape);
-  }, [selectedPiece?.id, selectedLetter?.id, layersOpen, soundControlsOpen]);
+  }, [selectedPiece?.id, selectedLetter?.id, layersOpen]);
   const selectedFace = Boolean(selectedPiece && isFacePiece(selectedPiece, pictures.find((picture) => picture.id === selectedPiece.pic)));
   const canResizeSelected = Boolean(selectedPiece && canEditPieces && (me === 'tutor' || !selectedFace));
   const selectPiece = (id) => {
@@ -755,6 +751,15 @@ export default function Stage({
   if (PIECE_CURSORS[grip]) cursor = PIECE_CURSORS[grip];
   const picById = new Map(pictures.map((p) => [p.id, p]));
 
+  const showSoundBoxes = () => {
+    const list = soundBoxes(boxes);
+    if (!list.length || !size.width || !size.height) return;
+    autoFill.current = false;
+    const width = list.at(-1).x + list.at(-1).width - list[0].x;
+    const scale = Math.min(size.width / (width + 80), size.height / (list[0].height + 100));
+    zoomTo(scale, STAGE.width / 2, list[0].y + list[0].height / 2, size.width / 2, size.height / 2);
+  };
+
   // Lets the Pictures panel drop a part exactly where the pointer lets go over the board.
   if (stageApi) {
     stageApi.current = {
@@ -766,7 +771,7 @@ export default function Stage({
         const bounds = visibleBounds();
         return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
       },
-      selectPiece,
+      selectPiece, showSoundBoxes,
       previewLetter, clearLetterPreview, dropLetter,
       addLetter(text) { const bounds = visibleBounds(); return addLetter(text, { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }); },
       pointAt(clientX, clientY) {
@@ -783,7 +788,7 @@ export default function Stage({
   const clip = boardRect(strip);
   const stacked = [...tiles].sort((a, b) => a.z - b.z);
   const paperTop = Math.max(8, layout.top + clip.y * layout.scale + 8);
-  const reserved = []; // Board resource controls now have their own row.
+  const reserved = []; // Resource controls share the existing footer, outside the paper.
   const zoomAroundCentre = (scale) => {
     const point = boardPoint({ x: size.width / 2, y: size.height / 2 });
     zoomTo(scale, point.x, point.y, size.width / 2, size.height / 2);
@@ -792,36 +797,6 @@ export default function Stage({
 
   return (
     <div className='flex h-full w-full min-h-0 flex-col'>
-      {(onBoxes || boxes > 0 || pieces.length > 0) && <div data-board-controls className='relative z-30 flex h-11 shrink-0 items-center justify-between gap-1 border-b border-slate-200 bg-slate-100 px-1'>
-        <SoundBoxControls count={boxes} taps={boxTaps} onCount={onBoxes} onReset={onResetSoundBoxes} open={soundControlsOpen} onOpenChange={(open) => { setSoundControlsOpen(open); if (open) setLayersOpen(false); }} height={size.height} onShow={() => {
-          const list = soundBoxes(boxes);
-          if (!list.length || !size.width || !size.height) return;
-          autoFill.current = false;
-          const width = list.at(-1).x + list.at(-1).width - list[0].x;
-          const scale = Math.min(size.width / (width + 80), size.height / (list[0].height + 100));
-          zoomTo(scale, STAGE.width / 2, list[0].y + list[0].height / 2, size.width / 2, size.height / 2);
-        }} />
-          {pieceActions && <PictureLayers
-        inline
-        open={layersOpen}
-        pieces={pieces}
-        pictures={pictures}
-        selected={selectedPiece}
-        me={me}
-        srcFor={pictureSrc}
-        onSelect={selectPiece}
-        onOpenChange={(open) => { setLayersOpen(open); if (open) setSoundControlsOpen(false); }}
-        onClear={clearPiece}
-        onLayer={pieceActions.layer}
-        onResize={resizePiece}
-        canResize={canResizeSelected}
-        resizeLocked={me === 'student' && selectedFace}
-        canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
-        canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
-        height={size.height}
-        overlapState={overlapState}
-      />}
-      </div>}
       <div ref={wrapRef} data-board-surface className='relative min-h-0 flex-1 select-none overflow-hidden'>
       <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} boxTaps={boxTaps} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
@@ -920,7 +895,7 @@ export default function Stage({
             style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}><span className='sr-only'>Sound {index + 1}</span></button>;
         })}
       </div>}
-      {movable && !layersOpen && !soundControlsOpen && !pieceDrag.current && !tileDrag.current && !letterDrag.current && !letterPreview && (selectedPiece || selectedLetter) && <ObjectToolbar
+      {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && !letterDrag.current && !letterPreview && (selectedPiece || selectedLetter) && <ObjectToolbar
         object={selectedPiece || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
         kind={selectedPiece ? 'picture' : 'tile'}
         label={selectedPiece ? picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}
@@ -934,11 +909,35 @@ export default function Stage({
         onClear={clearSelection}
       />}
       </div>
-      <div data-board-zoom role='group' aria-label='Board zoom' className='flex shrink-0 justify-end border-t border-slate-200/70 bg-slate-50 px-1'>
-        <button type='button' aria-label='Zoom out' disabled={layout.scale <= layout.fit * 1.02} onClick={() => zoomAroundCentre(layout.scale / 1.25)} className={zoomControl}><Minus className='h-4 w-4' aria-hidden='true' /></button>
-        <button type='button' aria-label='Zoom to 100%' onClick={() => zoomAroundCentre(1)} className={`${zoomControl} min-w-14`}><span>{Math.round(layout.scale * 100)}%</span></button>
-        <button type='button' aria-label='Zoom in' disabled={layout.scale >= layout.max * .999} onClick={() => zoomAroundCentre(layout.scale * 1.25)} className={zoomControl}><Plus className='h-4 w-4' aria-hidden='true' /></button>
-        <button type='button' aria-label='Fit the whole board' onClick={() => { autoFill.current = false; setView(null); }} className={zoomControl}><Scan className='mr-1 h-4 w-4' aria-hidden='true' />Fit</button>
+      <div data-board-footer className='relative z-50 flex h-11 shrink-0 items-center justify-between gap-1 border-t border-slate-200/70 bg-slate-50 px-1'>
+        <div className='min-w-0'>
+          {pieceActions && <PictureLayers
+            inline above
+            open={layersOpen}
+            pieces={pieces}
+            pictures={pictures}
+            selected={selectedPiece}
+            me={me}
+            srcFor={pictureSrc}
+            onSelect={selectPiece}
+            onOpenChange={setLayersOpen}
+            onClear={clearPiece}
+            onLayer={pieceActions.layer}
+            onResize={resizePiece}
+            canResize={canResizeSelected}
+            resizeLocked={me === 'student' && selectedFace}
+            canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
+            canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
+            height={size.height}
+            overlapState={overlapState}
+          />}
+        </div>
+        <div data-board-zoom role='group' aria-label='Board zoom' className='flex shrink-0'>
+          <button type='button' aria-label='Zoom out' disabled={layout.scale <= layout.fit * 1.02} onClick={() => zoomAroundCentre(layout.scale / 1.25)} className={zoomControl}><Minus className='h-4 w-4' aria-hidden='true' /></button>
+          <button type='button' aria-label='Zoom to 100%' onClick={() => zoomAroundCentre(1)} className={`${zoomControl} min-w-14`}><span>{Math.round(layout.scale * 100)}%</span></button>
+          <button type='button' aria-label='Zoom in' disabled={layout.scale >= layout.max * .999} onClick={() => zoomAroundCentre(layout.scale * 1.25)} className={zoomControl}><Plus className='h-4 w-4' aria-hidden='true' /></button>
+          <button type='button' aria-label='Fit the whole board' onClick={() => { autoFill.current = false; setView(null); }} className={zoomControl}><Scan className='mr-1 h-4 w-4' aria-hidden='true' />Fit</button>
+        </div>
       </div>
     </div>
   );
