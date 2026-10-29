@@ -3,6 +3,7 @@ import { setPreloader, useRoute } from './router.jsx';
 import LandingPage from './landing/LandingPage.jsx';
 import { PageBoundary, PageLoading, lazyPage } from './lazyPage.jsx';
 import { isRoomCode } from './whiteboard/stage.js';
+import { isLessonId } from '../shared/lessons.js';
 
 const SITE = 'My Private Teacher';
 
@@ -10,6 +11,7 @@ const SITE = 'My Private Teacher';
 // only loads what it shows.
 const ActivityChooser = lazyPage(() => import('./landing/ActivityChooser.jsx'));
 const LoginPage = lazyPage(() => import('./account/LoginPage.jsx'));
+const PreparationPage = lazyPage(() => import('./lessons/PreparationPage.jsx'));
 const TrialPage = lazyPage(() => import('./account/TrialPage.jsx'));
 const BillingDonePage = lazyPage(() => import('./account/BillingDonePage.jsx'));
 const TeachGate = lazyPage(() => import('./account/TeachGate.jsx'));
@@ -39,6 +41,8 @@ function page(path) {
   if (path.startsWith('/dev/articulation-cards/')) return one('Articulation card', ArticulationCardPage, { id: path.split('/').pop() });
   if (path === '/dev/articulation-cards') return one('Articulation cards', ArticulationCardsGallery);
   if (path === '/dev/articulation') return one('Articulation gallery', ArticulationGallery);
+  if (path === '/lessons') return one('Prepare lesson', PreparationPage);
+  if (path.startsWith('/lessons/') && isLessonId(path.slice('/lessons/'.length))) return one('Prepare lesson', PreparationPage, { id: path.slice('/lessons/'.length) });
   if (path === '/login') return one('Sign in', LoginPage);
   if (path === '/admin') return one('Admin', AdminPage);
   if (path === '/terms') return one('Terms of Service', TermsPage);

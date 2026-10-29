@@ -22,7 +22,7 @@ export async function uploadPicture(room, id, image, { signal, fetcher = globalT
   const query = new URLSearchParams({ w: image.w, h: image.h, ...cleanPictureMetadata(image) });
   const response = await fetcher(`/api/rooms/${room.code}/pictures/${id}?${query}`, {
     method: 'POST', body: image.blob, signal,
-    headers: { 'Content-Type': image.blob.type, 'X-Room-Key': room.key },
+    headers: { 'Content-Type': image.blob.type, 'X-Room-Key': room.key, ...(room.pageId !== undefined ? { 'X-Page-Id': room.pageId, 'X-Page-Epoch': String(room.pageEpoch) } : {}) },
   });
   return { ok: response.ok, status: response.status };
 }
@@ -76,7 +76,7 @@ export function createPictureUploads({ role, getPictures, prepare, createId, onA
     const abort = () => controller.abort();
     options.signal?.addEventListener('abort', abort, { once: true });
     const current = () => context === generation && !controller.signal.aborted;
-    const destination = { code: room.code, key: room.key };
+    const destination = { code: room.code, key: room.key, ...(room.pageId !== undefined ? { pageId: room.pageId, pageEpoch: room.pageEpoch } : {}) };
     request.promise = Promise.resolve().then(async () => {
       let copy;
       try {

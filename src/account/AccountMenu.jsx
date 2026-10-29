@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CreditCard, LogOut, PlayCircle, ShieldCheck, Sparkles } from 'lucide-react';
+import { BookOpen, CreditCard, LogOut, PlayCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { Link } from '../router.jsx';
 import { accessLabel, hasAccess, signOut, useAccount } from './account.js';
 
@@ -63,6 +63,9 @@ export default function AccountMenu({ tutor }) {
               {tutor.plan ? 'Subscribe to the Tutor plan' : `Start ${trialDays}-day free trial`}
             </Link>
           )}
+          <Link to='/lessons' role='menuitem' className='flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>
+            <BookOpen className='h-4 w-4 text-violet-600' aria-hidden='true' />Prepare lesson
+          </Link>
           <Link to='/whiteboard/teach' role='menuitem' className='flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>
             <PlayCircle className='h-4 w-4 text-violet-600' aria-hidden='true' />
             Start teaching

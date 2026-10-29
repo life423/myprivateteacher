@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, applyAct, cleanSettings, newRound } from '../../share
 // The tutor's side of the bridge, inside the whiteboard. `game` is null while the bridge is put
 // away. This copy is the one that counts: it's what the student's screen follows, and the
 // student's taps arrive here to be applied.
-export function useTutorBridge(send) {
+export function useTutorBridge(send, { context, isCurrentContext } = {}) {
   const [game, setGame] = useState(null);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [selected, setSelected] = useState(null);
@@ -12,10 +12,11 @@ export function useTutorBridge(send) {
   const settingsRef = useRef(settings);
 
   // Sets the game here and on the student's screen
-  const commit = (next) => {
+  const commit = (next, origin = context) => {
+    if (isCurrentContext && !isCurrentContext(origin)) return;
     gameRef.current = next;
     setGame(next);
-    send({ t: 'game', game: next });
+    send({ t: 'game', game: next }, origin);
   };
 
   const start = () => {
@@ -23,10 +24,11 @@ export function useTutorBridge(send) {
     commit(newRound(settingsRef.current));
   };
   const stop = () => {
+    if (isCurrentContext && !isCurrentContext(context)) return;
     setSelected(null);
     gameRef.current = null;
     setGame(null);
-    send({ t: 'game', game: null });
+    send({ t: 'game', game: null }, context);
   };
   const place = (slot, letter) => {
     const next = applyAct(gameRef.current, { a: 'place', slot, letter });
@@ -54,9 +56,10 @@ export function useTutorBridge(send) {
       const bridge = msg.game && msg.game.kind !== 'phoneme' ? msg.game : null;
       gameRef.current = bridge;
       setGame(bridge);
+      setSelected(null);
     } else if (msg.t === 'game:act' && msg.act?.a) {
       const next = applyAct(gameRef.current, msg.act);
-      if (gameRef.current && next !== gameRef.current) commit(next);
+      if (gameRef.current && next !== gameRef.current) commit(next, msg.pageId ? { pageId: msg.pageId, pageEpoch: msg.pageEpoch } : context);
     }
   };
 

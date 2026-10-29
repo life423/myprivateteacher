@@ -9,7 +9,7 @@ export default function PrivacyPage() {
       summary={
         <>
           <strong>The short version:</strong> we collect as little as we can. Students don’t have accounts. Lessons aren’t
-          recorded, and what happens in a lesson isn’t kept after it ends. Card details go to Stripe, not to us. We don’t
+          recorded. Live board work is temporary; tutors can choose to save lesson plans, worksheets and private review notes. Card details go to Stripe, not to us. We don’t
           sell personal information, show ads, or track you across other websites.
         </>
       }
@@ -42,7 +42,13 @@ export default function PrivacyPage() {
         <strong>During lessons.</strong> What you do on the whiteboard (drawing, letter tiles, pictures the tutor adds, and
         where the pointing hands are) passes through our servers so both screens stay in step. It’s held in memory only
         while the lesson runs and is deleted shortly after the lesson ends. The tutor’s own browser keeps a copy of the
-        current board, so a lesson can carry on if our server restarts.
+        current board pages in memory, so a lesson can carry on if our server restarts.
+      </P>
+      <P>
+        <strong>Saved preparation.</strong> When a tutor saves a lesson, we store its activity order, selected materials,
+        private teaching prompts and any review notes under that tutor’s account. Uploaded worksheet images are kept in
+        private storage. The tutor can edit or delete this preparation. Saved plans do not automatically record student
+        drawing, answers or calls. Private prompts and notes are not sent to the student.
       </P>
       <P>
         <strong>Video and audio.</strong> When someone starts video, the camera and microphone connect directly between the
@@ -51,8 +57,8 @@ export default function PrivacyPage() {
       </P>
       <P>
         <strong>Students.</strong> We don’t ask students for their name, email address or age. What a student does in a
-        lesson, including video if it’s switched on, is shared with their tutor as it happens and isn’t kept by us after the
-        lesson.
+        lesson, including video if it’s switched on, is shared with their tutor as it happens. Live student board work and
+        calls are not retained after the lesson. A tutor may separately save their own private review observations.
       </P>
       <P>
         <strong>Technical information.</strong> Like most websites, our servers see IP addresses and basic browser details.
@@ -100,7 +106,7 @@ export default function PrivacyPage() {
       <P>
         {LEGAL.service} is for tutors, who must be adults. Students, who may be children, use it only in lessons their tutor
         sets up, without an account. We don’t knowingly collect personal information from children beyond what a lesson
-        needs as it happens, and we don’t keep it afterwards.
+        needs as it happens. Tutors may save private review observations and are responsible for including only what their teaching needs.
       </P>
       <P>
         Tutors who teach children are responsible for having a parent’s or guardian’s permission for online lessons,
@@ -113,7 +119,8 @@ export default function PrivacyPage() {
         <li>Tutor accounts: until you ask us to delete yours.</li>
         <li>Sign-in sessions: 30 days, or until you log out.</li>
         <li>Billing records: as long as the law requires. Stripe keeps its own records under its privacy policy.</li>
-        <li>Lesson content: deleted shortly after the lesson ends.</li>
+        <li>Live board content: deleted shortly after the lesson ends.</li>
+        <li>Saved lesson plans, worksheet images and private review notes: until the tutor deletes them or their account is deleted.</li>
         <li>Server logs: about 30 days.</li>
       </List>
 

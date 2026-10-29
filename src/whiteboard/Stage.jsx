@@ -143,6 +143,7 @@ export default function Stage({
   onSelectPiece = null, // selecting from Layers or adding a picture switches to Select
   onCropPiece = null, // tutor: open this session picture in the existing Magic Select editor
   stageApi = null,
+  pageControls = null,
   onView = null, // told which part of the board this screen shows
   peerView = null, // the part of the board the other person can see, outlined
   focus = null, // { x, y, w, h, n }: show this part of the board (the tutor asked)
@@ -859,7 +860,8 @@ export default function Stage({
       />}
       </div>
       <div data-board-footer className='relative z-50 flex h-11 shrink-0 items-center justify-between gap-1 border-t border-slate-200/70 bg-slate-50 px-1'>
-        <div className='min-w-0'>
+        <div className='flex min-w-0 items-center gap-1'>
+          {pageControls}
           {pieceActions && <PictureLayers
             inline above
             open={layersOpen}
@@ -883,7 +885,7 @@ export default function Stage({
         </div>
         <div data-board-zoom role='group' aria-label='Board zoom' className='flex shrink-0'>
           <button type='button' aria-label='Zoom out' disabled={layout.scale <= layout.fit * 1.02} onClick={() => zoomAroundCentre(layout.scale / 1.25)} className={zoomControl}><Minus className='h-4 w-4' aria-hidden='true' /></button>
-          <button type='button' aria-label='Zoom to 100%' onClick={() => zoomAroundCentre(1)} className={`${zoomControl} min-w-14`}><span>{Math.round(layout.scale * 100)}%</span></button>
+          <button type='button' aria-label='Zoom to 100%' onClick={() => zoomAroundCentre(1)} className={`${zoomControl} ${pageControls ? 'min-w-11 sm:min-w-14' : 'min-w-14'}`}><span>{Math.round(layout.scale * 100)}%</span></button>
           <button type='button' aria-label='Zoom in' disabled={layout.scale >= layout.max * .999} onClick={() => zoomAroundCentre(layout.scale * 1.25)} className={zoomControl}><Plus className='h-4 w-4' aria-hidden='true' /></button>
           <button type='button' aria-label='Fit the whole board' onClick={() => { autoFill.current = false; setView(null); }} className={zoomControl}><Scan className='mr-1 h-4 w-4' aria-hidden='true' />Fit</button>
         </div>

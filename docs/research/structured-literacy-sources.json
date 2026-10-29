@@ -1,0 +1,262 @@
+{
+  "title": "Structured-literacy teaching requirements: primary-source ledger",
+  "recordedAt": "2026-10-29",
+  "purpose": "Durable requirements requested by the user before saved lesson preparation; no implementation or clinical-outcome claim.",
+  "accessPolicy": "Only substantive primary/official resources listed as read. Scope limitations are per source; search snippets and navigation-only pages are not evidence.",
+  "sources": [
+    {
+      "id": "ida-structured-literacy",
+      "url": "https://dyslexiaida.org/structured-literacy-effective-instruction-for-students-with-dyslexia-and-related-reading-difficulties/",
+      "title": "Structured Literacy: Effective Instruction for Students with Dyslexia and Related Reading Difficulties",
+      "publisher": "International Dyslexia Association",
+      "evidenceType": "official professional guidance",
+      "keyFinding": "Explicit, planned, cumulative language instruction combines teacher modeling, practice, feedback and responsive pacing. Content reaches beyond phonemes into spelling, word structure and comprehension.",
+      "application": "Keep tutor control and cumulative review; do not equate a card/game collection with a complete intervention.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Article text read; not the linked downloadable manual. Its instructional term diagnostic does not authorize software diagnosis."
+    },
+    {
+      "id": "take-flight-program",
+      "url": "https://scottishriteforchildren.org/services/dyslexia/",
+      "title": "Dyslexia in Children",
+      "publisher": "Scottish Rite for Children",
+      "evidenceType": "program-owner description",
+      "keyFinding": "Take Flight addresses phonemic awareness, phonics, fluency, vocabulary and comprehension and is taught by trained Academic Language Therapists.",
+      "application": "Support a tutor working within their program without claiming official affiliation or reproducing an unseen curriculum.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Public page read, including program description. Original care/dyslexia URL redirected here; proprietary program materials were not accessed."
+    },
+    {
+      "id": "take-flight-summary",
+      "url": "https://scottishriteforchildren.org/wp-content/uploads/2025/05/Research-at-Glance-rev-2025_Take-Flight.pdf",
+      "title": "Research at a Glance: Take Flight",
+      "publisher": "Scottish Rite for Children",
+      "evidenceType": "program-owner research summary",
+      "keyFinding": "The program summary describes a two-year intervention with specialized therapist training and follow-up of graduating groups.",
+      "application": "Keep the distinction between a trained intervention program and our original teaching workspace.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "One-page PDF text read. Not an independent replication, full study appraisal or evidence for this app."
+    },
+    {
+      "id": "ufli-glossary",
+      "url": "https://ufli.education.ufl.edu/resources/teaching-resources/glossary/",
+      "title": "Glossary",
+      "publisher": "University of Florida Literacy Institute",
+      "evidenceType": "official teaching reference",
+      "keyFinding": "Elkonin boxes represent individual sounds; letters or letter combinations can later map those sounds. Blendable consonant models avoid an added schwa.",
+      "application": "Keep tutor-selected phoneme counts, digraph units and accurate consonant audio.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Relevant glossary definitions read; some phonics labels simplify phonetic analysis and should not be treated as universal IPA."
+    },
+    {
+      "id": "ufli-sound-wall",
+      "url": "https://ufli.education.ufl.edu/wp-content/uploads/2023/09/UFLI-Sound-Wall-rev.pdf",
+      "title": "UFLI Sound Wall Materials",
+      "publisher": "University of Florida Literacy Institute",
+      "evidenceType": "official instructional resource",
+      "keyFinding": "This sound-wall set pairs articulatory mouth cues with sound cards and adds taught grapheme correspondences; its organization is program specific.",
+      "application": "Use as an inventory comparison rather than importing a second deck or equating sound count with photograph count.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "PDF text read, including introduction, labels and grapheme pages. Not a visual/phonetic validation of every photograph or access to the UFLI manual."
+    },
+    {
+      "id": "reading-universe-interactive",
+      "url": "https://readinguniverse.org/resources/interactive/articulation-pronunciation/articulation-interactive",
+      "title": "How to Pronounce the English Phonemes: An Interactive Demo",
+      "publisher": "Reading Universe / WETA",
+      "evidenceType": "official educator resource",
+      "keyFinding": "The resource connects pronunciation, articulatory features, spellings and examples for consonants and vowels.",
+      "application": "Review teaching cues as a coordinated set; a plausible face photograph alone is insufficient.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Surrounding article read. Embedded two-page interactive was not fully operated and its audio was not audited."
+    },
+    {
+      "id": "reading-universe-pairs",
+      "url": "https://readinguniverse.org/skill-explainer/articulation-pronunciation/articulation-skill-explainer/how-to-teach-articulation-consonant-pairs",
+      "title": "How to Teach Articulation: Consonant Pairs",
+      "publisher": "Reading Universe / WETA",
+      "evidenceType": "official educator guidance",
+      "keyFinding": "Related consonants can share placement while differing in voicing; familiar group names are teaching cues rather than interchangeable sounds.",
+      "application": "Allow shared appropriate photographs while keeping sound identity and airflow/voicing instructions distinct.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Substantive prose/table read. The page credits licensed Kid Lips images; those are not app assets or evidence of Take Flight nomenclature."
+    },
+    {
+      "id": "reading-universe-vowels",
+      "url": "https://readinguniverse.org/skill-explainer/articulation-pronunciation/articulation-skill-explainer/how-to-teach-articulation-vowels-diphthongs-vowel-r",
+      "title": "How to Teach Articulation: Vowels, Diphthongs, and Vowel-r",
+      "publisher": "Reading Universe / WETA",
+      "evidenceType": "official educator guidance",
+      "keyFinding": "Vowel instruction distinguishes changing mouth gestures, stress and vowel-r patterns; a vowel-valley display is optional rather than necessary for every learner.",
+      "application": "Keep movement/stress cues and tutor choice; do not force a dense full sound wall onto the student.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Vowel prose and printed transcript read; videos not watched or listened to. Counts and labels reflect this resource, not a universal analysis."
+    },
+    {
+      "id": "reading-universe-dialect",
+      "url": "https://readinguniverse.org/skill-explainer/articulation-pronunciation/articulation-skill-explainer/articulation-and-students-who-speak-african-american-english",
+      "title": "Articulation and Students who Speak African American English",
+      "publisher": "Reading Universe / WETA",
+      "evidenceType": "official educator guidance",
+      "keyFinding": "Dialect differences are rule-governed language variation, not automatically articulation errors or deficits.",
+      "application": "Identify the model accent and avoid automatic penalties or deficit labels for home pronunciation.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Main guidance and available transcript read; no live classroom observation or app speech-scoring validation."
+    },
+    {
+      "id": "ies-recommendations",
+      "url": "https://ies.ed.gov/ncee/wwc/PracticeGuide/21",
+      "title": "Foundational Skills to Support Reading for Understanding in Kindergarten Through 3rd Grade",
+      "publisher": "Institute of Education Sciences / What Works Clearinghouse",
+      "evidenceType": "federal evidence-based practice guide overview",
+      "keyFinding": "The guide recommends language instruction, sound-letter linking, decoding/word writing and daily connected-text reading, with different evidence ratings.",
+      "application": "Keep literacy goals broader than games and mouth cards and avoid transferring its evidence ratings to our app.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Recommendations and scope read. The landing page labels July 2016 release and December 2019 revision."
+    },
+    {
+      "id": "ies-full-guide",
+      "url": "https://ies.ed.gov/ncee/WWC/Docs/PracticeGuide/wwc_foundationalreading_040717.pdf",
+      "title": "Foundational Skills to Support Reading for Understanding in Kindergarten Through 3rd Grade (full guide)",
+      "publisher": "Institute of Education Sciences / What Works Clearinghouse",
+      "evidenceType": "federal evidence-based practice guide",
+      "keyFinding": "The examples match boxes to phonemes, use counters/tiles according to print knowledge, distinguish blends from digraphs, and address unwanted schwa during blending.",
+      "application": "Test sound counts and preserve tutor-guided oral-to-print mapping and accurate consonant models.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Relevant printed pages 17–20 and 31 plus introduction read, not all 123 PDF pages or every underlying study. PDF page numbering differs from printed numbering."
+    },
+    {
+      "id": "uci-consonants",
+      "url": "https://ocw.uci.edu/upload/files/consonants.pdf",
+      "title": "The Consonants of American English",
+      "publisher": "University of California, Irvine OpenCourseWare; Marla Yoshida",
+      "evidenceType": "university phonetics teaching resource",
+      "keyFinding": "Consonants differ by voicing, place and manner; nasal airflow differs from stops, and /wh/ contrasts vary among speakers.",
+      "application": "Review each grouped label without erasing sound distinctions or enforcing optional accent contrasts.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Relevant PDF pages 1–5 read, not every exercise. Pronunciation teaching guidance, not a dyslexia intervention trial."
+    },
+    {
+      "id": "uci-vowels",
+      "url": "https://ocw.uci.edu/upload/files/vowels.pdf",
+      "title": "The Vowels of American English",
+      "publisher": "University of California, Irvine OpenCourseWare; Marla Yoshida",
+      "evidenceType": "university phonetics teaching resource",
+      "keyFinding": "Vowels vary across accents and speakers; letters are not vowel sounds, and lip posture alone is an imperfect indicator.",
+      "application": "Label accent-sensitive targets, distinguish print from sounds, and avoid requiring one exaggerated face shape.",
+      "access": "read",
+      "readAt": "2026-10-29",
+      "limitations": "Relevant PDF pages 1–5 read, not all 15 pages. Its vowel inventory is an analysis choice, not a required photo count."
+    }
+  ],
+  "localEvidence": [
+    {
+      "path": "src/data/articulationCards.js",
+      "access": "read",
+      "finding": "16 grouped families with original phonics labels; shared front-photo keys do not identify identical airflow or vowel targets."
+    },
+    {
+      "path": "src/data/phonemeArticulation.js",
+      "access": "read",
+      "finding": "47 developer reference entries: 40 core targets, 6 sequences, 1 dialect target; General American scope and no official Take Flight affiliation."
+    },
+    {
+      "path": "src/articulation/phonemeExport.js",
+      "access": "read",
+      "finding": "Default plan exports 12 additions into Mouth Pictures at orders 17–28; all-sounds is an explicit developer-reference alternative."
+    },
+    {
+      "path": "src/data/groupedArticulationCoverage.test.js",
+      "access": "read",
+      "finding": "Existing checks map family labels to reference IDs and assert 16+12=28 coverage without expanding the grouped library to 47. Tests inspected, not executed for this documentation task."
+    },
+    {
+      "path": "src/articulation/ArticulationCard.jsx",
+      "access": "read",
+      "finding": "Shared 1200x1200 card frame with one face photograph, title, instruction, anatomical diagram and sound text."
+    },
+    {
+      "path": "src/articulation/PhonemeArticulationCard.jsx",
+      "access": "read",
+      "finding": "Uses the same frame for additions; movement is described in text/diagram without a second photograph."
+    },
+    {
+      "path": "src/articulation/ArticulationCard.test.jsx",
+      "access": "read",
+      "finding": "Checks the full 28-card frame, nonempty photograph/diagram, shared geometry, banner and text regions. Not a clinical accuracy test."
+    },
+    {
+      "path": "src/articulation/phonemeCardLayout.test.js",
+      "access": "read",
+      "finding": "Checks one mouth region, fitting text, sequence wording and unstressed schwa example."
+    },
+    {
+      "path": "src/assets/articulation/photos/phoneme-generation.json",
+      "access": "read",
+      "finding": "Eight generated posture assets have prompts, reference filename, intended-use limitations and SHA-256 provenance; appearance is not phonetic validation."
+    },
+    {
+      "path": "scripts/render-articulation-cards.mjs",
+      "access": "read",
+      "finding": "Renders the 16 families into JPEG/CSV for the existing library import."
+    },
+    {
+      "path": "scripts/render-phoneme-articulation.mjs",
+      "access": "read",
+      "finding": "Default 12-addition export validates missing content and duplicate rendered hashes and retains card/region metadata."
+    },
+    {
+      "path": "scripts/import-library.mjs; scripts/library-import.js; server/library.js",
+      "access": "read",
+      "finding": "Stable identities and image hashes are preflighted; metadata uses Cosmos Mongo pictures collection, bytes use private Blob library container. No cloud inventory was read."
+    },
+    {
+      "path": "shared/soundBoxes.js",
+      "access": "read",
+      "finding": "Teacher-selected count, bounded taps and exercise epoch; count is not inferred from letters."
+    }
+  ],
+  "inventorySnapshot": {
+    "basis": "Local ES module imports and source inspection, not live database/Blob queries",
+    "baseFamilies": 16,
+    "defaultAdditions": 12,
+    "groupedTotal": 28,
+    "developerReference": 47,
+    "coreReferenceTargets": 40,
+    "additionalReferenceSequences": 6,
+    "additionalReferenceDialectTargets": 1,
+    "duplicateCaution": "Stable card IDs and rendered hashes differ from shared source photographs; semantic target review is also necessary."
+  },
+  "userRequirements": [
+    "Consistent existing aqua/white card style: one face photograph, title, instruction, one anatomy diagram, sound/example text.",
+    "No title/example separator such as Long I — pie; preserve phonics diacritics.",
+    "No duplicate complete cards or second production import of the 47-entry developer reference.",
+    "Retain direct Add face, full-card view, Magic Select including meaningful non-face regions, and manual selection.",
+    "Preserve search/scroll, manageable clear-space placement, overlap/layer information and student face-size restriction.",
+    "Tutor controls sequence and revealing materials; saved manual Review/Build words/Dictation/Read and private Review next time notes follow board pages.",
+    "Private answers, word lists and notes never go onto the student wire merely hidden in the UI.",
+    "Custom original tools can support Take Flight tutors without claiming official certification or endorsement."
+  ],
+  "handwrittenNote": {
+    "provenance": "User-provided photograph in conversation; original temporary image file no longer available locally. Legible phrases preserved in companion Markdown.",
+    "certaintyPolicy": "Do not infer exact vowel symbols, first tongue label final word, cramped h annotation, or isolated scraper association. Reconfirm before naming or generating cards.",
+    "officialProgramTerminologyVerified": false
+  },
+  "limits": [
+    "This is guidance for product implementation, not a complete curriculum, diagnostic instrument, or proof of intervention efficacy.",
+    "No saved-lesson code, cloud changes, live imports, or runtime service changes were made.",
+    "No claim of full audio review, current live Blob counts or a therapist review of every existing card."
+  ]
+}

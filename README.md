@@ -125,3 +125,28 @@ The source review also identified follow-ups that need their own integration wor
 - The tutors' unique Google-subject index is requested asynchronously and failures are currently ignored. Verify existing database/index compatibility before enforcing readiness.
 
 Dependency audit: compatible request-parser and development-tool security updates are included. Two npm audit entries remain for Azure Identity/MSAL. The [upstream MSAL advisory](https://github.com/AzureAD/microsoft-authentication-library-for-js/security/advisories/GHSA-xcx6-jx8p-x3h5) affects its authorization-code flow; this app uses DefaultAzureCredential for Blob access and Google ID tokens for tutor sign-in. The current Azure Identity version requires MSAL 6, while the fix is in MSAL 7.1. A major transitive override or SDK downgrade has not been forced; validate a supported SDK upgrade separately.
+
+## Teaching requirements
+
+Read [Structured literacy teaching requirements](docs/structured-literacy.md) before building lesson activities, sound cards, assessment feedback or tutor preparation. The notes preserve the verified teaching principles, the current card inventory, uncertain tutor annotations and source limits.
+
+
+### Board pages and saved preparation
+
+Tutors can use the page counter at the bottom-left of the board to add a blank page, duplicate the current page, or move between pages. Students follow the tutor's active page. Each of up to 24 pages preserves its drawing, tiles, pictures, sound boxes and game during the live room; page switching keeps video and Materials mounted. The alphabet remains a pointing reference, not a source of draggable tiles.
+
+Open **My account → Prepare lesson**, or `/lessons`, to create a private preparation with ordered **Review**, **Build words**, **Dictation** and **Read** activities. Select letters/cards, enter private prompts or targets, and upload an image or selected PDF page. Save, then choose **Teach this lesson**. Inside the whiteboard, the **Lesson** row opens the tutor's tray. **Start activity**, the activity chooser, and **Previous / Next** open the appropriate board page. Returning preserves its live work. A changed selection of public materials gets a fresh page; private review-note edits preserve the existing page.
+
+**Review next time** and its optional note are saved explicitly. Saving preparation does not record a call or persist the student's live drawing. Plans, private prompts, review notes and worksheet images remain under the authenticated tutor's account until deleted. Student room messages receive only the selected public materials; dictation targets stay private. The application does not prescribe or reproduce a proprietary teaching sequence.
+
+Storage reuses `MONGODB_URI` (`myprivateteacher.lessons`) and the existing private Blob `library` container under a separate `private-lessons/` prefix. The server identity needs read, write and delete access to that prefix. Image bytes stay in Blob Storage; Mongo stores bounded metadata and preparation. Account deletion revokes access before removing saved preparation and files; interrupted cleanup remains retryable. Existing local development credentials were checked with a temporary create/read/delete probe; deployment identity permissions must be checked when deploying this branch.
+
+Verification commands after `npm run build`:
+
+```sh
+npm test
+node scripts/check-board-pages.mjs --browser chrome
+node scripts/check-saved-lessons.mjs --browser chrome
+```
+
+The browser scripts use isolated fixture services and real tutor/student sockets, without a real account, cloud data or live camera/microphone. `--browser webkit` runs the same flows in WebKit. Phone checks are emulated; Chrome uses trusted touch.

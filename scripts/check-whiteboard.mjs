@@ -11,14 +11,15 @@ import { WORD_BANK, WORD_LEVELS } from '../server/wordBank.js';
 
 // Isolated smoke coverage: real browser, HTTP upload, tutor/student sockets, and
 // in-memory fixture services. Never connects to a user's running app or cloud account.
-let dev = false, browserName = 'chrome', output;
+let dev = false, browserName = 'chrome', output, caseFilter = '';
 const args = process.argv.slice(2);
 for (let index = 0; index < args.length; index += 1) {
   if (args[index] === '--dev') dev = true;
   else if (args[index] === '--browser') browserName = args[++index];
   else if (args[index] === '--output') output = args[++index];
+  else if (args[index] === '--filter') caseFilter = args[++index];
   else if (args[index] === '--help') {
-    console.log('Usage: node scripts/check-whiteboard.mjs [--dev] [--browser chrome|chromium|webkit] [--output DIRECTORY]');
+    console.log('Usage: node scripts/check-whiteboard.mjs [--dev] [--browser chrome|chromium|webkit] [--output DIRECTORY] [--filter CASE-NAME-SUBSTRING]');
     process.exit(0);
   } else throw new Error(`Unknown option: ${args[index]}`);
 }
@@ -28,7 +29,7 @@ assert(dev || existsSync(join(root, 'dist/index.html')), 'Run npm run build firs
 const out = output ? resolve(output) : mkdtempSync(join(tmpdir(), 'mpt-whiteboard-'));
 mkdirSync(out, { recursive: true });
 const report = { browser: browserName, frontend: dev ? 'isolated Vite' : 'production build', fixtureServices: true,
-  realWebSockets: true, cloudServices: false, actualUserSession: false, cases: [], pageErrors: [],
+  caseFilter: caseFilter || null, realWebSockets: true, cloudServices: false, actualUserSession: false, cases: [], pageErrors: [],
   limitations: ['Idle video controls are checked; live camera, microphone, Google sign-in, billing, and cloud storage are not exercised.', 'WebKit phone checks use mouse input; Chrome phone checks use trusted touch.'] };
 let server, vite, realtime, browser, devTransport;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -110,10 +111,17 @@ async function drag(session, start, end) {
   }
 }
 async function check(session, name, action, page = session.tutor) {
+  if (caseFilter && !name.includes(caseFilter)) return;
   const item = { viewport: session.mobile ? 'phone' : 'desktop', name };
   report.cases.push(item);
   try { Object.assign(item, await action()); item.passed = true; }
-  catch (error) { item.passed = false; item.error = error.message; await page.screenshot({ path: join(out, `failure-${report.cases.length}.png`) }).catch(() => {}); }
+  catch (error) {
+    item.passed = false; item.error = error.stack; item.scrollCheckpoint = session.scrollCheckpoint;
+    if (session.cdp) item.cdpMetrics = await session.cdp.send('Page.getLayoutMetrics').catch(()=>null);
+    item.scrollGeometry = await page.evaluate(() => [...document.querySelectorAll('[data-materials-workspace] section[aria-label=Materials], [data-materials-scroll]')].map(element => ({tag:element.tagName,owner:element.hasAttribute('data-materials-scroll'),clientHeight:element.clientHeight,scrollHeight:element.scrollHeight,scrollTop:element.scrollTop,overflow:getComputedStyle(element).overflowY,bounds:element.getBoundingClientRect().toJSON()}))).catch(()=>null);
+    await page.screenshot({ path: join(out, `failure-${report.cases.length}.png`) }).catch(() => {});
+    writeFileSync(join(out, `failure-${report.cases.length}.json`), JSON.stringify(item,null,2));
+  }
 }
 async function countOnBoth(session, selector, count) {
   for (const page of [session.tutor, session.student]) await page.waitForFunction(({ selector, count }) => document.querySelectorAll(selector).length === count, { selector, count });
@@ -281,10 +289,34 @@ try {
       await tutor.getByRole('searchbox', { name: 'Search pictures', exact: true }).fill('Smoke card');
       await tutor.getByRole('list', { name: 'Library cards', exact: true }).locator('> li').first().waitFor();
       assert.equal(await tutor.getByRole('list', { name: 'Library cards', exact: true }).locator('> li').count(), 28);
+      if (mobile) await settleSheet(tutor);
       const scroll = tutor.locator('[data-materials-scroll]');
-      await scroll.evaluate(element => { element.dispatchEvent(new Event('wheel')); element.scrollTop = 420; });
+      if (room.cdp) {
+        const bounds = await scroll.boundingBox();
+        assert(bounds && bounds.height >= 80, 'Material results need a usable touch-scroll area');
+        // Use Chromium's compositor gesture for native scrolling. The raw touch
+        // helper above tests app pointer handlers and has no paced native-pan clock.
+        await room.cdp.send('Input.synthesizeScrollGesture', {
+          x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2),
+          yDistance: -Math.min(100, (bounds.height - 32) / 2), gestureSourceType: 'touch', speed: 250, preventFling: true,
+        });
+        await tutor.waitForFunction(() => document.querySelector('[data-materials-scroll]').scrollTop > 0);
+        room.materialTouchScroll = await scroll.evaluate(async element => {
+          let last = element.scrollTop, stable = 0;
+          for (let frame = 0; frame < 180; frame++) {
+            await new Promise(done => requestAnimationFrame(done));
+            const next = element.scrollTop; stable = Math.abs(next - last) < 0.5 ? stable + 1 : 0; last = next;
+            if (stable >= 8) return next;
+          }
+          throw new Error('Touch-scroll momentum did not settle');
+        });
+      }
+      await scroll.evaluate(element => { element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true })); element.scrollTop = 420; });
+      room.scrollCheckpoint = 'initial 420px scroll';
       await tutor.waitForFunction(() => document.querySelector('[data-materials-scroll]').scrollTop >= 400);
+      room.initialScrollGeometry = await scroll.evaluate(element => ({tag:element.tagName,clientHeight:element.clientHeight,scrollHeight:element.scrollHeight,scrollTop:element.scrollTop}));
       room.pictureScroll = await scroll.evaluate(element => element.scrollTop);
+      room.scrollCheckpoint = 'switching away from scrolled Pictures';
       await materials(tutor, 'Worksheets');
       await tutor.getByRole('searchbox', { name: 'Search worksheets', exact: true }).fill('short a');
       await materials(tutor, 'Letters');
@@ -293,9 +325,10 @@ try {
       assert.equal(await tutor.getByRole('searchbox', { name: 'Search worksheets', exact: true }).inputValue(), 'short a');
       await materials(tutor, 'Pictures');
       assert.equal(await tutor.getByRole('searchbox', { name: 'Search pictures', exact: true }).inputValue(), 'Smoke card');
+      room.scrollCheckpoint = 'restoring after tab changes';
       await tutor.waitForFunction(expected => Math.abs(document.querySelector('[data-materials-scroll]').scrollTop - expected) <= 1, room.pictureScroll);
       await tutor.screenshot({ path: join(out, `${mobile ? 'phone' : 'desktop'}-materials.png`) });
-      return { independentSearches: true, pictureScrollRestored: room.pictureScroll, localCatalogCards: 28 };
+      return { trustedTouchScroll:room.materialTouchScroll, initialScrollGeometry:room.initialScrollGeometry, independentSearches: true, pictureScrollRestored: room.pictureScroll, localCatalogCards: 28 };
     });
     await check(room, 'Games stays inline, exposes level controls, and restores Materials', async () => {
       const sentBefore = await student.evaluate(() => window.smokeReceived.length);
