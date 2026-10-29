@@ -32,6 +32,24 @@ describe('prepared worksheet uploads', () => {
     expect(f.copies.get(id(1)).blob).toBe(image.blob);
   });
 
+  it('sends captured page authority with the HTTP write', async () => {
+    const fetcher = vi.fn(async () => ({ ok: true, status: 201 }));
+    await uploadPicture({ ...room, pageId: 'page-a', pageEpoch: 4 }, id(1), page(), { fetcher });
+    expect(fetcher.mock.calls[0][1].headers).toMatchObject({ 'X-Page-Id': 'page-a', 'X-Page-Epoch': '4' });
+  });
+
+  it('retains the destination activation captured before asynchronous image preparation', async () => {
+    const waiting = deferred();
+    const f = fixture({ prepare: () => waiting.promise });
+    const destination = { ...room, pageId: 'page-a', pageEpoch: 4 };
+    const work = f.manager.addFile({ name: 'slow.png' }, destination);
+    await tick();
+    destination.pageId = 'page-b'; destination.pageEpoch = 5;
+    waiting.resolve(page());
+    await work;
+    expect(f.upload.mock.calls[0][0]).toEqual({ ...room, pageId: 'page-a', pageEpoch: 4 });
+  });
+
   it('reserves the last upload slot before image decoding while library cards use a separate allowance', async () => {
     const waiting = deferred();
     const prepare = vi.fn(() => waiting.promise);

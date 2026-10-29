@@ -12,6 +12,8 @@ import { connectWords } from './words.js';
 import { adminRoutes } from './admin.js';
 import { PLAN_PRICE_CENTS, TRIAL_DAYS, connectBilling } from './billing.js';
 import { closeDatabases, warmDatabase } from './db.js';
+import { connectLessons } from './lessons.js';
+import { lessonRoutes } from './lessonRoutes.js';
 
 const PORT = Number(process.env.PORT) || 8080;
 const CANONICAL_HOST = process.env.CANONICAL_HOST || 'myprivateteacher.com';
@@ -96,7 +98,7 @@ function sameSite(req) {
   }
 }
 
-export function createApp({ pictures, library, accounts, billing, liveLessons, words } = {}) {
+export function createApp({ pictures, library, accounts, billing, liveLessons, words, lessons } = {}) {
   const gate = lessonGate({ accounts, billing });
   const app = express();
   app.disable('x-powered-by');
@@ -120,7 +122,10 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
   // Minimal picture adapters used by embedders/tests can still provide synchronous add.
   const beginPictureWrite = (req, res, next) => {
     if (pictures.beginWrite) {
-      req.pictureWriteToken = pictures.beginWrite(req.params.code, req.get('x-room-key'));
+      const scoped = req.get('x-page-id') !== undefined || req.get('x-page-epoch') !== undefined;
+      req.pictureWriteToken = scoped
+        ? pictures.beginWrite(req.params.code, req.get('x-room-key'), { pageId: req.get('x-page-id'), pageEpoch: Number(req.get('x-page-epoch')) })
+        : pictures.beginWrite(req.params.code, req.get('x-room-key'));
       if (!req.pictureWriteToken) return res.sendStatus(403);
     }
     next();
@@ -202,6 +207,7 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
   // Tutor accounts (Sign in with Google). Which tutor this browser is signed in as, if any,
   // and whether sign-in is available.
   const currentTutor = async (req) => (accounts ? accounts.tutorFor(cookieValue(req, SESSION_COOKIE)).catch(() => null) : null);
+  app.use('/api/lessons', lessonRoutes({ lessons, currentTutor, sameSite, library, imageType }));
   // Phoneme Pop's words, by level. Anyone may read them; the game falls back to its own if this fails.
   if (words) {
     app.get('/api/words', async (req, res) => {
@@ -346,23 +352,26 @@ export function start(port = PORT) {
   // The picture routes reach the live rooms through this, once the realtime server exists.
   let realtime = null;
   const pictures = {
-    beginWrite: (code, key) => realtime.pictures.beginWrite(code, key),
+    beginWrite: (code, key, scope) => realtime.pictures.beginWrite(code, key, scope),
     add: (upload) => realtime.pictures.add(upload),
     get: (code, id) => realtime.pictures.get(code, id),
     isTutor: (code, key) => realtime.pictures.isTutor(code, key),
   };
   warmDatabase(process.env.MONGODB_URI); // connect now, not on the first visitor's request
   const library = connectLibrary();
-  const accounts = connectAccounts();
+  let lessons = null;
+  const accounts = connectAccounts({ beforeDelete: id => lessons?.deleteOwner(id) });
+  if (accounts) lessons = connectLessons({ ownerExists: id => accounts.isActive(id) });
   if (accounts) console.log('Tutor sign-in connected');
   const words = connectWords();
   if (words) console.log('Word bank connected');
   const billing = connectBilling({ accounts });
   if (billing) console.log('Billing connected');
   if (library) console.log('Picture library connected');
+  if (lessons) console.log('Saved lesson storage configured');
   // Lessons running now, for the admin panel (the realtime server starts just below).
   const liveLessons = () => (realtime ? { lessons: realtime.rooms.size, withStudent: [...realtime.rooms.values()].filter((r) => r.student).length } : null);
-  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons, words }));
+  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons, words, lessons }));
   realtime = attachRealtime(server, {
     allowedOrigins: ALLOWED_ORIGINS,
     turn: { host: process.env.TURN_HOST, secret: process.env.TURN_SECRET, tls: process.env.TURN_TLS === 'true' },

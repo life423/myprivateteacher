@@ -1,4 +1,5 @@
 import { cleanPictureMetadata } from '../shared/pictureMetadata.js';
+import { DEFAULT_PAGE_ID, MAX_PAGES, PAGE_COMMANDS, PAGE_MUTATIONS, cleanPageTitle, isPageId, matchesPageScope } from '../shared/pages.js';
 import { WebSocketServer } from 'ws';
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
@@ -87,6 +88,47 @@ function viewRect(m) {
   return w >= 20 && h >= 20 ? { x, y, w, h } : null;
 }
 
+const PAGE_FIELDS = ['game', 'strokes', 'strokeById', 'seq', 'tiles', 'pieces', 'offers', 'zTop', 'order', 'strip', 'boxes', 'boxTaps', 'boxEpoch', 'lines', 'pictureIds'];
+const PAGE_EVENTS = new Set([...PAGE_MUTATIONS, 'ack', 'tile:denied', 'tiles', 'piece:denied', 'pic:add', 'pieces', 'offer', 'pages']);
+const RESTORE_PACKETS = new Set(['rs', 'rs-tile', 'rs-piece', 'rs-offer']);
+const isRestoreId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id);
+const freshPage = (id = DEFAULT_PAGE_ID, title = 'Board 1') => ({
+  id, title, game: null, strokes: [], strokeById: new Map(), seq: 0, tiles: new Map(), pieces: new Map(), offers: new Map(),
+  zTop: 0, order: 0, strip: true, boxes: 0, boxTaps: [], boxEpoch: 0, lines: DEFAULT_LINES, pictureIds: new Set(),
+});
+function copyPage(source, id, title) {
+  const page = freshPage(id, title);
+  for (const field of ['seq', 'zTop', 'order', 'strip', 'boxes', 'boxEpoch', 'lines']) page[field] = source[field];
+  page.strokes = source.strokes.map(stroke => ({ ...stroke, pts: [...stroke.pts], done: true }));
+  page.strokeById = new Map(page.strokes.map(stroke => [stroke.id, stroke]));
+  page.tiles = new Map([...source.tiles].map(([key, tile]) => [key, { ...tile, heldBy: null }]));
+  page.pieces = new Map([...source.pieces].map(([key, piece]) => [key, { ...piece, crop: { ...piece.crop }, heldBy: null }]));
+  page.offers = new Map([...source.offers].map(([key, offer]) => [key, { ...offer, crop: { ...offer.crop } }]));
+  page.pictureIds = new Set(source.pictureIds);
+  page.boxTaps = [...source.boxTaps];
+  page.game = source.game ? JSON.parse(JSON.stringify(source.game)) : null;
+  return page;
+}
+const pageList = room => [...room.pages.values()].map(({ id, title }) => ({ id, title }));
+const pageHeader = room => ({ pageId: room.pageId, pageEpoch: room.pageEpoch, pages: pageList(room) });
+const cachedPage = page => ({
+  id: page.id, title: page.title, strip: page.strip, lines: page.lines, boxes: page.boxes, boxTaps: page.boxTaps, boxEpoch: page.boxEpoch,
+  strokes: page.strokes.map(({ id, by, tool, pts, seq }) => ({ id, by, tool, pts, seq })),
+  tiles: [...page.tiles.values()], pieces: [...page.pieces.values()], offers: [...page.offers.values()], pictureIds: [...pagePictureIds(page)], game: page.game,
+});
+const pagePictureIds = (page) => new Set([...page.pictureIds, ...[...page.pieces.values()].map(piece => piece.pic), ...[...page.offers.values()].map(offer => offer.pic)]);
+// Existing handlers address the active board through these aliases. A staged restore
+// temporarily supplies its private target; incomplete pages are never exposed to peers.
+function initializePages(room) {
+  const page = freshPage();
+  room.pages = new Map([[page.id, page]]);
+  room.pageId = page.id;
+  room.pageEpoch = 0;
+  room.board = page;
+  room.restoreTransaction = null;
+  for (const field of PAGE_FIELDS) Object.defineProperty(room, field, { enumerable: true, get() { return room.board[field]; }, set(value) { room.board[field] = value; } });
+}
+
 const MAX_LIBRARY_PICTURES = 32; // library cards a session may hold; uploads have their own limit
 
 // A library card's predefined Magic Select regions (its mouth photo), checked: up to 8, each a
@@ -149,7 +191,11 @@ export function attachRealtime(server, options = {}) {
   let pictureBytes = 0;
 
   const send = (ws, msg) => {
-    if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+    if (!ws || ws.readyState !== ws.OPEN) return;
+    const room = ws.room;
+    if (room && msg.t === 'pic:add' && room.student === ws && (room.restoring || !pagePictureIds(room.board).has(msg.pic?.id))) return;
+    const scope = room && PAGE_EVENTS.has(msg.t) && (ws.pageScoped || room.pageEpoch > 0 || room.pages.size > 1) ? { pageId: room.pageId, pageEpoch: room.pageEpoch } : {};
+    ws.send(JSON.stringify({ ...scope, ...msg }));
   };
 
   const roleOf = (ws) => {
@@ -174,23 +220,28 @@ export function attachRealtime(server, options = {}) {
     return bucket.count <= perSecond;
   };
 
-  const boardMessage = (room, reason = 'sync') => ({
-    t: 'board',
-    reason,
-    tools: room.tools,
-    hands: publicHands(room),
-    strip: room.strip,
-    boxes: room.boxes,
-    boxTaps: room.boxTaps,
-    boxEpoch: room.boxEpoch,
-    lines: room.lines,
-    strokes: room.strokes.map(({ id, by, tool, pts, seq }) => ({ id, by, tool, pts, seq })),
-    tiles: [...room.tiles.values()],
-    pictures: [...room.pictures.values()].map(sharedPicture),
-    pieces: [...room.pieces.values()],
-    offers: [...room.offers.values()],
-    game: room.game,
-  });
+  const boardMessage = (room, reason = 'sync', role = 'tutor') => {
+    const board = room.restoring && role === 'student' ? freshPage(room.pageId) : room.board;
+    return {
+      t: 'board',
+      reason,
+      ...pageHeader(room),
+      tools: room.tools,
+      hands: publicHands(room),
+      strip: board.strip,
+      boxes: board.boxes,
+      boxTaps: board.boxTaps,
+      boxEpoch: board.boxEpoch,
+      lines: board.lines,
+      strokes: board.strokes.map(({ id, by, tool, pts, seq }) => ({ id, by, tool, pts, seq })),
+      tiles: [...board.tiles.values()],
+      pictureIds: [...pagePictureIds(board)],
+      pictures: [...room.pictures.values()].filter(pic => role === 'tutor' || pagePictureIds(board).has(pic.id)).map(sharedPicture),
+      pieces: [...board.pieces.values()],
+      offers: [...board.offers.values()],
+      game: board.game,
+    };
+  };
 
   const broadcast = (room, msg) => {
     send(room.tutor, msg);
@@ -227,9 +278,8 @@ export function attachRealtime(server, options = {}) {
   const isTutor = (ws) => Boolean(ws.room && ws.room.tutor === ws);
 
   const broadcastBoard = (room, reason) => {
-    const msg = boardMessage(room, reason);
-    send(room.tutor, msg);
-    send(room.student, msg);
+    send(room.tutor, boardMessage(room, reason, 'tutor'));
+    send(room.student, boardMessage(room, reason, 'student'));
   };
 
   const sendPresence = (room) => {
@@ -268,7 +318,7 @@ export function attachRealtime(server, options = {}) {
     room.pictureGeneration += 1;
     for (const pic of room.pictures.values()) pictureBytes -= pic.bytes.length;
     room.pictures.clear();
-    room.offers.clear();
+    for (const page of room.pages.values()) { page.pictureIds.clear(); page.offers.clear(); }
   };
 
   const closeRoom = (room, reason) => {
@@ -397,7 +447,121 @@ export function attachRealtime(server, options = {}) {
     return true;
   };
 
+  const totalStrokes = room => [...(room.restoreTransaction?.pages || room.pages).values()].reduce((sum, page) => sum + page.strokes.length, 0);
+  const rememberPicture = (room, id) => {
+    const picture = room.pictures.get(id);
+    if (!picture || room.pictureIds.has(id)) return;
+    room.pictureIds.add(id);
+    // A source may already exist globally on a different page. Tell the student
+    // its dimensions/regions before the first placement referencing it arrives.
+    broadcast(room, { t: 'pic:add', pic: sharedPicture(picture) });
+  };
+  const preparePageChange = room => {
+    for (const ws of [room.tutor, room.student]) if (ws) { finishStroke(ws, room); releaseTiles(ws, room); }
+    releaseHands(room, 'tutor');
+    releaseHands(room, 'student');
+    room.pointers = {};
+  };
+  const activatePage = (room, id) => {
+    if (!room.pages.has(id) || room.pageEpoch >= Number.MAX_SAFE_INTEGER) return false;
+    preparePageChange(room);
+    room.pageId = id;
+    room.board = room.pages.get(id);
+    room.pageEpoch++;
+    room.pictureGeneration++;
+    broadcastBoard(room, 'page');
+    return true;
+  };
+  const pageError = (ws, reason) => send(ws, { t: 'error', reason, ...pageHeader(ws.room) });
+
   const handlers = {
+    'page:add'(ws, msg) {
+      if (!isTutor(ws) || ws.room.restoring) return;
+      const room = ws.room;
+      if (room.pages.size >= MAX_PAGES) return pageError(ws, 'page-limit');
+      const id = msg.id === undefined ? `page-${randomBytes(8).toString('hex')}` : msg.id;
+      if (!isPageId(id) || room.pages.has(id)) return pageError(ws, 'page-id');
+      const page = freshPage(id, cleanPageTitle(msg.title, `Board ${room.pages.size + 1}`));
+      room.pages.set(id, page);
+      activatePage(room, id);
+    },
+    'page:duplicate'(ws, msg) {
+      if (!isTutor(ws) || ws.room.restoring) return;
+      const room = ws.room;
+      const source = room.pages.get(msg.id || room.pageId);
+      if (!source) return pageError(ws, 'page-id');
+      if (room.pages.size >= MAX_PAGES) return pageError(ws, 'page-limit');
+      if (totalStrokes(room) + source.strokes.length > MAX_STROKES) return pageError(ws, 'page-board-full');
+      const id = msg.copyId === undefined ? `page-${randomBytes(8).toString('hex')}` : msg.copyId;
+      if (!isPageId(id) || room.pages.has(id)) return pageError(ws, 'page-id');
+      preparePageChange(room);
+      room.pages.set(id, copyPage(source, id, cleanPageTitle(msg.title, `${source.title} copy`)));
+      activatePage(room, id);
+    },
+    'page:switch'(ws, msg) {
+      if (!isTutor(ws) || ws.room.restoring) return;
+      if (!ws.room.pages.has(msg.id)) return pageError(ws, 'page-id');
+      if (msg.id === ws.room.pageId) return send(ws, boardMessage(ws.room));
+      activatePage(ws.room, msg.id);
+    },
+    'page:rename'(ws, msg) {
+      if (!isTutor(ws) || ws.room.restoring) return;
+      const page = ws.room.pages.get(msg.id);
+      if (!page) return pageError(ws, 'page-id');
+      page.title = cleanPageTitle(msg.title, page.title);
+      broadcast(ws.room, { t: 'pages', ...pageHeader(ws.room) });
+    },
+    'page:delete'(ws, msg) {
+      if (!isTutor(ws) || ws.room.restoring) return;
+      const room = ws.room;
+      if (!room.pages.has(msg.id)) return pageError(ws, 'page-id');
+      if (room.pages.size === 1) return pageError(ws, 'page-last');
+      const ids = [...room.pages.keys()];
+      const index = ids.indexOf(msg.id);
+      if (msg.id === room.pageId) {
+        const next = ids[index + 1] || ids[index - 1];
+        preparePageChange(room);
+        room.pages.delete(msg.id);
+        activatePage(room, next);
+      } else {
+        room.pages.delete(msg.id);
+        broadcast(room, { t: 'pages', ...pageHeader(room) });
+      }
+    },
+    // A restart restore is assembled privately and published only at commit.
+    'pages:restore'(ws, msg) {
+      const room = ws.room;
+      if (!isTutor(ws) || !room.restoring || !isRestoreId(msg.restoreId)) return;
+      const previous = room.restoreTransaction;
+      // Repeating the same begin is idempotent. Only its connected tutor may
+      // replace an unpublished draft after a failed upload or interrupted replay.
+      if (previous && (previous.tutor !== ws || previous.id === msg.restoreId)) return;
+      if (!Array.isArray(msg.pages) || !msg.pages.length || msg.pages.length > MAX_PAGES) return;
+      const pages = new Map();
+      for (const meta of msg.pages) {
+        if (!isPageId(meta?.id) || pages.has(meta.id)) return;
+        pages.set(meta.id, freshPage(meta.id, cleanPageTitle(meta.title, `Board ${pages.size + 1}`)));
+      }
+      if (!pages.has(msg.activePageId)) return;
+      // Do not disturb a valid draft for an invalid retry. Once replaced, old
+      // replay packets fail their restore id and in-flight HTTP tickets go stale.
+      if (previous) room.pictureGeneration++;
+      room.restoreTransaction = { id: msg.restoreId, tutor: ws, pages, activePageId: msg.activePageId, targetId: null, initialized: new Set() };
+    },
+    'page:restore'(ws, msg) {
+      const room = ws.room;
+      const transaction = room?.restoreTransaction;
+      if (!isTutor(ws) || !room.restoring || !transaction || transaction.tutor !== ws || transaction.id !== msg.restoreId) return;
+      const page = transaction.pages.get(msg.id);
+      if (!page) return;
+      page.strip = msg.strip !== false;
+      page.lines = isLineSize(msg.lines) ? msg.lines : DEFAULT_LINES;
+      Object.assign(page, cleanSoundBoxState(msg));
+      page.game = msg.game === null || msg.game === undefined ? null : cleanGame(msg.game) ?? null;
+      if (Array.isArray(msg.pictureIds)) for (const id of msg.pictureIds) if (room.pictures.has(id)) page.pictureIds.add(id);
+      transaction.targetId = page.id;
+      transaction.initialized.add(page.id);
+    },
     // The alphabet bridge game. The tutor's copy is the one that counts: the tutor sets the game
     // (or null, to put the bridge away) and the student's screen follows it. The student's moves
     // go to the tutor to apply.
@@ -452,39 +616,33 @@ export function attachRealtime(server, options = {}) {
           studentKey: null,
           closeTimer: null,
           tools: false,
-          game: null, // the alphabet bridge, as the tutor last set it
-          strokes: [],
-          strokeById: new Map(),
-          seq: 0,
-          pointers: {}, // last known pointer of each person, for whoever (re)joins
+          pointers: {},
           hands: freshHands(),
-          tiles: new Map(),
-          pictures: new Map(), // id -> { id, w, h, type, bytes }, for this session only
+          pictures: new Map(), // immutable room sources; page placements reference their ids
           pictureGeneration: 0,
-          pieces: new Map(),
-          offers: new Map(), // parts the tutor gave the student: id -> { id, pic, crop, taken }
-          zTop: 0, // stacking order: the tile picked up last sits on top
-          order: 0, // creation order, for packing the tray
-          strip: true,
-          boxes: 0,
-          boxTaps: [],
-          boxEpoch: 0,
-          lines: DEFAULT_LINES,
           // After a restart the tutor's browser hands back its copy of the board.
           restoring: reuse,
         };
+        initializePages(room);
         rooms.set(code, room);
         fresh = true;
       }
       if (ws.room !== room) leaveRoom(ws);
       clearTimeout(room.closeTimer);
+      if (room.tutor !== ws && room.restoreTransaction) room.restoreTransaction = null;
       replace(room, room.tutor, ws);
       room.tutor = ws;
       room.pictureGeneration += 1;
       ws.room = room;
-      send(ws, { t: 'room', role: 'tutor', code: room.code, key: room.key, fresh });
+      if (msg.pageProtocol === 1) ws.pageScoped = true;
+      send(ws, { t: 'room', role: 'tutor', code: room.code, key: room.key, fresh, restoring: room.restoring, ...pageHeader(room) });
       sendPresence(room);
-      if (!fresh) send(ws, boardMessage(room));
+      if (!fresh || (msg.pageProtocol === 1 && !room.restoring)) send(ws, boardMessage(room));
+      if (!fresh && msg.pageProtocol === 1 && !room.restoring) {
+        for (const page of room.pages.values()) if (page.id !== room.pageId) {
+          send(ws, { t: 'page:cache', pageId: room.pageId, pageEpoch: room.pageEpoch, board: cachedPage(page) });
+        }
+      }
       if (room.pointers.student) send(ws, { t: 'p', ...room.pointers.student });
     },
 
@@ -504,9 +662,9 @@ export function attachRealtime(server, options = {}) {
       room.student = ws;
       room.studentKey = returning ? msg.key : randomBytes(16).toString('hex');
       ws.room = room;
-      send(ws, { t: 'room', role: 'student', code: room.code, key: room.studentKey });
+      send(ws, { t: 'room', role: 'student', code: room.code, key: room.studentKey, restoring: room.restoring, ...pageHeader(room) });
       sendPresence(room);
-      send(ws, boardMessage(room));
+      send(ws, boardMessage(room, 'sync', 'student'));
       if (room.pointers.tutor) send(ws, { t: 'p', ...room.pointers.tutor });
       if (returning && room.pointers.student) {
         const { x, y, l } = room.pointers.student;
@@ -603,7 +761,7 @@ export function attachRealtime(server, options = {}) {
       if (!role || !canDraw(ws.room, role) || !allow(ws, 'draw', DRAW_PER_SECOND)) return;
       const room = ws.room;
       if (!isStrokeId(msg.id) || room.strokeById.has(msg.id) || !TOOLS.has(msg.tool)) return;
-      if (room.strokes.length >= MAX_STROKES) return send(ws, { t: 'error', reason: 'board-full' });
+      if (totalStrokes(room) >= MAX_STROKES) return send(ws, { t: 'error', reason: 'board-full' });
       const start = cleanPoints([msg.x, msg.y]);
       if (!start) return;
       finishStroke(ws, room);
@@ -677,7 +835,7 @@ export function attachRealtime(server, options = {}) {
     // Tutor only, right after a restart: one stroke of the board they kept.
     rs(ws, msg) {
       const room = ws.room;
-      if (!room || room.tutor !== ws || !room.restoring || room.strokes.length >= MAX_STROKES) return;
+      if (!room || room.tutor !== ws || !room.restoring || totalStrokes(room) >= MAX_STROKES) return;
       if (!isStrokeId(msg.id) || room.strokeById.has(msg.id) || !TOOLS.has(msg.tool)) return;
       if (msg.by !== 'tutor' && msg.by !== 'student') return;
       if (!Array.isArray(msg.pts) || msg.pts.length > MAX_STROKE_NUMBERS) return;
@@ -693,6 +851,21 @@ export function attachRealtime(server, options = {}) {
     restored(ws, msg) {
       const room = ws.room;
       if (!room || room.tutor !== ws || !room.restoring) return;
+      const transaction = room.restoreTransaction;
+      if (transaction) {
+        if (transaction.tutor !== ws || transaction.id !== msg.restoreId || !transaction.pages.has(msg.activePageId) || transaction.initialized.size !== transaction.pages.size) return;
+        room.pages = transaction.pages;
+        room.pageId = msg.activePageId;
+        room.board = room.pages.get(room.pageId);
+        room.pageEpoch++;
+        room.pictureGeneration++;
+        room.restoreTransaction = null;
+        room.restoring = false;
+        room.tools = Boolean(msg.tools);
+        broadcastBoard(room, 'page');
+        return;
+      }
+      if (msg.restoreId !== undefined) return;
       room.restoring = false;
       room.tools = Boolean(msg.tools);
       room.strip = msg.strip !== false;
@@ -875,12 +1048,13 @@ export function attachRealtime(server, options = {}) {
     // the slide-out is open and which picture they're on; the tutor can point at a picture.
     browse(ws, msg) {
       if (roleOf(ws) !== 'student' || !allow(ws, 'view', 12)) return;
-      const pic = isPictureId(msg.pic) && ws.room.pictures.has(msg.pic) ? msg.pic : null;
+      const pic = isPictureId(msg.pic) && pagePictureIds(ws.room.board).has(msg.pic) && ws.room.pictures.has(msg.pic) ? msg.pic : null;
       send(otherSide(ws.room, 'student'), { t: 'browse', open: msg.open === true, pic });
     },
     guide(ws, msg) {
       if (!isTutor(ws) || !allow(ws, 'view', 12)) return;
       const pic = isPictureId(msg.pic) && ws.room.pictures.has(msg.pic) ? msg.pic : null;
+      if (pic) rememberPicture(ws.room, pic);
       send(otherSide(ws.room, 'tutor'), { t: 'guide', pic });
     },
     focus(ws, msg) {
@@ -898,7 +1072,7 @@ export function attachRealtime(server, options = {}) {
       const offer = role === 'student' ? room.offers.get(msg.piece?.offer) : null;
       // A library card's predefined region (its mouth photo): the student may take it themselves,
       // with their tools on. The crop always comes from the card, never from the message.
-      const region = role === 'student' && !offer ? room.pictures.get(msg.piece?.pic)?.regions?.find((r) => r.id === msg.piece?.region) : null;
+      const region = role === 'student' && !offer && pagePictureIds(room.board).has(msg.piece?.pic) ? room.pictures.get(msg.piece?.pic)?.regions?.find((r) => r.id === msg.piece?.region) : null;
       if (role === 'student' && !region && (!offer || offer.taken)) return;
       const given = offer
         ? { ...msg.piece, pic: offer.pic, crop: offer.crop }
@@ -912,6 +1086,7 @@ export function attachRealtime(server, options = {}) {
         : given;
       const piece = makePiece(room, newPiece);
       if (!piece) return;
+      rememberPicture(room, piece.pic);
       room.pieces.set(piece.id, piece);
       if (offer) {
         offer.taken = true;
@@ -924,6 +1099,7 @@ export function attachRealtime(server, options = {}) {
       if (!isTutor(ws)) return;
       const offer = makeOffer(ws.room, msg.offer);
       if (!offer) return;
+      rememberPicture(ws.room, offer.pic);
       ws.room.offers.set(offer.id, offer);
       broadcast(ws.room, { t: 'offer', offer });
     },
@@ -943,7 +1119,7 @@ export function attachRealtime(server, options = {}) {
       const room = ws.room;
       if (!isTutor(ws) || !room.restoring) return;
       const offer = makeOffer(room, msg.offer, Boolean(msg.offer?.taken));
-      if (offer) room.offers.set(offer.id, offer);
+      if (offer) { room.offers.set(offer.id, offer); room.pictureIds.add(offer.pic); }
     },
     // Like tiles: whoever picks a piece up has it until they drop it.
     'piece:grab'(ws, msg) {
@@ -1010,16 +1186,28 @@ export function attachRealtime(server, options = {}) {
     // Tutor only: every piece off the board, and the pictures forgotten.
     'pieces:clear'(ws) {
       if (!isTutor(ws)) return;
-      ws.room.pieces.clear();
-      forgetPictures(ws.room);
-      broadcast(ws.room, { t: 'pieces', pieces: [], pictures: [], offers: [] });
+      const room = ws.room;
+      const removed = pagePictureIds(room.board);
+      room.pieces.clear();
+      room.offers.clear();
+      room.pictureIds.clear();
+      room.pictureGeneration++;
+      const referenced = new Set([...room.pages.values()].flatMap(page => [...pagePictureIds(page)]));
+      for (const id of removed) {
+        const picture = room.pictures.get(id);
+        if (!picture || referenced.has(id)) continue;
+        pictureBytes -= picture.bytes.length;
+        room.pictures.delete(id);
+      }
+      send(room.tutor, { t: 'pieces', pieces: [], pictures: [...room.pictures.values()].map(sharedPicture), offers: [] });
+      send(room.student, { t: 'pieces', pieces: [], pictures: [], offers: [] });
     },
     // Tutor only, right after a restart: one piece of the board they kept (its picture goes up first).
     'rs-piece'(ws, msg) {
       const room = ws.room;
       if (!isTutor(ws) || !room.restoring) return;
       const piece = makePiece(room, msg.piece);
-      if (piece) room.pieces.set(piece.id, piece);
+      if (piece) { room.pieces.set(piece.id, piece); room.pictureIds.add(piece.pic); }
     },
     // Video calls. The server only introduces the two browsers; the audio and video go
     // directly between them (or through the TURN relay), never through this server.
@@ -1089,7 +1277,30 @@ export function attachRealtime(server, options = {}) {
       } catch {
         return;
       }
-      if (msg && typeof msg.t === 'string' && Object.hasOwn(handlers, msg.t)) handlers[msg.t](ws, msg);
+      if (!msg || typeof msg.t !== 'string' || !Object.hasOwn(handlers, msg.t)) return;
+      const room = ws.room;
+      if (room && msg.pageId !== undefined && msg.pageEpoch !== undefined) ws.pageScoped = true;
+      if (PAGE_MUTATIONS.has(msg.t) || PAGE_COMMANDS.has(msg.t)) {
+        if (!room || !matchesPageScope(msg, room.pageId, room.pageEpoch, room.pages.size)) {
+          if (room && PAGE_COMMANDS.has(msg.t)) pageError(ws, 'page-stale');
+          return;
+        }
+        if (room.restoreTransaction) return;
+      }
+      if (RESTORE_PACKETS.has(msg.t)) {
+        const transaction = room?.restoreTransaction;
+        if (transaction) {
+          if (transaction.tutor !== ws || msg.restoreId !== transaction.id || msg.pageId !== transaction.targetId) return;
+          const target = transaction.pages.get(msg.pageId);
+          if (!target) return;
+          const active = room.board;
+          room.board = target;
+          try { handlers[msg.t](ws, msg); } finally { room.board = active; }
+          return;
+        }
+        if (!room || msg.restoreId !== undefined || room.pages.size !== 1 || room.pageEpoch !== 0 || (msg.pageId !== undefined && msg.pageId !== room.pageId)) return;
+      }
+      handlers[msg.t](ws, msg);
     });
     ws.on('close', () => leaveRoom(ws));
   });
@@ -1140,11 +1351,11 @@ export function attachRealtime(server, options = {}) {
   const pictures = {
     // Capture before awaiting Blob storage or reading an upload body. These tickets never
     // leave the server; a clear, tutor reconnect, or reused room code makes them stale.
-    beginWrite(code, key) {
+    beginWrite(code, key, scope = {}) {
       const room = isCode(code) ? rooms.get(code) : undefined;
-      if (!room || !isKey(key) || room.key !== key) return null;
+      if (!room || !isKey(key) || room.key !== key || !matchesPageScope(scope || {}, room.pageId, room.pageEpoch, room.pages.size)) return null;
       const ticket = {};
-      pictureWrites.set(ticket, { room, tutor: room.tutor, generation: room.pictureGeneration });
+      pictureWrites.set(ticket, { room, tutor: room.tutor, generation: room.pictureGeneration, pageId: room.pageId, pageEpoch: room.pageEpoch });
       return ticket;
     },
     add({ code, key, id, w, h, type, bytes, regions, library, title, material, writeToken }) {
@@ -1152,12 +1363,12 @@ export function attachRealtime(server, options = {}) {
       if (writeToken !== undefined) {
         const pending = pictureWrites.get(writeToken);
         pictureWrites.delete(writeToken);
-        if (!pending || room !== pending.room || room.tutor !== pending.tutor || room.pictureGeneration !== pending.generation) return { status: 409 };
+        if (!pending || room !== pending.room || room.tutor !== pending.tutor || room.pictureGeneration !== pending.generation || room.pageId !== pending.pageId || room.pageEpoch !== pending.pageEpoch) return { status: 409 };
       }
       if (!room || !isKey(key) || room.key !== key) return { status: 403 };
       const sideOk = (n) => Number.isInteger(n) && n >= 1 && n <= MAX_PICTURE_SIDE;
       if (!isPictureId(id) || !sideOk(w) || !sideOk(h)) return { status: 400 };
-      if (room.pictures.has(id)) return { status: 200 }; // already here (a retry, or a restore)
+      if (room.pictures.has(id)) { rememberPicture(room, id); return { status: 200 }; } // retry, restore, or another page
       // Uploads and library cards have separate limits (library cards are first-party).
       const card = typeof library === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(library) ? library : null;
       const alike = [...room.pictures.values()].filter((p) => Boolean(p.library) === Boolean(card)).length;
@@ -1168,6 +1379,7 @@ export function attachRealtime(server, options = {}) {
       const picture = { id, w, h, type, bytes, regions: known, library: card, ...metadata };
       room.pictures.set(id, picture);
       pictureBytes += bytes.length;
+      room.pictureIds.add(id);
       broadcast(room, { t: 'pic:add', pic: sharedPicture(picture) });
       return { status: 201 };
     },

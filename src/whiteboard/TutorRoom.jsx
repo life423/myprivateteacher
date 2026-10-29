@@ -1,3 +1,5 @@
+import LessonPanel from '../lessons/LessonPanel.jsx';
+import { useLessonRunner } from '../lessons/useLessonRunner.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Crosshair, Eraser, Eye, EyeOff, LayoutGrid, MousePointer2, Pencil, Trash2, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
@@ -10,6 +12,7 @@ import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
 import Stage from './Stage.jsx';
+import BoardPages from './BoardPages.jsx';
 import { INK } from './board.js';
 import { STAGE } from './stage.js';
 import { useHands } from './useHands.js';
@@ -144,6 +147,7 @@ export default function TutorRoom() {
   const [picturePreviewOpen, setPicturePreviewOpen] = useState(false);
   const [pictureOpenRequest, setPictureOpenRequest] = useState(null);
   const [gamesOpen, setGamesOpen] = useState(false);
+  const [lessonOpen, setLessonOpen] = useState(() => Boolean(new URLSearchParams(window.location.search).get('lesson')));
   const openPicture = (request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); };
   const [pictureLibraryView, setPictureLibraryView] = useState(loadPictureLibraryView);
   const updatePictureLibraryView = useCallback((patch) => setPictureLibraryView((current) => {
@@ -203,6 +207,11 @@ export default function TutorRoom() {
   studentToolsRef.current = studentTools;
 
   const wb = useWhiteboard('tutor', (msg) => sendRef.current(msg));
+  const pageScope = wb.pageScope();
+  const pageSend = (message, origin = pageScope) => wb.sendPageMessage(message, origin);
+  const pendingLines = useRef(null);
+  const pendingHands = useRef(null);
+  const currentPageContext = (origin) => Boolean(wb.scopeMessage({ t: 'game', game: null }, origin));
   const chooseLines = (size) => {
     wb.setLines(size);
     try {
@@ -211,19 +220,45 @@ export default function TutorRoom() {
       // storage blocked: the choice lasts for this lesson
     }
   };
-  const hands = useHands({ me: 'tutor', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
+  const hands = useHands({ me: 'tutor', send: pageSend, sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
   const call = useVideoCall('tutor', (msg) => sendRef.current(msg));
-  const bridge = useTutorBridge((msg) => sendRef.current(msg));
-  const phoneme = usePhonemeTutor((msg) => sendRef.current(msg));
+  const bridge = useTutorBridge(pageSend, { context: pageScope, isCurrentContext: currentPageContext });
+  const phoneme = usePhonemeTutor(pageSend, { context: pageScope, isCurrentContext: currentPageContext });
 
   const { status, send } = useRealtime({
     // Asking for the saved code again lets a refresh or a deploy keep the same room.
-    hello: () => ({ t: 'create', code: roomRef.current.code, key: roomRef.current.key }),
+    hello: () => ({ t: 'create', code: roomRef.current.code, key: roomRef.current.key, pageProtocol: 1 }),
     onMessage: (msg) => {
       if (call.handle(msg)) return;
+      const before = wb.pageScope();
+      if (!wb.acceptMessage(msg)) return;
+      if (msg.t === 'board') {
+        const changed = msg.pageId && (before?.pageId !== msg.pageId || before?.pageEpoch !== msg.pageEpoch);
+        if (changed) {
+          stageApi.current?.cancelInteractions('authority');
+          setSelectedTileId(null); setStudentMarker(null); setMyMarker(null);
+          setStudentView(null); myView.current = null;
+          setGuidePic(null); setPictureOpenRequest(null); setPicturePreviewOpen(false); setBrowsing(false);
+          setTool('none');
+        }
+        wb.handle(msg);
+        wb.retainPictures?.(roomRef.current);
+        hands.handle(msg);
+        bridge.handle(msg);
+        phoneme.handle(msg);
+        setStudentTools(Boolean(msg.tools));
+        if (pendingLines.current) {
+          wb.sendPageMessage({ t: 'lines:set', size: pendingLines.current }, { pageId: msg.pageId, pageEpoch: msg.pageEpoch });
+          pendingLines.current = null;
+        }
+        if (pendingHands.current) {
+          wb.sendPageMessage({ t: 'hands', ...pendingHands.current }, { pageId: msg.pageId, pageEpoch: msg.pageEpoch });
+          pendingHands.current = null;
+        }
+        return;
+      }
       bridge.handle(msg);
       phoneme.handle(msg);
-      if (msg.t === 'board') setStudentTools(Boolean(msg.tools));
       if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
       if (msg.t === 'browse') return setStudentBrowse({ open: msg.open === true, pic: msg.pic || null });
@@ -231,18 +266,16 @@ export default function TutorRoom() {
       if (msg.t === 'room') {
         const isNew = !roomRef.current.code;
         const saved = { code: msg.code, key: msg.key };
+        roomRef.current = saved;
         sessionStorage.setItem(SAVED, JSON.stringify(saved));
         setRoom(saved);
         setConfirmedRoom(saved);
         // The server restarted and forgot this room: hand it our copy of the board.
+        if (isNew) pendingLines.current = rememberedLines();
         if (msg.fresh) {
-          wb.restore(studentToolsRef.current, saved);
-          hands.restore();
+          pendingHands.current = { r: hands.hands.r.on, l: hands.hands.l.on, at: Object.fromEntries(['l', 'r'].map((side) => [side, { x: round4(hands.hands[side].x / STAGE.width), y: round4(hands.hands[side].y / STAGE.height), letter: hands.hands[side].letter }])) };
+          if (msg.restoring === true || msg.restoring === undefined) wb.restore(studentToolsRef.current, saved);
         }
-        // A new lesson starts with the lines this tutor chose last time (after the hand-over
-        // above, which a new room also gets, so it wins).
-        const lines = rememberedLines();
-        if (isNew && lines) wb.setLines(lines);
       } else if (msg.t === 'tools') {
         setStudentTools(Boolean(msg.on));
       } else if (msg.t === 'presence') {
@@ -273,9 +306,10 @@ export default function TutorRoom() {
     },
   });
   sendRef.current = send;
+  const lessonRunner = useLessonRunner(wb, room, status === 'open' && Boolean(confirmedRoom));
   useEffect(() => {
-    if (status !== 'open') hands.disconnect();
-  }, [status, hands.disconnect]);
+    if (status !== 'open') { hands.disconnect(); wb.disconnect(); }
+  }, [status, hands.disconnect, wb.disconnect]);
 
   // Message screens keep this room mounted, so unmount cleanup alone cannot
   // release a camera or a pending permission request when the seat is replaced.
@@ -333,7 +367,7 @@ export default function TutorRoom() {
 
   useEffect(() => {
     const onKey = (event) => {
-      if (event.target instanceof HTMLInputElement) return; // leave typing alone
+      if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return; // leave typing alone
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         wb.undo();
@@ -352,9 +386,10 @@ export default function TutorRoom() {
   }
 
   const endSession = () => {
+    // Ask the dirty-note guard first. Cancelling must leave the live room open.
+    if (!navigate('/whiteboard')) return;
     send({ t: 'end' });
     sessionStorage.removeItem(SAVED);
-    navigate('/whiteboard');
   };
 
   // Shows your pointer here and on the student's screen.
@@ -425,13 +460,15 @@ export default function TutorRoom() {
     guidePic,
     onGuide: (pic) => {
       setGuidePic(pic);
-      send({ t: 'guide', pic });
+      pageSend({ t: 'guide', pic });
     },
     peerPic: studentHere && studentBrowse.open ? studentBrowse.pic : null,
   };
   const studentPicTitle = wb.pictures.find((p) => p.id === studentBrowse.pic)?.title;
   const studentBrowsing = studentHere && studentBrowse.open;
   const browseText = studentPicTitle ? `Your student is looking at ${studentPicTitle}.` : 'Your student opened the picture library.';
+
+  const pageControls = <BoardPages pages={wb.pages} pageId={wb.pageId} actions={wb.pageActions} ready={wb.pageReady} pending={wb.pagePending} error={wb.pageError} onRetry={() => wb.restore(studentToolsRef.current, roomRef.current)} />;
 
   const pictureLibraryShortcut = (compact = false) => (
     <button
@@ -471,7 +508,7 @@ export default function TutorRoom() {
             showStudentView={showStudentView}
             onStudentView={() => setShowStudentView((was) => !was)}
             studentHere={studentHere}
-            onShareView={() => myView.current && send({ t: 'focus', ...myView.current })}
+            onShareView={() => myView.current && pageSend({ t: 'focus', ...myView.current })}
             onFocus={() => layout.current?.setFocus(true)}
           />}
           end={
@@ -494,7 +531,7 @@ export default function TutorRoom() {
           {pictureLibraryShortcut(true)}
         </TopBar>
       }
-      tools={
+      tools={!(bridge.game || phoneme.active) && (
         <ToolRail label='Your tools'>
           <ToolButton icon={MousePointer2} label='Select' pressed={tool === 'none'} onClick={() => chooseTool('none')} />
           <ToolButton
@@ -511,21 +548,23 @@ export default function TutorRoom() {
             onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')}
           />
           <ToolButton icon={Undo2} label='Undo' disabled={!wb.canUndo} onClick={wb.undo} />
-          <ClearButton icon={Trash2} onClear={() => send({ t: 'clear' })} />
+          <ClearButton icon={Trash2} onClear={() => pageSend({ t: 'clear' })} />
         </ToolRail>
-      }
+      )}
       board={
         bridge.game ? (
-          <div className='flex h-full items-center justify-center overflow-auto p-2'>
+          <div className='flex h-full min-h-0 flex-col'><div className='flex min-h-0 flex-1 items-center justify-center overflow-auto p-2'>
             <BridgeBoard game={bridge.game} selected={bridge.selected} onSelect={bridge.setSelected} onPlace={bridge.place} />
-          </div>
+          </div><div className='flex h-11 shrink-0 items-center border-t border-slate-200 bg-slate-50 px-1'>{pageControls}</div></div>
         ) : phoneme.active ? (
-          <div className='h-full'>
+          <div className='flex h-full min-h-0 flex-col'><div className='min-h-0 flex-1'>
             <PhonemeBoard state={phoneme.state} total={phoneme.bank.words[phoneme.state.level]?.length ?? 0} onIntent={phoneme.act} />
-          </div>
+          </div><div className='flex h-11 shrink-0 items-center border-t border-slate-200 bg-slate-50 px-1'>{pageControls}</div></div>
         ) : (
         <>
           <Stage
+            key={`${wb.pageId}:${wb.pageEpoch}`}
+            pageControls={pageControls}
             board={wb.board}
             me='tutor'
             strip={wb.strip}
@@ -577,14 +616,14 @@ export default function TutorRoom() {
       controls={layout}
       onPanelChange={setActivePanel}
       panels={[{
-        id: 'materials', label: gamesOpen ? 'Games' : 'Materials', icon: LayoutGrid,
+        id: 'materials', label: lessonOpen ? 'Lesson' : gamesOpen ? 'Games' : 'Materials', icon: LayoutGrid,
         content: <MaterialsWorkspace key={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} scope={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} tabs={[
           { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} boxTaps={wb.boxTaps} onResetSoundBoxes={wb.resetSoundBoxes} onShowSoundBoxes={!bridge.game && !phoneme.active ? () => stageApi.current?.showSoundBoxes() : null} /> },
           { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
           { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
-        ]} activity={{
+        ]} lesson={{ open: lessonOpen, onOpen: () => { setGamesOpen(false); setLessonOpen(true); }, title: 'Lesson', detail: lessonRunner.lesson ? `${lessonRunner.lesson.title}${lessonRunner.index >= 0 ? ` · ${lessonRunner.index + 1}/${lessonRunner.lesson.activities.length}` : ''}` : null, content: <LessonPanel runner={lessonRunner} onClose={() => setLessonOpen(false)} /> }} activity={{
           open: gamesOpen,
-          onOpen: () => setGamesOpen(true),
+          onOpen: () => { setLessonOpen(false); setGamesOpen(true); },
           onClose: () => setGamesOpen(false),
           current: phoneme.active ? 'Phoneme Pop' : bridge.game ? 'Alphabet Bridge' : null,
           detail: phoneme.active ? `Level ${phoneme.state.level}` : bridge.game ? `${bridge.settings.length} letters` : null,

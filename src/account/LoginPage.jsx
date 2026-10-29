@@ -44,6 +44,9 @@ export default function LoginPage() {
               )}
             </div>
             <div className='mt-6 grid gap-2'>
+              <Link to='/lessons' className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 px-4 py-3 font-semibold text-violet-700 hover:bg-violet-50'>
+                <BookOpen className='h-5 w-5' aria-hidden='true' />Prepare lesson
+              </Link>
               <Link to='/whiteboard/teach' className='inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white hover:bg-violet-700'>
                 <PlayCircle className='h-5 w-5' aria-hidden='true' />
                 Start teaching

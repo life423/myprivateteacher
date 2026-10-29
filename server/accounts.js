@@ -63,6 +63,7 @@ export function connectAccounts({
   uri = process.env.MONGODB_URI,
   clientId = process.env.GOOGLE_CLIENT_ID,
   billingMode = stripeMode(process.env.STRIPE_SECRET_KEY),
+  beforeDelete = async () => {},
 } = {}) {
   if (!uri || !clientId) return null;
   const db = mongoClient(uri).db('myprivateteacher');
@@ -110,6 +111,7 @@ export function connectAccounts({
         },
         { upsert: true, returnDocument: 'after' },
       );
+      if (tutor.deletingAt) throw new Error('This account is being deleted.');
       const grant = await grants.findOneAndDelete({ _id: profile.email });
       if (grant) {
         const change = { ...(grant.comp ? { $set: { comp: grant.comp } } : {}), ...(grant.roles?.length ? { $addToSet: { roles: { $each: grant.roles } } } : {}) };
@@ -140,10 +142,17 @@ export function connectAccounts({
         return null;
       }
       const tutor = await tutors.findOne({ _id: session.tutorId });
-      if (!tutor) return null;
+      if (!tutor || tutor.deletingAt) return null;
       const record = tutorRecord(tutor, billingMode);
       remember(key, record, session.expiresAt);
       return record;
+    },
+    // Persistence writes recheck this without the short session cache. A deletion
+    // tombstone blocks late saved-lesson/image writes before cleanup begins.
+    async isActive(id) {
+      const query = byId(id);
+      const tutor = query && await tutors.findOne(query);
+      return Boolean(tutor && !tutor.deletingAt);
     },
     // Billing details from Stripe, kept in this mode's slot: a tutor's customer id, or a
     // customer's subscription status.
@@ -214,8 +223,12 @@ export function connectAccounts({
       if (!query) return false;
       const t = await tutors.findOne(query);
       if (!t) return false;
+      await tutors.updateOne(query, { $set: { deletingAt: t.deletingAt || new Date() } });
       recent.clear();
       await sessions.deleteMany({ tutorId: t._id });
+      // Keep the tombstone and revoked sessions if cleanup fails. The admin may
+      // retry; no late upload may recreate private material during that interval.
+      await beforeDelete(String(t._id));
       await grants.deleteOne({ _id: t.email });
       await tutors.deleteOne({ _id: t._id });
       return true;

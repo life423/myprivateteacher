@@ -68,6 +68,15 @@ export function reducer(state, action) {
   }
 }
 
-export function useGameState(start = { level: LEVELS[0], lists: wordLists }) {
-  return useReducer(reducer, start, init);
+// Publication context travels with the state that produced it. A delayed effect must
+// never publish an old activity as though it belonged to the newly selected page.
+export function publicationReducer(entry, action) {
+  const state = reducer(entry.state, action);
+  return state === entry.state ? entry : { state, context: action.publicationContext };
+}
+
+export function useGameState(start = { level: LEVELS[0], lists: wordLists }, context) {
+  const [entry, dispatch] = useReducer(publicationReducer, { start, context }, ({ start, context }) => ({ state: init(start), context }));
+  const act = (action) => dispatch({ ...action, publicationContext: Object.hasOwn(action, 'publicationContext') ? action.publicationContext : context });
+  return [entry.state, act, entry.context];
 }

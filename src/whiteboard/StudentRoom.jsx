@@ -4,6 +4,7 @@ import { navigate } from '../router.jsx';
 import { useRealtime } from './useRealtime.js';
 import { useFrameState, useWhiteboard } from './useWhiteboard.js';
 import Stage from './Stage.jsx';
+import { BoardPageIndicator } from './BoardPages.jsx';
 import { INK } from './board.js';
 import { STAGE } from './stage.js';
 import { useHands } from './useHands.js';
@@ -51,11 +52,12 @@ export default function StudentRoom({ code }) {
   const lastView = useRef(null);
   const viewTimer = useRef(null);
   const sendView = (rect) => {
-    lastView.current = rect;
+    lastView.current = { rect, scope: pageScope };
     if (viewTimer.current) return;
     viewTimer.current = setTimeout(() => {
       viewTimer.current = null;
-      sendRef.current?.({ t: 'view', ...lastView.current });
+      const pending = lastView.current;
+      if (pending) wb.sendPageMessage({ t: 'view', ...pending.rect }, pending.scope);
     }, 200);
   };
   const [notice, setNotice] = useState(null);
@@ -69,7 +71,9 @@ export default function StudentRoom({ code }) {
   const sendRef = useRef(() => {});
 
   const wb = useWhiteboard('student', (msg) => sendRef.current(msg));
-  const hands = useHands({ me: 'student', send: (msg) => sendRef.current(msg), sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
+  const pageScope = wb.pageScope();
+  const pageSend = (message, origin = pageScope) => wb.sendPageMessage(message, origin);
+  const hands = useHands({ me: 'student', send: pageSend, sendThrottled: wb.sendThrottled, cancelThrottled: wb.cancelThrottled });
   const call = useVideoCall('student', (msg) => sendRef.current(msg));
   const joinMessage = () => ({ t: 'join', code, key: keyRef.current || undefined });
 
@@ -84,8 +88,22 @@ export default function StudentRoom({ code }) {
     hello: joinMessage,
     onMessage: (msg) => {
       if (call.handle(msg)) return;
-      if (msg.t === 'board' || msg.t === 'game') setGame(msg.game || null);
-      if (msg.t === 'board') applyTools(Boolean(msg.tools), false);
+      const before = wb.pageScope();
+      if (!wb.acceptMessage(msg)) return;
+      if (msg.t === 'board') {
+        if (msg.pageId && (before?.pageId !== msg.pageId || before?.pageEpoch !== msg.pageEpoch)) {
+          stageApi.current?.cancelInteractions('authority');
+          clearTimeout(viewTimer.current); viewTimer.current = null; lastView.current = null;
+          setSelected(null); setTool('none'); setMyMarker(null); setTutorMarker(null); setFollow(null);
+          setBrowsing(false); setPictureOpenRequest(null); setViewingPic(null); setGuidePic(null);
+        }
+        wb.handle(msg);
+        hands.handle(msg);
+        setGame(msg.game || null);
+        applyTools(Boolean(msg.tools), false);
+        return;
+      }
+      if (msg.t === 'game') setGame(msg.game || null);
       if (hands.handle(msg)) return;
       if (wb.handle(msg)) return;
       if (msg.t === 'guide') {
@@ -134,8 +152,8 @@ export default function StudentRoom({ code }) {
   });
   sendRef.current = send;
   useEffect(() => {
-    if (status !== 'open') hands.disconnect();
-  }, [status, hands.disconnect]);
+    if (status !== 'open') { hands.disconnect(); wb.disconnect(); }
+  }, [status, hands.disconnect, wb.disconnect]);
 
   // Ending/replacement screens do not unmount the room. Stop local tracks and
   // cancel pending camera startup before leaving video hidden behind that screen.
@@ -148,12 +166,12 @@ export default function StudentRoom({ code }) {
   useEffect(() => () => clearTimeout(viewTimer.current), []);
   // When the tutor arrives (or comes back), tell them what this screen shows.
   useEffect(() => {
-    if (tutorHere && lastView.current) sendRef.current?.({ t: 'view', ...lastView.current });
+    if (tutorHere && lastView.current) wb.sendPageMessage({ t: 'view', ...lastView.current.rect }, lastView.current.scope);
   }, [tutorHere]);
   // The tutor sees whether the picture library is open here and which picture is open.
   useEffect(() => {
-    sendRef.current?.({ t: 'browse', open: browsing, pic: browsing ? viewingPic : null });
-  }, [browsing, viewingPic, tutorHere]);
+    pageSend({ t: 'browse', open: browsing, pic: browsing ? viewingPic : null });
+  }, [browsing, viewingPic, tutorHere, wb.pageId, wb.pageEpoch]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -196,7 +214,7 @@ export default function StudentRoom({ code }) {
     if (selected && game?.kind !== 'phoneme' && game && !game.tray.includes(selected)) setSelected(null);
   }, [game, selected]);
   // The tutor applies the tap and sends the game back, so the screen shows it once it's there
-  const placeLetter = (slot, letter) => send({ t: 'game:act', act: { a: 'place', slot, letter } });
+  const placeLetter = (slot, letter) => pageSend({ t: 'game:act', act: { a: 'place', slot, letter } });
 
   const ending = ENDINGS[status === 'replaced' ? 'replaced' : phase];
   if (ending) return <MessageScreen title={ending[0]}>{ending[1]}</MessageScreen>;
@@ -252,7 +270,7 @@ export default function StudentRoom({ code }) {
         </TopBar>
       }
       tools={
-        toolsOn && (
+        toolsOn && !game && (
           <ToolRail label='Your tools'>
             <ToolButton icon={Pencil} label='Draw' swatch={INK.student} pressed={tool === 'pen'} onClick={() => chooseTool(tool === 'pen' ? 'none' : 'pen')} />
             <ToolButton icon={Eraser} label='Erase' pressed={tool === 'eraser'} onClick={() => chooseTool(tool === 'eraser' ? 'none' : 'eraser')} />
@@ -262,16 +280,18 @@ export default function StudentRoom({ code }) {
       }
       board={
         game?.kind === 'phoneme' ? (
-          <div className='h-full'>
-            <PhonemeBoard state={fromWire(game)} total={game.total} onIntent={(intent) => send({ t: 'game:act', act: intent })} />
-          </div>
+          <div className='flex h-full min-h-0 flex-col'><div className='min-h-0 flex-1'>
+            <PhonemeBoard state={fromWire(game)} total={game.total} onIntent={(intent) => pageSend({ t: 'game:act', act: intent })} />
+          </div><div className='flex h-11 shrink-0 items-center border-t border-slate-200 bg-slate-50'><BoardPageIndicator pages={wb.pages} pageId={wb.pageId} /></div></div>
         ) : game ? (
-          <div className='flex h-full items-center justify-center overflow-auto p-2'>
+          <div className='flex h-full min-h-0 flex-col'><div className='flex min-h-0 flex-1 items-center justify-center overflow-auto p-2'>
             <BridgeBoard game={game} selected={selected} onSelect={setSelected} onPlace={placeLetter} />
-          </div>
+          </div><div className='flex h-11 shrink-0 items-center border-t border-slate-200 bg-slate-50'><BoardPageIndicator pages={wb.pages} pageId={wb.pageId} /></div></div>
         ) : (
         <>
           <Stage
+            key={`${wb.pageId}:${wb.pageEpoch}`}
+            pageControls={<BoardPageIndicator pages={wb.pages} pageId={wb.pageId} />}
             board={wb.board}
             me='student'
             strip={wb.strip}
