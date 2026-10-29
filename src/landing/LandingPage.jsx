@@ -1,7 +1,7 @@
 import Photo from './Photo.jsx';
 import LessonJoinForm from './LessonJoinForm.jsx';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, BookOpen, Check, Gamepad2, Image as ImageIcon, LayoutGrid, Link2, Menu, MonitorPlay, PlayCircle, Video, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Check, Gamepad2, Image as ImageIcon, LayoutGrid, Menu, PlayCircle, Users, Video, Volume2, X } from 'lucide-react';
 import { Link } from '../router.jsx';
 import AccountMenu from '../account/AccountMenu.jsx';
 import SiteFooter from './SiteFooter.jsx';
@@ -41,19 +41,19 @@ function Ticks({ items, className = '' }) {
   );
 }
 
-const Eyebrow = ({ children, onDark = false, strong = false }) => <p className={`text-xs font-bold uppercase tracking-[0.14em] ${onDark ? 'text-violet-300' : strong ? 'text-violet-800' : 'text-violet-600'}`}>{children}</p>;
+const Eyebrow = ({ children }) => <p className='text-xs font-bold uppercase tracking-[0.14em] text-violet-700'>{children}</p>;
 
 const FEATURES = [
   { icon: Video, tone: 'bg-violet-100 text-violet-700', title: 'Live, interactive lessons', text: 'See and hear each other while you teach on one shared board.' },
   { icon: LayoutGrid, tone: 'bg-violet-100 text-violet-700', title: 'Structured literacy tools', text: 'Letter tiles, sound boxes, the alphabet strip, and more.' },
   { icon: ImageIcon, tone: 'bg-violet-100 text-violet-700', title: 'Use your own materials', text: 'Add worksheets and pictures, then lift out just the part you need.' },
-  { icon: Gamepad2, tone: 'bg-violet-100 text-violet-700', title: 'Engaging practice', text: 'Phoneme Pop sound practice, with more activities on the way.' },
+  { icon: Gamepad2, tone: 'bg-violet-100 text-violet-700', title: 'Engaging practice', text: 'Practice sounds with Phoneme Pop and letter order with Alphabet Bridge.' },
 ];
 
 const STEPS = [
-  { icon: PlayCircle, title: 'Start a lesson', text: 'Open My Private Teacher and start a lesson in one click.' },
-  { icon: Link2, title: 'Share the code', text: 'Your student types a 4-digit code or opens your link. No account needed.' },
-  { icon: MonitorPlay, title: 'Teach together', text: 'Use the whiteboard, tiles, pictures and video, live.' },
+  { title: 'Start a lesson', text: 'Open your whiteboard and choose the materials you want to use.' },
+  { title: 'Share the code', text: 'Your student enters a 4-digit code or opens your link. No account needed.' },
+  { title: 'Teach together', text: 'Talk, move letters, and work through your materials on the same board.' },
 ];
 
 const SECTIONS = [
@@ -201,8 +201,8 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <main>
-        <section className='relative overflow-hidden bg-gradient-to-b from-violet-50 via-white to-white'>
+      <main className='bg-[#fcfbfe]'>
+        <section className='relative overflow-hidden bg-gradient-to-b from-violet-50 via-[#fcfbfe] to-[#f8f6fc]'>
           <div className='pointer-events-none absolute -right-40 -top-32 h-[32rem] w-[32rem] rounded-full bg-violet-200/40 blur-3xl' aria-hidden='true' />
           <div className='relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-4 py-10 sm:gap-12 sm:px-6 sm:py-14 lg:grid-cols-[1fr_1.15fr] lg:py-20'>
             <div className='min-w-0'>
@@ -222,7 +222,7 @@ export default function LandingPage() {
                   Start free trial <ArrowRight className='h-4 w-4 shrink-0 sm:h-5 sm:w-5' aria-hidden='true' />
                 </Button>
                 <LessonJoinForm ref={joinFormRef} />
-                <p className='order-3 col-span-full text-center text-xs leading-5 text-slate-500 sm:basis-full sm:text-left'>
+                <p className='order-3 col-span-full text-center text-xs leading-5 text-slate-600 sm:basis-full sm:text-left'>
                   14 days free · No credit card required
                 </p>
               </div>
@@ -247,21 +247,24 @@ export default function LandingPage() {
         </section>
 
         <div data-landing-chapters>
-          <section id='features' data-landing-chapter className='scroll-mt-20 border-y border-slate-300 bg-slate-200'>
-            <div className='mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20'>
-              <div className='max-w-2xl'>
-                <Eyebrow strong>Your lesson toolkit</Eyebrow>
-                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>Everything you need for engaging lessons</h2>
+          <section id='features' aria-labelledby='features-title' data-landing-chapter className='scroll-mt-20 bg-gradient-to-b from-[#f8f6fc] to-[#f2eff9]'>
+            <div className='mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pt-14 lg:pb-24'>
+              <div className='flex flex-col justify-between gap-4 border-t border-violet-200/80 pt-8 lg:flex-row lg:items-end lg:gap-12'>
+                <div className='max-w-xl'>
+                  <Eyebrow>Your lesson toolkit</Eyebrow>
+                  <h2 id='features-title' className='mt-3 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl'>Keep the lesson in one place.</h2>
+                </div>
+                <p className='max-w-sm text-base leading-relaxed text-slate-600'>Move between conversation, letter work, and your own materials on one shared board.</p>
               </div>
-              <div className='mt-8 grid gap-6 sm:grid-cols-2 sm:gap-8 lg:grid-cols-4'>
-                {FEATURES.map(({ icon: Icon, tone, title, text }) => (
-                  <div key={title} className='flex gap-4 sm:block'>
-                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}>
+              <div className='mt-8 grid overflow-hidden rounded-3xl border border-violet-200/80 bg-white shadow-sm shadow-violet-950/5 sm:grid-cols-2'>
+                {FEATURES.map(({ icon: Icon, tone, title, text }, index) => (
+                  <div key={title} className={`flex items-start gap-4 p-5 sm:p-7 lg:gap-5 lg:p-8 ${index ? 'border-t border-slate-200/80' : ''} ${index === 1 ? 'sm:border-t-0' : ''} ${index % 2 ? 'sm:border-l' : ''}`}>
+                    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${tone}`}>
                       <Icon className='h-6 w-6' aria-hidden='true' />
                     </span>
                     <div>
-                      <h3 className='text-base font-bold sm:mt-4'>{title}</h3>
-                      <p className='mt-1 text-slate-600 sm:mt-1.5'>{text}</p>
+                      <h3 className='text-lg font-bold leading-snug'>{title}</h3>
+                      <p className='mt-2 max-w-sm text-sm leading-relaxed text-slate-600 sm:text-base'>{text}</p>
                     </div>
                   </div>
                 ))}
@@ -269,115 +272,117 @@ export default function LandingPage() {
             </div>
           </section>
 
-          <section data-landing-chapter className='bg-white'>
-            <div className='mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:py-20'>
-              <div className='order-2 overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950 to-violet-800 p-2.5 shadow-xl lg:order-1'>
-                <Photo
-                  name='phoneme-pop'
-                  width={1600}
-                  height={1105}
-                  alt='Phoneme Pop: a word to split into its sounds'
-                  className='block h-auto w-full rounded-2xl'
-                />
-              </div>
-              <div className='order-1 lg:order-2'>
-                <Eyebrow>Interactive activities</Eyebrow>
-                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>Make practice fun and effective</h2>
-                <p className='mt-4 text-lg leading-relaxed text-slate-600'>
-                  Phoneme Pop helps students hear a word, break it into its sounds, and put them back in the right order.
-                </p>
-                <Ticks
-                  className='mt-6'
-                  items={['Builds phonemic awareness', 'Every word is read aloud', 'Levels up as students improve', 'Play together during a live lesson']}
-                />
-                <div className='mt-8'>
-                  <Button
-                    to='/phoneme-pop'
-                    kind='demo'
-                    className='group min-h-14 w-full focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-violet-500 sm:w-auto'
-                  >
-                    <PlayCircle className='h-6 w-6 shrink-0' aria-hidden='true' />
-                    Play Phoneme Pop
-                    <ArrowRight className='h-5 w-5 shrink-0 transition-transform motion-safe:group-hover:translate-x-1 motion-reduce:transition-none' aria-hidden='true' />
-                  </Button>
-                  <p className='mt-3 text-center text-sm text-slate-500 sm:text-left'>Free to play. No sign-up needed.</p>
+          <section aria-labelledby='activity-title' data-landing-chapter className='bg-gradient-to-b from-[#f2eff9] via-[#faf9fd] to-[#fcfbfe]'>
+            <div className='mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24'>
+              <div className='grid items-center gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:gap-14'>
+                <div className='order-2 min-w-0 rounded-[1.75rem] border border-violet-200 bg-white p-3 shadow-lg shadow-violet-950/5 sm:p-5 lg:order-1'>
+                  <div className='mb-3 flex items-center gap-2 px-1 text-xs font-semibold text-slate-600 sm:mb-4'>
+                    <Gamepad2 className='h-4 w-4 text-violet-700' aria-hidden='true' />
+                    Inside the activity
+                  </div>
+                  <div className='overflow-hidden rounded-2xl border border-violet-100 bg-violet-50'>
+                    <Photo
+                      name='phoneme-pop'
+                      width={1200}
+                      height={780}
+                      alt='Phoneme Pop with sound bubbles and c, short a, and t arranged to spell cat'
+                      className='block h-auto w-full'
+                    />
+                  </div>
+                </div>
+                <div className='order-1 min-w-0 lg:order-2'>
+                  <Eyebrow>Practice through play</Eyebrow>
+                  <h2 id='activity-title' className='mt-3 text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl'>Phoneme Pop</h2>
+                  <p className='mt-3 text-xl font-semibold leading-snug text-slate-800'>Hear it. Break it apart. Build it again.</p>
+                  <p className='mt-4 max-w-lg text-base leading-relaxed text-slate-600 sm:text-lg'>Help students hear the sounds in a word and put them back in order. Play together in a lesson, or try the activity yourself.</p>
+                  <p className='mt-5 flex items-center gap-2 text-sm text-slate-600'>
+                    <Volume2 className='h-4 w-4 shrink-0 text-violet-700' aria-hidden='true' />
+                    Words read aloud · Choose your practice level
+                  </p>
+                  <div className='mt-7'>
+                    <Button
+                      to='/phoneme-pop'
+                      kind='demo'
+                      className='group min-h-14 w-full sm:w-auto'
+                    >
+                      <PlayCircle className='h-6 w-6 shrink-0' aria-hidden='true' />
+                      Play Phoneme Pop
+                      <ArrowRight className='h-5 w-5 shrink-0 transition-transform motion-safe:group-hover:translate-x-1 motion-reduce:transition-none' aria-hidden='true' />
+                    </Button>
+                    <p className='mt-3 text-center text-xs text-slate-600 sm:text-left'>Free to play. No sign-up needed.</p>
+                  </div>
                 </div>
               </div>
             </div>
           </section>
 
-          <section id='how-it-works' data-landing-chapter className='scroll-mt-20 border-y border-slate-800 bg-slate-900 text-white'>
-            <div className='mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.8fr_2fr] lg:items-center lg:py-20'>
-              <div>
-                <Eyebrow onDark>Three simple steps</Eyebrow>
-                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>How it works</h2>
-                <p className='mt-3 text-lg text-slate-300'>Get started in minutes and start teaching.</p>
+          <section id='how-it-works' aria-labelledby='steps-title' data-landing-chapter className='scroll-mt-20 bg-[#fcfbfe]'>
+            <div className='mx-auto max-w-6xl border-y border-slate-200/80 px-4 py-16 sm:px-6 lg:py-20'>
+              <div className='mx-auto max-w-xl text-center'>
+                <Eyebrow>How it works</Eyebrow>
+                <h2 id='steps-title' className='mt-3 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl'>Less setup. More teaching.</h2>
+                <p className='mt-4 text-base leading-relaxed text-slate-600'>Three steps from opening the app to working together.</p>
               </div>
-              <ol className='grid gap-8 sm:grid-cols-3'>
-                {STEPS.map(({ icon: Icon, title, text }, i) => (
-                  <li key={title} className='relative flex items-start gap-4 sm:block sm:text-center'>
-                    <span className='relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-violet-200 ring-1 ring-white/15 sm:mx-auto'>
-                      <Icon className='h-6 w-6' aria-hidden='true' />
-                      <span className='absolute -left-1 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-violet-200 text-xs font-bold text-violet-950'>{i + 1}</span>
-                    </span>
-                    <div className='pt-1 sm:pt-0'>
-                      <h3 className='font-bold sm:mt-4'>{title}</h3>
-                      <p className='mt-1 text-sm leading-relaxed text-slate-300'>{text}</p>
+              <ol className='mt-10 grid gap-8 sm:mt-12 sm:grid-cols-3 sm:gap-10'>
+                {STEPS.map(({ title, text }, index) => (
+                  <li key={title} className='relative flex items-start gap-5 sm:block sm:text-center'>
+                    {index < STEPS.length - 1 && <span className='absolute bottom-[-2rem] left-7 top-14 w-px bg-violet-200 sm:bottom-auto sm:left-[calc(50%+1.75rem)] sm:top-7 sm:h-px sm:w-[calc(100%-1rem)]' aria-hidden='true' />}
+                    <span className='relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-white font-mono text-xl font-semibold text-violet-700 sm:mx-auto' aria-hidden='true'>{String(index + 1).padStart(2, '0')}</span>
+                    <div className='pt-1 sm:mt-5 sm:pt-0'>
+                      <h3 className='text-lg font-bold'>{title}</h3>
+                      <p className='mt-2 max-w-xs text-sm leading-relaxed text-slate-600 sm:mx-auto sm:text-base'>{text}</p>
                     </div>
-                    {i < STEPS.length - 1 && (
-                      <ArrowRight className='absolute -right-6 top-4 hidden h-5 w-5 text-violet-300/70 sm:block' aria-hidden='true' />
-                    )}
                   </li>
                 ))}
               </ol>
             </div>
           </section>
 
-          <section id='pricing' data-landing-chapter className='scroll-mt-20 border-y border-violet-300 bg-violet-200'>
-            <div className='mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:gap-12 lg:py-20'>
-              <div>
-                <Eyebrow strong>Simple pricing</Eyebrow>
-                <h2 className='mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl'>One plan for your live lessons</h2>
-                <p className='mt-3 text-lg text-slate-600'>Everything you need to run effective, engaging lessons. Your students join free.</p>
+          <section id='pricing' aria-labelledby='pricing-title' data-landing-chapter className='scroll-mt-20 bg-gradient-to-b from-[#fcfbfe] to-[#f2eefb]'>
+            <div className='mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:py-24'>
+              <div className='mx-auto max-w-xl text-center'>
+                <Eyebrow>Simple pricing</Eyebrow>
+                <h2 id='pricing-title' className='mt-3 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl'>One plan for every lesson.</h2>
+                <p className='mt-4 text-base leading-relaxed text-slate-600'>All your teaching tools, with room for your own materials.</p>
               </div>
-              <div className='rounded-3xl border border-violet-200 bg-white p-6 shadow-xl shadow-violet-900/10 sm:p-8'>
-                <div className='flex flex-wrap items-start justify-between gap-6'>
+              <div className='relative mt-8 overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-xl shadow-violet-950/5 sm:mt-10'>
+                <div className='absolute inset-x-0 top-0 h-1 bg-violet-500' aria-hidden='true' />
+                <div className='grid gap-7 p-6 pt-8 sm:gap-10 sm:p-8 sm:pt-10 md:grid-cols-[0.85fr_1.15fr] md:p-10'>
                   <div>
-                    <Eyebrow>Tutor plan</Eyebrow>
-                    <p className='mt-2 flex items-baseline gap-1'>
-                      <span className='text-4xl font-extrabold'>$19</span>
-                      <span className='text-slate-500'>/ month</span>
+                    <div className='flex flex-wrap items-center gap-3'>
+                      <h3 className='text-lg font-bold'>Tutor plan</h3>
+                      <span className='rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800'>14-day free trial</span>
+                    </div>
+                    <p className='mt-5 flex items-baseline gap-2'>
+                      <span className='text-6xl font-extrabold tracking-tight'>$19</span>
+                      <span className='text-base text-slate-600'>/ month</span>
                     </p>
-                    <p className='mt-1 inline-block rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700'>14-day free trial</p>
+                    <p className='mt-4 flex items-center gap-2 text-sm font-medium text-slate-700'>
+                      <Users className='h-5 w-5 shrink-0 text-violet-600' aria-hidden='true' />
+                      Your students always join free.
+                    </p>
+                  </div>
+                  <div className='border-t border-slate-200 pt-6 md:border-l md:border-t-0 md:pl-10 md:pt-0'>
+                    <p className='text-xs font-bold uppercase tracking-wider text-slate-600'>Included in your plan</p>
+                    <Ticks
+                      className='mt-4 text-sm'
+                      items={['Unlimited lessons', 'All whiteboard tools', 'Phoneme Pop and Alphabet Bridge', 'Use your own materials', 'Students join with a code, no accounts']}
+                    />
                   </div>
                 </div>
-                <Ticks
-                  className='mt-6 text-sm'
-                  items={['Unlimited lessons', 'All whiteboard tools', 'Phoneme Pop and Alphabet Bridge', 'Use your own materials', 'Students join with a code, no accounts']}
-                />
-                <div className='mt-6'>
-                  <Button to={START} compact className='w-full'>
-                    Start 14-day free trial <ArrowRight className='h-5 w-5' aria-hidden='true' />
+                <div className='flex flex-col items-center justify-between gap-4 border-t border-violet-100 bg-violet-50/50 px-6 py-5 sm:flex-row sm:gap-6 sm:px-8 md:px-10'>
+                  <div className='order-2 text-center sm:order-1 sm:text-left'>
+                    <p className='text-sm font-semibold text-slate-700'>Make room for your next lesson.</p>
+                    <p className='mt-1 text-xs text-slate-600'>14 days free · No credit card required</p>
+                  </div>
+                  <Button to={START} compact className='order-1 w-full shrink-0 sm:order-2 sm:w-auto'>
+                    Start 14-day free trial <ArrowRight className='h-5 w-5 shrink-0' aria-hidden='true' />
                   </Button>
-                  <p className='mt-2 text-center text-sm text-slate-500'>14 days free · No credit card required</p>
                 </div>
               </div>
             </div>
           </section>
         </div>
-
-        <section className='bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-950 text-white'>
-          <div className='mx-auto max-w-6xl px-4 py-16 text-center sm:px-6 lg:py-20'>
-            <div className='mx-auto max-w-3xl'>
-              <BookOpen className='mx-auto mb-5 h-10 w-10 text-[#f4b544]' strokeWidth={1.5} aria-hidden='true' />
-              <h2 className='text-3xl font-extrabold tracking-tight sm:text-4xl'>Help more students become confident readers</h2>
-              <p className='mt-4 text-lg text-slate-300'>A powerful, easy-to-use workspace designed for dyslexia tutors.</p>
-              <a href='#pricing' className='mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-violet-300/50 bg-white/5 px-5 py-3 font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-violet-300 sm:w-auto'>
-                See tutor plan <ArrowRight className='h-5 w-5' aria-hidden='true' />
-              </a>
-            </div>
-          </div>
-        </section>
       </main>
 
       <SiteFooter />
