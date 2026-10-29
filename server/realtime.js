@@ -174,8 +174,9 @@ export function attachRealtime(server, options = {}) {
     return bucket.count <= perSecond;
   };
 
-  const boardMessage = (room) => ({
+  const boardMessage = (room, reason = 'sync') => ({
     t: 'board',
+    reason,
     tools: room.tools,
     hands: publicHands(room),
     strip: room.strip,
@@ -225,8 +226,8 @@ export function attachRealtime(server, options = {}) {
 
   const isTutor = (ws) => Boolean(ws.room && ws.room.tutor === ws);
 
-  const broadcastBoard = (room) => {
-    const msg = boardMessage(room);
+  const broadcastBoard = (room, reason) => {
+    const msg = boardMessage(room, reason);
     send(room.tutor, msg);
     send(room.student, msg);
   };
@@ -571,6 +572,17 @@ export function attachRealtime(server, options = {}) {
       }
       if (hand.by !== role) return;
       if (msg.a === 'drop') {
+        // A release commits its final point atomically, even if the preceding motion
+        // exhausted the stream budget. Legacy drops omit the point and keep the last one.
+        // A malformed final point is discarded as a whole, but still releases the holder
+        // at its last valid point so invalid input cannot leave a glove stuck in use.
+        const hasPoint = ['x', 'y', 'letter'].some((key) => Object.hasOwn(msg, key));
+        const validLetter = msg.letter === undefined || msg.letter === null || cleanLetter(msg.letter) === msg.letter;
+        if (hasPoint && Number.isFinite(msg.x) && Number.isFinite(msg.y) && validLetter) {
+          hand.x = clamp01(msg.x);
+          hand.y = clamp01(msg.y);
+          hand.letter = cleanLetter(msg.letter);
+        }
         letGo(hand);
         return sendHand(room, msg.side);
       }
@@ -645,7 +657,7 @@ export function attachRealtime(server, options = {}) {
       room.strokeById.clear();
       resetBoxTaps(room);
       for (const w of [room.tutor, room.student]) if (w) w.openStroke = null;
-      broadcastBoard(room);
+      broadcastBoard(room, 'clear');
     },
 
     // Tutor only: turn the student's toolbar on or off.
@@ -683,7 +695,7 @@ export function attachRealtime(server, options = {}) {
       room.strip = msg.strip !== false;
       Object.assign(room, cleanSoundBoxState(msg));
       room.lines = isLineSize(msg.lines) ? msg.lines : DEFAULT_LINES;
-      broadcastBoard(room);
+      broadcastBoard(room, 'restore');
     },
 
     // Tutor only: new tiles line up on the tray, in the order typed.

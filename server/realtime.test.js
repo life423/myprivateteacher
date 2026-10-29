@@ -223,8 +223,8 @@ describe('drawing', () => {
     await nothing(student, 'board');
 
     tutor.send({ t: 'clear' });
-    expect((await student.take('board')).strokes).toEqual([]);
-    expect((await tutor.take('board')).strokes).toEqual([]);
+    expect(await student.take('board')).toMatchObject({ reason: 'clear', strokes: [] });
+    expect(await tutor.take('board')).toMatchObject({ reason: 'clear', strokes: [] });
   });
 
   it('gets the board back from the tutor after a restart', async () => {
@@ -245,6 +245,7 @@ describe('drawing', () => {
     back.send({ t: 'rs', id: 's1', by: 'student', tool: 'pen', pts: [300, 300] });
     back.send({ t: 'restored', tools: true, lines: 'small' });
     const board = await back.take('board');
+    expect(board.reason).toBe('restore');
     expect(board.tools).toBe(true);
     expect(board.lines).toBe('small');
     expect(board.strokes.map((s) => [s.id, s.by])).toEqual([
@@ -253,6 +254,7 @@ describe('drawing', () => {
     ]);
 
     const rejoined = await joinRoom(code);
+    expect(rejoined.board.reason).toBe('sync');
     expect(rejoined.board.strokes).toHaveLength(2);
     expect(rejoined.board.tools).toBe(true);
   });
@@ -262,6 +264,7 @@ describe('pointers', () => {
   it('shares two hands: the right one out to start, both on the board for whoever joins', async () => {
     const { code } = await openRoom();
     const { board } = await joinRoom(code);
+    expect(board.reason).toBe('sync');
     expect(board.hands.r).toMatchObject({ on: true, by: null });
     expect(board.hands.l).toMatchObject({ on: false, by: null });
   });
@@ -291,6 +294,102 @@ describe('pointers', () => {
     expect(await student.take('hand')).toMatchObject({ side: 'l', by: null, x: 0.3, letter: 'B' });
   });
 
+
+  it('commits the final hand position after its movement budget is exhausted and ignores late moves', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+    await tutor.take('hand');
+    await student.take('hand');
+
+    // One receive burst consumes the real 120-move budget. The following ordinary B
+    // move is rejected, just as paced traffic can be buffered during a transport stall.
+    for (let n = 0; n < 120; n++) tutor.send({ t: 'hand', side: 'r', a: 'move', x: 0.25, y: 0.35, letter: 'A' });
+    tutor.send({ t: 'hand', side: 'r', a: 'move', x: 0.65, y: 0.75, letter: 'B' });
+    tutor.send({ t: 'p', m: 'none' }); // ordered barrier after the entire motion burst
+    await student.take('p');
+    for (let n = 0; n < 120; n++) expect(await student.take('hand')).toMatchObject({ x: 0.25, y: 0.35, letter: 'A', by: 'tutor' });
+    await nothing(student, 'hand');
+
+    tutor.send({ t: 'hand', side: 'r', a: 'drop', x: 0.65, y: 0.75, letter: 'B' });
+    for (const client of [tutor, student]) expect(await client.take('hand')).toMatchObject({ side: 'r', x: 0.65, y: 0.75, letter: 'B', by: null });
+    tutor.send({ t: 'hand', side: 'r', a: 'move', x: 0.25, y: 0.35, letter: 'A' });
+    tutor.send({ t: 'p', m: 'none' });
+    await student.take('p');
+    await nothing(student, 'hand');
+    expect(realtime.rooms.get(code).hands.r).toMatchObject({ x: 0.65, y: 0.75, letter: 'B', by: null, timer: null });
+  });
+
+  it('accepts final coordinates only from the current hand holder', async () => {
+    const { tutor, student, code } = await withTools();
+    student.send({ t: 'hand', side: 'r', a: 'grab' });
+    await tutor.take('hand');
+    await student.take('hand');
+
+    // Being the tutor permits an explicit grab/takeover, not a drop of somebody else's hand.
+    tutor.send({ t: 'hand', side: 'r', a: 'drop', x: 0.8, y: 0.9, letter: 'B' });
+    tutor.send({ t: 'p', m: 'none' });
+    await student.take('p');
+    await nothing(student, 'hand');
+    expect(realtime.rooms.get(code).hands.r).toMatchObject({ x: 0.6, y: 0.17, by: 'student' });
+
+    student.send({ t: 'hand', side: 'r', a: 'drop', x: 0.3, y: 0.4, letter: 'C' });
+    for (const client of [tutor, student]) expect(await client.take('hand')).toMatchObject({ x: 0.3, y: 0.4, letter: 'C', by: null });
+    student.send({ t: 'hand', side: 'r', a: 'drop', x: 0.8, y: 0.9, letter: 'B' });
+    student.send({ t: 'p', m: 'none' });
+    await tutor.take('p');
+    await nothing(tutor, 'hand');
+    expect(realtime.rooms.get(code).hands.r).toMatchObject({ x: 0.3, y: 0.4, letter: 'C', by: null });
+  });
+
+  it('clamps final coordinates and clears an omitted final letter', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+    await tutor.take('hand'); await student.take('hand');
+    tutor.send({ t: 'hand', side: 'r', a: 'drop', x: -2, y: 3, letter: 'Z' });
+    for (const client of [tutor, student]) expect(await client.take('hand')).toMatchObject({ x: 0, y: 1, letter: 'Z', by: null });
+    // This socket has an unused movement budget, so ownership alone must reject a late move.
+    tutor.send({ t: 'hand', side: 'r', a: 'move', x: 0.8, y: 0.9, letter: 'A' });
+    tutor.send({ t: 'p', m: 'none' });
+    await student.take('p');
+    await nothing(student, 'hand');
+    expect(realtime.rooms.get(code).hands.r).toMatchObject({ x: 0, y: 1, letter: 'Z', by: null });
+    tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+    await tutor.take('hand'); await student.take('hand');
+    tutor.send({ t: 'hand', side: 'r', a: 'drop', x: 0.2, y: 0.3 });
+    for (const client of [tutor, student]) expect(await client.take('hand')).toMatchObject({ x: 0.2, y: 0.3, letter: null, by: null });
+  });
+
+  it.each([
+    ['partial coordinates', { x: 0.8 }],
+    ['non-numeric coordinate', { x: '0.8', y: 0.9 }],
+    ['null coordinate', { x: null, y: 0.9 }],
+    ['invalid letter', { x: 0.8, y: 0.9, letter: 'BB' }],
+    ['letter without coordinates', { letter: 'B' }],
+  ])('discards a drop with %s but releases ownership at the last valid point', async (_, point) => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+    await tutor.take('hand'); await student.take('hand');
+    tutor.send({ t: 'hand', side: 'r', a: 'move', x: 0.25, y: 0.35, letter: 'A' });
+    await student.take('hand');
+    tutor.send({ t: 'hand', side: 'r', a: 'drop', ...point });
+    for (const client of [tutor, student]) expect(await client.take('hand')).toMatchObject({ x: 0.25, y: 0.35, letter: 'A', by: null });
+    expect(realtime.rooms.get(code).hands.r.timer).toBeNull();
+  });
+
+  it('retains the last accepted point for legacy coordinate-free hand drops', async () => {
+    const { tutor, code } = await openRoom();
+    const { student } = await joinRoom(code);
+    tutor.send({ t: 'hand', side: 'r', a: 'grab' });
+    await tutor.take('hand'); await student.take('hand');
+    tutor.send({ t: 'hand', side: 'r', a: 'move', x: 0.2, y: 0.3, letter: 'A' });
+    await student.take('hand');
+    tutor.send({ t: 'hand', side: 'r', a: 'drop' });
+    for (const client of [tutor, student]) expect(await client.take('hand')).toMatchObject({ x: 0.2, y: 0.3, letter: 'A', by: null });
+  });
+
   it('lets go of the student’s hand when their tools go off or they leave', async () => {
     const { tutor, code } = await openRoom();
     const { student } = await joinRoom(code);
@@ -313,6 +412,7 @@ describe('pointers', () => {
     const back = await connect(); // the tutor refreshes: same code and key, new connection
     back.send({ t: 'create', code, key });
     await back.take('room');
+    expect((await back.take('board')).reason).toBe('sync');
     expect(await back.take('p')).toMatchObject({ x: 0.3, y: 0.08, m: 'pen' });
   });
 });

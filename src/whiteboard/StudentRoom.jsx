@@ -133,6 +133,9 @@ export default function StudentRoom({ code }) {
     },
   });
   sendRef.current = send;
+  useEffect(() => {
+    if (status !== 'open') hands.disconnect();
+  }, [status, hands.disconnect]);
 
   // Ending/replacement screens do not unmount the room. Stop local tracks and
   // cancel pending camera startup before leaving video hidden behind that screen.

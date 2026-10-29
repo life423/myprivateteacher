@@ -423,8 +423,9 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
       <div className='relative min-h-0 flex-1 p-2'>
         {/* The floating tools and video live in the same space as the board, above the bottom bar. */}
         <div className='relative flex h-full w-full flex-col gap-2'>
-          {/* On a short screen (a phone held sideways) the alphabet would take most of the board's height, so it steps aside */}
-          {alphabet && <div className='[@media(max-height:500px)]:hidden'>{alphabet}</div>}
+          {/* The board omits its own strip whenever this bar is present. Keep the bar visible
+              in landscape too, with compact rows that leave room for the writing area. */}
+          {alphabet && <div data-external-alphabet className='shrink-0 [@media(max-height:500px)]:[&_[aria-label=Alphabet]]:gap-0.5 [@media(max-height:500px)]:[&_[aria-label=Alphabet]]:p-1 [@media(max-height:500px)]:[&_[data-letter]]:h-7 [@media(max-height:500px)]:[&_[data-letter]]:rounded-md [@media(max-height:500px)]:[&_[data-letter]]:text-base'>{alphabet}</div>}
           <main className='relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-slate-100 shadow [&:has([data-board-footer])]:[--board-footer-height:44px]'>
             <BoardFit.Provider value={alphabet ? FILL_WITH_BAR : FILL}>{board}</BoardFit.Provider>
             {/* Inside the board, so they never sit over the alphabet bar */}

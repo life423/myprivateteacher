@@ -198,6 +198,9 @@ export default function TutorRoom() {
     },
   });
   sendRef.current = send;
+  useEffect(() => {
+    if (status !== 'open') hands.disconnect();
+  }, [status, hands.disconnect]);
 
   // Message screens keep this room mounted, so unmount cleanup alone cannot
   // release a camera or a pending permission request when the seat is replaced.

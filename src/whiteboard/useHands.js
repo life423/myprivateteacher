@@ -29,6 +29,7 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
   // an unbounded queue, even when another local gesture starts before the last echo arrives.
   const ownership = useRef({ l: { version: 0, pending: 0, nextBy: null }, r: { version: 0, pending: 0, nextBy: null } });
   const [pickupSide, setPickupSide] = useState(null);
+  const [interactionEpoch, setInteractionEpoch] = useState(0);
   const transport = useRef({ me, send, cancelThrottled });
   transport.current = { me, send, cancelThrottled };
 
@@ -42,10 +43,11 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     clearInterval(holding.current[side]);
     delete holding.current[side];
   };
-  const clearPickup = (side) => {
+  const clearPickup = (side, revoked = false) => {
     if (pickup.current?.side !== side) return;
     pickup.current = null;
     setPickupSide(null);
+    if (revoked) setInteractionEpoch((epoch) => epoch + 1);
   };
   const resetOwnership = (side) => { ownership.current[side] = { version: 0, pending: 0, nextBy: null }; };
   const expectOwnership = (side, by) => {
@@ -62,7 +64,8 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     intent.nextBy = by === me ? null : me;
     return version < intent.version;
   };
-  const sendPosition = (side, at) => transport.current.send({ t: 'hand', side, a: 'move', x: round4(at.x / STAGE.width), y: round4(at.y / STAGE.height), letter: at.letter });
+  // Release and final pose are one authoritative operation, outside the motion budget.
+  const sendDrop = (side, at) => transport.current.send({ t: 'hand', side, a: 'drop', x: round4(at.x / STAGE.width), y: round4(at.y / STAGE.height), letter: at.letter });
 
   useEffect(() => {
     // Fast Refresh can replay this effect while retaining React state. Its cleanup has
@@ -70,20 +73,20 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     if (!pickup.current) { setPickupSide(null); setHands(live.current); }
     return () => {
       const borrowed = pickup.current;
-      const owned = borrowed && holding.current[borrowed.side] && live.current[borrowed.side].by === transport.current.me;
-      // Clear queued movement before restoring, so a late throttle cannot move the glove again.
-      SIDES.forEach((side) => { cancelMove(side); stopHolding(side); });
       pickup.current = null;
-      if (owned) {
-        const { side, origin } = borrowed;
-        latest.current[side] = origin;
-        live.current = { ...live.current, [side]: { ...live.current[side], ...origin, by: null } };
-        sendPosition(side, origin);
-        // The socket survives Fast Refresh. Track this release too, so its eventual echo
-        // cannot cancel a pickup begun after effect setup runs again.
+      SIDES.forEach((side) => {
+        const owned = holding.current[side] && live.current[side].by === transport.current.me;
+        cancelMove(side);
+        stopHolding(side);
+        if (!owned) return;
+        const at = borrowed?.side === side ? borrowed.origin : latest.current[side] || live.current[side];
+        latest.current[side] = at;
+        live.current = { ...live.current, [side]: { ...live.current[side], ...at, by: null } };
+        // The socket may survive effect replay. Its eventual release must not cancel
+        // a pickup begun after setup runs again.
         expectOwnership(side, null);
-        transport.current.send({ t: 'hand', side, a: 'drop' });
-      }
+        sendDrop(side, at);
+      });
     };
   }, []);
 
@@ -92,11 +95,14 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     (msg) => {
       const all = msg.t === 'hands' || msg.t === 'board' ? msg.hands : null;
       if (all) {
+        // Clear/restore update an existing room. Only a new synchronization boundary
+        // invalidates local gestures. Untagged snapshots support older servers safely.
+        const syncing = msg.t === 'board' && !['clear', 'restore'].includes(msg.reason);
+        if (syncing) setInteractionEpoch((epoch) => epoch + 1);
         const next = { r: fromServer(all.r), l: fromServer(all.l) };
         SIDES.forEach((side) => {
-          if (msg.t === 'board') {
-            // A reconnect snapshot starts a new authority boundary; old local gestures and
-            // ownership echoes cannot override the board we just joined.
+          if (syncing) {
+            // A true synchronization snapshot starts a new authority boundary.
             resetOwnership(side);
             cancelMove(side);
             stopHolding(side);
@@ -105,12 +111,12 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
             resetOwnership(side);
             cancelMove(side);
             stopHolding(side);
-            clearPickup(side);
+            clearPickup(side, true);
           } else if (ownership.current[side].pending) next[side] = live.current[side];
           else if (next[side].by !== me) {
             cancelMove(side);
             stopHolding(side);
-            clearPickup(side);
+            clearPickup(side, true);
           } else if (holding.current[side]) Object.assign(next[side], latest.current[side]);
         });
         replace(next);
@@ -124,7 +130,7 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
         resetOwnership(msg.side);
         cancelMove(msg.side);
         stopHolding(msg.side);
-        clearPickup(msg.side); // A new owner is authoritative; never restore over their hand.
+        clearPickup(msg.side, true); // A new owner is authoritative; never restore over their hand.
       }
       // While you hold it, where it is comes from you, not the server's copy.
       if (hand.on && hand.by === me && holding.current[msg.side]) update(msg.side, { on: hand.on, by: me });
@@ -133,6 +139,16 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
     },
     [me],
   );
+
+  // No gesture or queued motion belongs to a disconnected transport. Do not send
+  // restoration on the next socket; its synchronization will supply authoritative hands.
+  const disconnect = useCallback(() => {
+    SIDES.forEach((side) => { resetOwnership(side); cancelMove(side); stopHolding(side); });
+    pickup.current = null;
+    setPickupSide(null);
+    replace(Object.fromEntries(SIDES.map((side) => [side, { ...live.current[side], by: null }])));
+    setInteractionEpoch((epoch) => epoch + 1);
+  }, []);
 
   // Takes hold of a hand. The tutor can take one from the student; the student can't take the tutor's.
   const grab = useCallback(
@@ -169,10 +185,9 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
       clearPickup(side);
       if (!holding.current[side]) return;
       stopHolding(side);
-      const at = latest.current[side];
-      if (at) sendPosition(side, at);
+      const at = latest.current[side] || live.current[side];
       expectOwnership(side, null);
-      send({ t: 'hand', side, a: 'drop' });
+      sendDrop(side, at);
       update(side, { by: null });
     },
     [send],
@@ -188,7 +203,7 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
       if (!holding.current[side] || !live.current[side].on || live.current[side].by !== me) {
         cancelMove(side);
         stopHolding(side);
-        clearPickup(side);
+        clearPickup(side, true);
         return;
       }
       const at = isPoint(point) ? pickupPoint(point) : origin;
@@ -251,5 +266,5 @@ export function useHands({ me, send, sendThrottled, cancelThrottled = null }) {
   const visible = SIDES.filter((s) => hands[s].on && s !== pickupSide).map((s) => ({ side: s, ...hands[s] }));
   const letters = visible.map((h) => h.letter).filter(Boolean);
 
-  return { hands, visible, letters, handle, grab, move, drop, show, restore, beginLetterPickup, moveLetterPickup, finishLetterPickup };
+  return { hands, visible, letters, interactionEpoch, disconnect, handle, grab, move, drop, show, restore, beginLetterPickup, moveLetterPickup, finishLetterPickup };
 }

@@ -587,6 +587,98 @@ async function delayedConsecutiveCarryCase(session) {
   });
 }
 
+async function snapshotDuringCarryCases(session) {
+  for (const reason of ['clear', 'restore']) await recordCase(session, `${reason} snapshot arriving during the next carry preserves one glove and the new drop`, async () => {
+    const { tutor, student } = session;
+    await resetGlove(session);
+    const count = await tutor.locator('[data-letter-tile]').count();
+    const end = await dropPoint(session);
+    const a = await sourcePoint(session, 'A');
+    await press(session, a); await move(session, a, end); await release(session); await confirmedStatus(session, 'A');
+    const code = await tutor.evaluate(() => window.dragReceived.find(message => message.t === 'room').code);
+    const room = realtime.rooms.get(code);
+    const before = await tutor.evaluate(() => window.dragReceived.length);
+    await tutor.evaluate(() => { window.dragDelayInbound = 400; });
+    try {
+      // A real server-produced snapshot from before B's grab is delivered during B's carry.
+      // Restore completion is exercised on this isolated room in its restoring phase.
+      if (reason === 'restore') room.restoring = true;
+      await tutor.evaluate(reason => window.dragSocket.send(JSON.stringify(reason === 'clear' ? { t: 'clear' } : { t: 'restored', strip: true, tools: false })), reason);
+      const b = await sourcePoint(session, 'B');
+      await press(session, b); await pickup(session, 'B', b); await move(session, b, end);
+      await tutor.waitForFunction(({ before, reason }) => window.dragReceived.slice(before).some(message => message.t === 'board' && message.reason === reason), { before, reason });
+      await pickup(session, 'B', end);
+      assert.equal(await tutor.locator('[data-board-surface] [data-hand], [data-bar-hand] [data-hand]').filter({ visible: true }).count(), 0, 'Snapshot exposed the borrowed original during the carry');
+      await release(session); await cleared(session); await confirmedStatus(session, 'B');
+      for (const page of [tutor, student]) await page.waitForFunction(count => document.querySelectorAll('[data-letter-tile]').length === count + 2, count);
+      const at = await releasedCoordinates(tutor);
+      for (const page of [tutor, student]) await handsAt(page, { r: { on: true, by: null, x: at.x / 1600, y: at.y / 1000 } });
+      return { serverSnapshotReason: reason, delayMs: 400, singleCarryGlove: true, bothClientsAtFinalRelease: true };
+    } finally { room.restoring = false; await tutor.evaluate(() => { window.dragDelayInbound = 0; }); }
+  });
+}
+
+async function forceCaptureLoss(session) {
+  await session.tutor.evaluate(() => {
+    const svg = document.querySelector('[data-board-surface] > svg[role="img"]');
+    if (!svg.hasPointerCapture(window.dragPointerId)) throw new Error('Expected actual pointer capture before forcing loss');
+    svg.releasePointerCapture(window.dragPointerId);
+  });
+  // A subsequent native move makes the browser dispatch its pending capture loss.
+  await session.tutor.mouse.move(400, 20, { steps: 1 });
+  await session.tutor.mouse.up();
+  await pause(120);
+}
+
+async function lifecycleCases(session) {
+  if (session.touch) return;
+  await recordCase(session, 'Losing capture of an existing tile finalizes once and ignores later hover', async () => {
+    const { tutor, student } = session;
+    const tile = await makeExistingTile(session, { x: 1100, y: 650 }); await resetGlove(session);
+    const rect = await tutor.locator(`[data-letter-tile="${tile.id}"]`).boundingBox();
+    const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    const end = await stagePoint(tutor, { x: 850, y: 700 });
+    const before = await tutor.evaluate(() => window.dragSent.length);
+    await press(session, start); await tutor.mouse.move(end.x, end.y, { steps: 1 });
+    await forceCaptureLoss(session);
+    await student.waitForFunction(id => window.dragReceived.some(message => message.t === 'tile:drop' && message.tile.id === id), tile.id);
+    const settled = await tutor.evaluate(({ before, id }) => window.dragSent.slice(before).filter(message => message.t === 'tile:drop' && message.id === id), { before, id: tile.id });
+    assert.equal(settled.length, 1, 'Capture loss must send exactly one final tile drop');
+    const after = await tutor.evaluate(() => window.dragSent.length);
+    const hover = await stagePoint(tutor, { x: 1400, y: 800 }); await tutor.mouse.move(hover.x, hover.y, { steps: 3 }); await pause(100);
+    const ghostMoves = await tutor.evaluate(({ after, id }) => window.dragSent.slice(after).filter(message => message.id === id && message.t.startsWith('tile:')), { after, id: tile.id });
+    assert.deepEqual(ghostMoves, [], 'A released mouse kept moving the old tile');
+    return { finalizedOnce: true, noHoverDrag: true, deliveredToStudent: true };
+  });
+  for (const tool of ['Draw', 'Erase']) await recordCase(session, `${tool} capture loss closes the stroke and later hover creates no ink`, async () => {
+    const { tutor } = session;
+    await tutor.getByRole('button', { name: tool, exact: true }).click();
+    const start = await stagePoint(tutor, { x: 200, y: 850 }), end = await stagePoint(tutor, { x: 450, y: 850 });
+    const before = await tutor.evaluate(() => window.dragSent.length);
+    await press(session, start); await tutor.mouse.move(end.x, end.y, { steps: 3 });
+    await forceCaptureLoss(session);
+    const messages = await tutor.evaluate(before => window.dragSent.slice(before), before);
+    assert.equal(messages.filter(message => message.t === 's').length, 1);
+    assert.equal(messages.filter(message => message.t === 'e').length, 1, 'Capture loss left the stroke open');
+    const after = await tutor.evaluate(() => window.dragSent.length);
+    const hover = await stagePoint(tutor, { x: 650, y: 850 }); await tutor.mouse.move(hover.x, hover.y, { steps: 3 }); await pause(100);
+    assert.equal(await tutor.evaluate(after => window.dragSent.slice(after).filter(message => ['s', 'm', 'e'].includes(message.t)).length, after), 0, 'Hover kept drawing or erasing after release');
+    await tutor.getByRole('button', { name: 'Select', exact: true }).click();
+    return { strokeEndedOnce: true, noHoverInk: true };
+  });
+  await recordCase(session, 'Failed alphabet pointer capture still follows and releases through window listeners', async () => {
+    const { tutor, student } = session;
+    const count = await tutor.locator('[data-letter-tile]').count();
+    await tutor.evaluate(() => { window.savedCapture = Element.prototype.setPointerCapture; Element.prototype.setPointerCapture = () => { throw new Error('capture unavailable'); }; });
+    try {
+      const start = await sourcePoint(session, 'C'), end = await dropPoint(session);
+      await press(session, start); await pickup(session, 'C', start); await move(session, start, end); await release(session); await cleared(session); await confirmedStatus(session, 'C');
+      await student.waitForFunction(count => document.querySelectorAll('[data-letter-tile]').length === count + 1, count);
+      return { injectedCaptureFailure: true, fallbackPlacedExactlyOneTile: true };
+    } finally { await tutor.evaluate(() => { Element.prototype.setPointerCapture = window.savedCapture; delete window.savedCapture; }); }
+  });
+}
+
 async function penPalmCase(session) {
   if (!session.cdp) return;
   await recordCase(session, 'A resting palm does not cancel a pen letter pickup', async () => {
@@ -817,6 +909,7 @@ try {
       await differentLetterHandCase(session);
       await noFreeGloveCase(session);
       await fastRepeatCase(session);
+      await snapshotDuringCarryCases(session);
       if (session.viewport.width === 1440) {
         await upperTilePriorityCase(session);
         await finalTileReleaseCase(session);
@@ -826,6 +919,7 @@ try {
       await edgeCase(session);
       if (session.viewport.width === 1440) {
         await releaseGeometryCases(session);
+        await lifecycleCases(session);
         await pendingConfirmationCase(session);
         await disconnectedCase(session);
         await fullBoardCase(session);

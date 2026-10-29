@@ -113,16 +113,6 @@ export function useWhiteboard(role, send) {
     bump();
   }, [bump]);
 
-  useEffect(
-    () => () => {
-      clearTimeout(flushTimer.current);
-      pictureUploads.current.invalidate();
-      libraryGeneration.current++;
-      for (const channel of Object.values(channels.current)) clearTimeout(channel.timer);
-    },
-    [],
-  );
-
   // Strokes
   const flush = useCallback(() => {
     clearTimeout(flushTimer.current);
@@ -143,6 +133,21 @@ export function useWhiteboard(role, send) {
     board.finish(current.id);
     sendRef.current({ t: 'e', id: current.id });
   }, [board, flush]);
+
+  useEffect(() => () => {
+    // Effect replay retains these refs. Finish pending ink, then discard obsolete pointer
+    // movement and reset timer handles so the next gesture can schedule fresh transport.
+    end();
+    clearTimeout(flushTimer.current);
+    flushTimer.current = null;
+    for (const channel of Object.values(channels.current)) {
+      clearTimeout(channel.timer);
+      channel.timer = null;
+      channel.message = null;
+    }
+    pictureUploads.current.invalidate();
+    libraryGeneration.current++;
+  }, [end]);
 
   const start = useCallback(
     (tool, { x, y }) => {
@@ -194,7 +199,9 @@ export function useWhiteboard(role, send) {
       () => {
         channel.timer = null;
         channel.last = performance.now();
-        sendRef.current(channel.message);
+        const message = channel.message;
+        channel.message = null;
+        if (message) sendRef.current(message);
       },
       Math.max(0, THROTTLE_MS - (performance.now() - channel.last)),
     );
@@ -205,6 +212,7 @@ export function useWhiteboard(role, send) {
     if (!channel) return;
     clearTimeout(channel.timer);
     channel.timer = null;
+    channel.message = null;
   }, []);
 
   const sendPointer = useCallback((message) => sendThrottled('p', message), [sendThrottled]);
