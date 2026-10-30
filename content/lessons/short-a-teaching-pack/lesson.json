@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 2,
+  "id": "starter-short-a-amstp-v2",
+  "familyId": "short-a-amstp",
+  "edition": 2,
+  "supersedes": "starter-short-a-amstp-v1",
+  "title": "Short a practice",
+  "description": "An illustrated, original short-a practice pack: sound review, a keyword and mouth cue, breve-guided word reading, word building, private dictation, plain connected reading and meaning discussion. Assumes a, m, s, t and p are already taught. Not an official Take Flight lesson.",
+  "knownLetters": [
+    "a",
+    "m",
+    "s",
+    "t",
+    "p"
+  ],
+  "wordChain": [
+    "mat",
+    "pat",
+    "sat",
+    "sap",
+    "tap",
+    "map"
+  ],
+  "readingLines": [
+    "Pat sat.",
+    "Tap, Pat, tap!",
+    "Pat sat.",
+    "Tap, tap, tap!"
+  ],
+  "assets": [
+    {
+      "id": "sound-cue",
+      "file": "sound-cue.png",
+      "source": "sound-cue.svg",
+      "w": 1600,
+      "h": 1700,
+      "purpose": "A short-a keyword illustration and existing articulation cue for tutor-led sound review."
+    },
+    {
+      "id": "word-work",
+      "file": "word-work.png",
+      "source": "word-work.svg",
+      "w": 1600,
+      "h": 1700,
+      "purpose": "A breve model and six marked CVC words for supported practice."
+    },
+    {
+      "id": "reading",
+      "file": "reading.png",
+      "source": "reading.svg",
+      "w": 1600,
+      "h": 1700,
+      "purpose": "Four lines of ordinary, unmarked connected text for decoding and rereading."
+    },
+    {
+      "id": "meaning",
+      "file": "meaning.png",
+      "source": "meaning.svg",
+      "w": 1600,
+      "h": 1700,
+      "purpose": "Original mat and map illustrations, revealed after decoding for meaning discussion."
+    }
+  ],
+  "activities": [
+    {
+      "id": "review-sounds",
+      "type": "review",
+      "title": "Review known sounds",
+      "directions": "Background\nThis is original practice for a learner who already knows a, m, s, t and p. Check these correspondences before proceeding. Reduce the set or model unfamiliar correspondences rather than treating this as a first introduction or a diagnostic test.\n\nModel\nPoint to one letter and model its sound rather than its name. Keep m and s continuous; keep t and p brief, without adding an “uh.” The apple keyword on the next page is an oral memory cue, not an extra decoding word.\n\nPractice\nAsk for each letter’s sound, then mix the order. Model an uncertain correspondence, have the learner repeat it, and revisit it.\n\nCheck\nMatch P with p and T with t. Briefly explain the period, comma and exclamation mark orally. Work at a comfortable pace without a timer.",
+      "targets": "a\nm\ns\nt\np",
+      "letters": "a m s t p",
+      "boxes": 0,
+      "assetIds": [],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "short-a-cue",
+      "type": "read",
+      "title": "Look and say short a",
+      "directions": "Model\nUse the original apple illustration as a spoken keyword cue for short a. Say “a, apple,” then model the short-a sound using the learner’s established pronunciation model. Have the learner repeat it. Do not ask them to decode the untaught word apple.\n\nPractice\nThe existing mouth photograph and side-view diagram are cues: open the jaw, keep the lips unrounded, and keep the tongue low and forward. Let the learner hear your model; a static photograph cannot establish the whole sound or prove correct speech. Avoid a forced smile.\n\nCheck\nName the breve, the small curve above a. Explain that it marks a short vowel. This pack uses that verified general convention; it does not reproduce the full Take Flight coding system. Return to the plain a tiles to check the sound without the picture.",
+      "targets": "",
+      "letters": "",
+      "boxes": 0,
+      "assetIds": [
+        "sound-cue"
+      ],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "mark-and-read",
+      "type": "read",
+      "title": "Mark and read words",
+      "directions": "Model\nExplain that the curve above a is a breve. Model the three sounds in mat, touching one box for each sound, then blend and read the word. The breve is a reading aid; it does not add a letter or another sound box.\n\nPractice\nRead the six marked words together, then vary the order. Ask the learner to locate the vowel, explain the mark and blend the word. Briefly explain sap orally. Only the short-a vowel is marked; there are no invented syllable-division or program-specific marks.\n\nCheck\nNext, build and read these words with ordinary letter tiles. If helpful, use Draw to add a breve during modeling. Keep the stored tile as a rather than inserting a diacritic into its spelling. Keep the lower word list covered or out of view while modeling if the learner needs one example at a time.",
+      "targets": "",
+      "letters": "",
+      "boxes": 0,
+      "assetIds": [
+        "word-work"
+      ],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "build-short-a",
+      "type": "build",
+      "title": "Build and change words",
+      "directions": "Model\nEnable Student tools if the learner will move tiles. Say mat and have the learner repeat it and identify three sounds. Model m, a and t in three sound boxes, then blend and read. Keep unused letters outside the boxes.\n\nPractice\nGuide mat to pat, then sat, sap, tap and map, changing one sound and its spelling each time. Ask which sound changed and where. After each change, blend and read the whole word. Explain sap orally if unfamiliar.\n\nCheck\nModel an uncertain sound-spelling connection and give another supported attempt. Use Materials when another tile is needed. Do not reveal the private chain as an answer label. Reduce the set or stop as needed.",
+      "targets": "mat\npat\nsat\nsap\ntap\nmap",
+      "letters": "m a t p s",
+      "boxes": 3,
+      "assetIds": [],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "dictation-short-a",
+      "type": "dictation",
+      "title": "Spell from dictation",
+      "directions": "Model\nThe words below are private. This activity opens an empty writing area with three sound boxes. Enable Student tools and help the learner choose Draw.\n\nPractice\nSay one word without showing its spelling. The learner repeats it, segments its three sounds, writes one spelling in each box, then blends and reads the response. Clear the response between words when ready. Do not preload answer tiles or the marked practice sheet.\n\nCheck\nIdentify and model an uncertain sound-spelling link, then let the learner try again. Save only actual observations in Review next time, such as which link needed support. Do not infer a diagnosis or invent a performance score.",
+      "targets": "sat\nmap\ntap",
+      "letters": "",
+      "boxes": 3,
+      "assetIds": [],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "read-sam-pat",
+      "type": "read",
+      "title": "Read about Pat",
+      "directions": "Model\nIntroduce Pat as a fictional name. Review P/p and T/t and model the punctuation orally. The passage uses only the taught letters. It avoids the am/an patterns so this pack does not need an unverified coding convention for them.\n\nPractice\nHave the learner read the four lines in ordinary print. Help with the spellings and blending when needed, then reread the sentence. The marked word-practice page remains available with Previous or the activity chooser; no marks are forced onto the passage.\n\nCheck\nAsk who sat and what Pat was asked to do. Have the learner demonstrate tap. Reread comfortably if useful, prioritizing accurate, meaningful reading over speed. Open the next illustration page only when ready for the separate word-meaning task.",
+      "targets": "",
+      "letters": "",
+      "boxes": 0,
+      "assetIds": [
+        "reading"
+      ],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    },
+    {
+      "id": "words-and-meaning",
+      "type": "read",
+      "title": "Connect words and meaning",
+      "directions": "Model\nThis is a separate word-meaning task. Ask the learner to decode mat and map before using the illustrations to discuss their meanings. Do not use the pictures to replace decoding.\n\nPractice\nAsk the learner to match each word to its picture, describe what the object is for, and use the word in a spoken sentence. The tutor may supply the rest of that spoken sentence; it is not an extra reading target. Explain that a mat covers a small area of a floor and a map shows places.\n\nCheck\nRevisit one sound or word that needed support. Save an actual success and a specific next step privately if useful. Do not fill review notes with invented learner observations.",
+      "targets": "",
+      "letters": "",
+      "boxes": 0,
+      "assetIds": [
+        "meaning"
+      ],
+      "cardIds": [],
+      "reviewNextTime": false,
+      "reviewNote": ""
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://readinguniverse.org/skill-explainer/phonics-patterns/short-vowels-skill-explainer/an-overview-of-short-vowel-sounds",
+      "checked": "2026-10-29",
+      "use": "Primary teaching reference defines a breve above a short vowel and gives the apple cue. Wording and illustrations here are original."
+    },
+    {
+      "url": "https://readinguniverse.org/skill-explainer/phonics-patterns/short-vowels-skill-explainer/prepare-for-short-vowel-instruction",
+      "checked": "2026-10-29",
+      "use": "CVC practice, picture keyword cues and caution about am/an/all in early short-vowel practice. This is that source’s advice, not verified Take Flight sequence."
+    },
+    {
+      "url": "https://ufli.education.ufl.edu/resources/teaching-resources/glossary/",
+      "checked": "2026-10-29",
+      "use": "One sound per sound box; keep letter names, phonemes and phonics labels distinct."
+    },
+    {
+      "url": "https://cdnsm5-ss1.sharpschool.com/UserFiles/Servers/Server_825719/File/Departments/Special%20Programs/Scottish%20Rite%20Hospital_Take%20Flight%20Overview.pdf",
+      "checked": "2026-10-29",
+      "use": "School-hosted indexed PDF page 5 explicitly names breve and macron. It does not supply the full coding chart; direct download returned 404. No claim of full Take Flight coding verification."
+    },
+    {
+      "url": "https://ies.ed.gov/ncee/wwc/PracticeGuide/21",
+      "checked": "2026-10-29",
+      "use": "Sound-letter connections, decoding/writing and connected text. Does not validate this app or original sample lesson."
+    }
+  ]
+}

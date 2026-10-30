@@ -30,16 +30,17 @@ export function createTemplateAssets({ container }) {
   };
 }
 const contentOf = doc => ({
-  id: doc._id ?? doc.id, schemaVersion: 1,
+  id: doc._id ?? doc.id, schemaVersion: doc.schemaVersion ?? 1,
+  ...(doc.schemaVersion === 2 ? { familyId: doc.familyId, edition: doc.edition, supersedes: doc.supersedes } : {}),
   title: doc.title, description: doc.description, knownLetters: doc.knownLetters,
   wordChain: doc.wordChain, readingLines: doc.readingLines,
   activities: cleanLessonInput(doc).activities,
-  assets: doc.assets.map(({ id, w, h, type, bytes, sha256 }) => ({ id, w, h, type, bytes, sha256 })),
+  assets: doc.assets.map(({ id, w, h, type, bytes, sha256, purpose, renderHash }) => ({ id, w, h, type, bytes, sha256, ...(doc.schemaVersion === 2 ? { purpose, renderHash } : {}) })),
 });
 const checkedContent = doc => {
   let content;
   try { content = contentOf(doc); } catch { throw new Error('Template metadata verification failed.'); }
-  if (doc.schemaVersion !== 1 || !/^[a-f0-9]{64}$/.test(doc.sourceHash) || hash(JSON.stringify(content)) !== doc.sourceHash) throw new Error('Template metadata verification failed.');
+  if (![1, 2].includes(doc.schemaVersion) || doc.schemaVersion === 2 && (doc._id !== 'starter-short-a-amstp-v2' || doc.familyId !== 'short-a-amstp' || doc.edition !== 2 || doc.supersedes !== 'starter-short-a-amstp-v1') || !/^[a-f0-9]{64}$/.test(doc.sourceHash) || hash(JSON.stringify(content)) !== doc.sourceHash) throw new Error('Template metadata verification failed.');
   return content;
 };
 const templateView = doc => ({ ...checkedContent(doc), sourceHash: doc.sourceHash });
@@ -63,7 +64,15 @@ export function createLessonTemplates({ collection, assets, now = () => new Date
     } catch { return false; }
   };
   return {
-    async list() { return (await collection.find({}).limit(100).toArray()).map(summary).sort((a, b) => a.title.localeCompare(b.title)); },
+    async list() {
+      // Resolve supersession before limiting visible cards; archived originals
+      // remain addressable by old private copies, never edited or deleted.
+      const docs = await collection.find({}).limit(1001).toArray();
+      if (docs.length > 1000) throw new Error('Template catalog is too large.');
+      const reviewed = docs.map(doc => ({ doc, content: checkedContent(doc) }));
+      const superseded = new Set(reviewed.map(item => item.content.supersedes).filter(Boolean));
+      return reviewed.filter(item => !superseded.has(item.content.id)).map(item => summary(item.doc)).sort((a, b) => a.title.localeCompare(b.title)).slice(0, 100);
+    },
     async get(id) { const doc = await find(id); return doc ? templateView(doc) : null; },
     async image(id, assetId) {
       const doc = await find(id);
@@ -73,11 +82,11 @@ export function createLessonTemplates({ collection, assets, now = () => new Date
       const data = await readImage(id, asset);
       return { id: asset.id, w: asset.w, h: asset.h, type: asset.type, bytes: asset.bytes, sha256: asset.sha256, data };
     },
-    async publish(template, pngBytes) {
+    async publish(template, imageBytes) {
       // This is called only by the explicit publisher CLI, never an HTTP route.
-      const validated = validateStarterTemplate(template, pngBytes);
+      const validated = validateStarterTemplate(template, imageBytes);
       if (typeof template.description !== 'string' || template.description.length > 1000) fail('The original template needs a bounded description.');
-      const expected = contentOf({ id: template.id, ...validated.content, description: template.description.trim(), knownLetters: [...template.knownLetters], wordChain: [...template.wordChain], readingLines: [...template.readingLines], assets: [{ id: template.asset.id, ...validated.image }] });
+      const expected = contentOf({ id: template.id, schemaVersion: template.schemaVersion, ...(template.schemaVersion === 2 ? { familyId: template.familyId, edition: template.edition, supersedes: template.supersedes } : {}), ...validated.content, description: template.description.trim(), knownLetters: [...template.knownLetters], wordChain: [...template.wordChain], readingLines: [...template.readingLines], assets: validated.assets });
       const sourceHash = hash(JSON.stringify(expected));
       const existing = await find(template.id);
       if (existing) {
@@ -85,7 +94,7 @@ export function createLessonTemplates({ collection, assets, now = () => new Date
         return { id: template.id, title: expected.title, status: 'existing' };
       }
       for (const asset of expected.assets) {
-        await assets.put(template.id, asset.sha256, pngBytes, asset.type);
+        await assets.put(template.id, asset.sha256, validated.assets.find(source => source.id === asset.id).data, asset.type);
         // Do not make a catalog entry/copy available until the immutable source
         // has been read back and verified, including an orphan left by a retry.
         await readImage(template.id, asset);

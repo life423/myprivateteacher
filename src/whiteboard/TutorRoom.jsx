@@ -1,8 +1,9 @@
 import { readingRectangle, settleReadingFrame } from './readingFocus.js';
 import LessonPanel from '../lessons/LessonPanel.jsx';
+import TutorGuide from '../lessons/TutorGuide.jsx';
 import { useLessonRunner } from '../lessons/useLessonRunner.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, Eraser, Eye, EyeOff, LayoutGrid, MousePointer2, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { BookOpen, Crosshair, Eraser, Eye, EyeOff, LayoutGrid, MousePointer2, Pencil, Trash2, Undo2 } from 'lucide-react';
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import TutorGamesPanel from './TutorGamesPanel.jsx';
 import MaterialsWorkspace from './MaterialsWorkspace.jsx';
@@ -149,6 +150,7 @@ export default function TutorRoom() {
   const [pictureOpenRequest, setPictureOpenRequest] = useState(null);
   const [gamesOpen, setGamesOpen] = useState(false);
   const [lessonOpen, setLessonOpen] = useState(() => Boolean(new URLSearchParams(window.location.search).get('lesson')));
+  const guideTrigger = useRef(null);
   const openPicture = (request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); };
   const [pictureLibraryView, setPictureLibraryView] = useState(loadPictureLibraryView);
   const updatePictureLibraryView = useCallback((patch) => setPictureLibraryView((current) => {
@@ -308,6 +310,7 @@ export default function TutorRoom() {
   });
   sendRef.current = send;
   const lessonRunner = useLessonRunner(wb, room, status === 'open' && Boolean(confirmedRoom), {
+    onLessonOpen: () => setLessonOpen(true),
     onReadReady: async (piece, current, origin) => {
       const rect = readingRectangle(piece);
       if (!rect || !current()) return false;
@@ -493,14 +496,17 @@ export default function TutorRoom() {
       className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-sm font-bold text-violet-800 hover:border-violet-400 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${compact ? 'gap-1.5 px-2' : 'gap-2 px-3'}`}
     >
       <LayoutGrid className='h-5 w-5' aria-hidden='true' />
-      <span className={compact ? 'hidden md:inline' : ''}>Pictures</span>
+      <span className={compact ? lessonRunner.lesson ? 'hidden xl:inline' : 'hidden md:inline' : ''}>Pictures</span>
     </button>
   );
+
+  const guideShortcut = () => lessonRunner.lesson && <button ref={guideTrigger} type='button' aria-label='Tutor guide' aria-expanded={lessonOpen} aria-controls='tutor-guide' onClick={() => setLessonOpen(open => !open)} className='inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-2 text-sm font-bold text-violet-800 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500'><BookOpen className='hidden h-4 w-4 xl:block' aria-hidden='true' /><span className='xl:hidden'>Guide</span><span className='hidden xl:inline'>Tutor guide</span></button>;
 
   return (
     <>
     <WhiteboardLayout
-      persistentControls={pictureLibraryShortcut()}
+      guideOpen={lessonOpen}
+      persistentControls={<>{pictureLibraryShortcut()}{guideShortcut()}</>}
       header={
         <TopBar
           title='Alphabet Whiteboard'
@@ -536,10 +542,11 @@ export default function TutorRoom() {
             <span title='Room code' className='rounded-lg bg-violet-600 px-2 py-1 font-mono text-xl font-bold tracking-wider text-white sm:px-3 sm:text-2xl sm:tracking-widest'>
               {room.code || '····'}
             </span>
-            {room.code && <CopyButton compact text={`${window.location.origin}/whiteboard/${room.code}`} label='Copy lesson link' />}
+            {room.code && <span className={lessonRunner.lesson ? 'max-[359px]:hidden' : ''}><CopyButton compact text={`${window.location.origin}/whiteboard/${room.code}`} label='Copy lesson link' /></span>}
           </div>
-          {pill}
+          <span className={lessonRunner.lesson ? 'max-md:sr-only' : 'contents'}>{pill}</span>
           {pictureLibraryShortcut(true)}
+          {guideShortcut()}
         </TopBar>
       }
       tools={!(bridge.game || phoneme.active) && (
@@ -627,14 +634,14 @@ export default function TutorRoom() {
       controls={layout}
       onPanelChange={setActivePanel}
       panels={[{
-        id: 'materials', label: lessonOpen ? 'Lesson' : gamesOpen ? 'Games' : 'Materials', icon: LayoutGrid,
+        id: 'materials', label: gamesOpen ? 'Games' : 'Materials', icon: LayoutGrid,
         content: <MaterialsWorkspace key={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} scope={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} tabs={[
           { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} boxTaps={wb.boxTaps} onResetSoundBoxes={wb.resetSoundBoxes} onShowSoundBoxes={!bridge.game && !phoneme.active ? () => stageApi.current?.showSoundBoxes() : null} /> },
           { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
           { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
-        ]} lesson={{ open: lessonOpen, onOpen: () => { setGamesOpen(false); setLessonOpen(true); }, title: 'Lesson', detail: lessonRunner.lesson ? `${lessonRunner.lesson.title}${lessonRunner.index >= 0 ? ` · ${lessonRunner.index + 1}/${lessonRunner.lesson.activities.length}` : ''}` : null, content: <LessonPanel runner={lessonRunner} onClose={() => setLessonOpen(false)} /> }} activity={{
+        ]} lesson={{ open: false, onOpen: () => setLessonOpen(true), title: 'Tutor guide', detail: lessonRunner.lesson ? `${lessonRunner.lesson.title}${lessonRunner.index >= 0 ? ` · ${lessonRunner.index + 1}/${lessonRunner.lesson.activities.length}` : ''}` : null, content: null }} activity={{
           open: gamesOpen,
-          onOpen: () => { setLessonOpen(false); setGamesOpen(true); },
+          onOpen: () => setGamesOpen(true),
           onClose: () => setGamesOpen(false),
           current: phoneme.active ? 'Phoneme Pop' : bridge.game ? 'Alphabet Bridge' : null,
           detail: phoneme.active ? `Level ${phoneme.state.level}` : bridge.game ? `${bridge.settings.length} letters` : null,
@@ -644,6 +651,9 @@ export default function TutorRoom() {
       }]}
 
     />
+    <TutorGuide open={lessonOpen} onClose={() => setLessonOpen(false)} returnFocusRef={guideTrigger} actions={room.code && lessonRunner.lesson ? <span className='min-[360px]:hidden'><CopyButton compact text={`${window.location.origin}/whiteboard/${room.code}`} label='Copy lesson link' /></span> : null}>
+      <LessonPanel runner={lessonRunner} />
+    </TutorGuide>
     <PictureDrawer id='tutor-picture-library' open={browsing} onClose={closePictureLibrary} previewOpen={picturePreviewOpen} catalogReady={libraryState.status === 'ready'} catalogScrollTop={pictureLibraryView.scrollTop} onCatalogScroll={(scrollTop) => updatePictureLibraryView({ scrollTop })}>
       <PicturesPanel
         {...pictureProps}

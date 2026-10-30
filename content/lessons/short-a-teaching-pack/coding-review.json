@@ -1,0 +1,45 @@
+{
+  "reviewed": "2026-10-29",
+  "scope": "General short-a breve for an original CVC practice lesson; not a full Take Flight coding system.",
+  "verified": {
+    "mark": "breve",
+    "display": "ă",
+    "placement": "above the vowel a",
+    "meaning": "short vowel",
+    "soundBoxes": "one per phoneme; mat has three"
+  },
+  "omitted": [
+    "macron: no long-vowel target in this lesson",
+    "syllable-division slash: no multisyllable target",
+    "circled C and other full-program coding: not verified",
+    "am/an/all pattern coding: not verified for Take Flight"
+  ],
+  "readingChoice": "Pat-only passage avoids the am pattern from Sam; no claim that Sam is universally incorrect.",
+  "sources": [
+    {
+      "url": "https://readinguniverse.org/skill-explainer/phonics-patterns/short-vowels-skill-explainer/an-overview-of-short-vowel-sounds",
+      "checked": "2026-10-29",
+      "use": "Primary teaching reference defines a breve above a short vowel and gives the apple cue. Wording and illustrations here are original."
+    },
+    {
+      "url": "https://readinguniverse.org/skill-explainer/phonics-patterns/short-vowels-skill-explainer/prepare-for-short-vowel-instruction",
+      "checked": "2026-10-29",
+      "use": "CVC practice, picture keyword cues and caution about am/an/all in early short-vowel practice. This is that source’s advice, not verified Take Flight sequence."
+    },
+    {
+      "url": "https://ufli.education.ufl.edu/resources/teaching-resources/glossary/",
+      "checked": "2026-10-29",
+      "use": "One sound per sound box; keep letter names, phonemes and phonics labels distinct."
+    },
+    {
+      "url": "https://cdnsm5-ss1.sharpschool.com/UserFiles/Servers/Server_825719/File/Departments/Special%20Programs/Scottish%20Rite%20Hospital_Take%20Flight%20Overview.pdf",
+      "checked": "2026-10-29",
+      "use": "School-hosted indexed PDF page 5 explicitly names breve and macron. It does not supply the full coding chart; direct download returned 404. No claim of full Take Flight coding verification."
+    },
+    {
+      "url": "https://ies.ed.gov/ncee/wwc/PracticeGuide/21",
+      "checked": "2026-10-29",
+      "use": "Sound-letter connections, decoding/writing and connected text. Does not validate this app or original sample lesson."
+    }
+  ]
+}

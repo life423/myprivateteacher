@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const hooks = vi.hoisted(() => ({ current: null, guards: [] }));
 vi.mock('react', () => ({ useState: value => hooks.current.useState(value), useRef: value => hooks.current.useRef(value), useEffect: setup => hooks.current.useEffect(setup) }));
 vi.mock('../router.jsx', () => ({ Link: () => null, useNavigationGuard: enabled => hooks.guards.push(enabled) }));
-import LessonPanel from './LessonPanel.jsx';
+import LessonPanel, { directionBlocks } from './LessonPanel.jsx';
 function mount(Component, initialProps) {
   const slots = []; let index = 0, props = initialProps;
   const runtime = {
@@ -54,5 +54,28 @@ describe('prepared lesson private review controls', () => {
       expect(find(tree, 'select').props.disabled).toBe(true);
     }
     expect(find(mount(LessonPanel, { runner: runner(), onClose: vi.fn() }).render(), 'select').props.disabled).toBe(false);
+  });
+});
+
+
+describe('readable tutor teaching directions', () => {
+  it('separates explicit teaching headings while preserving original unstructured paragraphs', () => {
+    expect(directionBlocks('Model: Say /m/ clearly.\nDo not add a vowel.\n\nPractice\nMove m into a box.\nCheck: Ask the learner to read it.')).toEqual([
+      { heading: 'Model', text: 'Say /m/ clearly.\nDo not add a vowel.' },
+      { heading: 'Practice', text: 'Move m into a box.' },
+      { heading: 'Check', text: 'Ask the learner to read it.' },
+    ]);
+    expect(directionBlocks('A legacy teaching paragraph.\n\nA second instruction.')).toEqual([{ heading: null, text: 'A legacy teaching paragraph.\n\nA second instruction.' }]);
+  });
+  it('keeps core teaching instructions visible and only background/readiness in optional disclosures', () => {
+    const directions = 'Background: Previously taught letters.\nModel: Say the sound.\nPractice: Build the word.\nCheck: Read it.\nReadiness: Confirm known spellings.';
+    const state = runner({ lesson: { id: 'lesson-a', title: 'Plan', activities: [{ ...activity, directions, targets: 'mat\npat\nTap, Pat, tap!' }] } });
+    const tree = mount(LessonPanel, { runner: state }).render(), component = elements(tree, item => item.type?.name === 'Directions')[0];
+    const rendered = component.type(component.props);
+    expect(elements(rendered, item => item.type === 'details').map(item => elements(item, node => node.type === 'summary')[0].props.children)).toEqual(['Background', 'Readiness']);
+    expect(elements(rendered, item => item.type === 'h4').map(item => item.props.children)).toEqual(['Model', 'Practice', 'Check']);
+    expect(elements(rendered, item => item.type === 'p').every(item => item.props.className.includes('text-base'))).toBe(true);
+    const targets = elements(tree, item => item.type === 'ul' && item.props['aria-label'] === 'Private practice words or sentences')[0];
+    expect(elements(targets, item => item.type === 'li').map(item => item.props.children)).toEqual(['mat', 'pat', 'Tap, Pat, tap!']);
   });
 });

@@ -11,6 +11,17 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
 const assetView = ({ id, w, h, type, bytes }) => ({ id, w, h, type, bytes });
 const milliseconds = value => value instanceof Date ? value.getTime() : value;
 const lessonView = doc => ({ id: doc._id, title: doc.title, revision: doc.revision, activities: structuredClone(doc.activities), assets: doc.assets.filter(asset => asset.state === 'ready').map(assetView), createdAt: milliseconds(doc.createdAt), updatedAt: milliseconds(doc.updatedAt) });
+// Updated editions keep the original family copy address. This mapping is
+// deliberate: arbitrary templates cannot claim another saved lesson's identity.
+const familyTemplateId = template => template.schemaVersion === 2 && template.id === 'starter-short-a-amstp-v2' && template.familyId === 'short-a-amstp' && template.edition === 2 && template.supersedes === 'starter-short-a-amstp-v1' ? template.supersedes : template.id;
+const originalContent = value => {
+  const clean = cleanLessonInput(value);
+  return { title: clean.title, activities: clean.activities.map(({ reviewNextTime, reviewNote, ...activity }) => activity) };
+};
+const untouchedOriginal = (doc, original) => {
+  if (!original || doc.sourceTemplate?.id !== original.id || doc.sourceTemplate.sourceHash !== original.sourceHash || JSON.stringify(originalContent(doc)) !== JSON.stringify(originalContent(original)) || doc.assets.length !== original.assets.length) return false;
+  return original.assets.every(source => doc.assets.some(asset => asset.state === 'ready' && asset.id === source.id && asset.w === source.w && asset.h === source.h && asset.type === source.type && asset.bytes === source.bytes && asset.sha256 === source.sha256 && asset.origin?.templateId === original.id && asset.origin.assetId === source.id));
+};
 const readyReferences = (activities, assets) => {
   const ready = new Set(assets.filter(asset => asset.state === 'ready').map(asset => asset.id));
   if (activities.some(activity => activity.assetIds.some(id => !ready.has(id)))) fail(400, 'Choose worksheet pages already uploaded to this lesson.');
@@ -77,18 +88,36 @@ export function createLessonRepository({ collection, assets, templates, ownerExi
       return serial(owner, async () => {
         await activeOwner(owner);
         if (!template || !isLessonId(template.id)) fail(404, 'No such premade lesson.');
-        const id = lessonTemplateCopyId(owner, template.id);
+        const family = familyTemplateId(template), id = lessonTemplateCopyId(owner, family);
         const existing = await collection.findOne({ _id: id });
-        // Reusing a template must never reset edits, observations or worksheet choices.
-        if (existing) { if (existing.ownerId !== owner || existing.deletingAt) fail(404, 'No such lesson.'); return lessonView(existing); }
-        if (await collection.countDocuments({ ownerId: owner }) >= MAX_LESSONS) fail(409, `Keep up to ${MAX_LESSONS} saved lessons. Delete one before adding another.`);
+        if (existing && (existing.ownerId !== owner || existing.deletingAt)) fail(404, 'No such lesson.');
+        if (!existing && await collection.countDocuments({ ownerId: owner }) >= MAX_LESSONS) fail(409, `Keep up to ${MAX_LESSONS} saved lessons. Delete one before adding another.`);
         const clean = cleanLessonInput(template);
         if (!Array.isArray(template.assets) || template.assets.length > MAX_LESSON_ASSETS) fail(400, 'This premade lesson has unsupported materials.');
+        // A changed edition must not reuse a private asset ID: live lesson
+        // material signatures and source caches use these IDs across reloads.
+        const privateIds = new Map(template.assets.map(asset => [asset.id, family !== template.id ? `${asset.id}-v2` : asset.id]));
+        clean.activities = clean.activities.map(activity => ({ ...activity, assetIds: activity.assetIds.map(assetId => privateIds.get(assetId) || assetId) }));
         const references = template.assets.map(asset => {
           if (!isLessonId(asset.id) || !/^[a-f0-9]{64}$/.test(asset.sha256) || ![asset.w, asset.h].every(side => Number.isInteger(side) && side > 0 && side <= MAX_PICTURE_SIDE) || !Number.isInteger(asset.bytes) || asset.bytes < 1 || asset.bytes > MAX_PICTURE_BYTES || !['image/jpeg', 'image/png', 'image/webp'].includes(asset.type)) fail(400, 'This premade lesson has unsupported materials.');
-          return { id: asset.id, w: asset.w, h: asset.h, type: asset.type, bytes: asset.bytes, sha256: asset.sha256, state: 'ready', origin: { templateId: template.id, assetId: asset.id } };
+          return { id: privateIds.get(asset.id), w: asset.w, h: asset.h, type: asset.type, bytes: asset.bytes, sha256: asset.sha256, state: 'ready', origin: { templateId: template.id, assetId: asset.id } };
         });
         readyReferences(clean.activities, references);
+        if (existing) {
+          // Upgrade only a still-original previous edition. Review observations
+          // are private user data, not customization, and follow their stable IDs.
+          const previous = family !== template.id && existing.sourceTemplate?.id === family && templates?.get ? await templates.get(family) : null;
+          if (!untouchedOriginal(existing, previous) || existing.activities.some(activity => !clean.activities.some(next => next.id === activity.id))) { await activeOwner(owner); return lessonView(existing); }
+          const reviews = new Map(existing.activities.map(activity => [activity.id, activity]));
+          clean.activities = clean.activities.map(activity => ({ ...activity, reviewNextTime: reviews.get(activity.id)?.reviewNextTime ?? activity.reviewNextTime, reviewNote: reviews.get(activity.id)?.reviewNote ?? activity.reviewNote }));
+          await activeOwner(owner);
+          const upgraded = await collection.findOneAndUpdate({ _id: id, ownerId: owner, revision: existing.revision, assetVersion: existing.assetVersion, deletingAt: { $exists: false } }, { $set: { ...clean, sourceTemplate: { id: template.id, sourceHash: template.sourceHash }, assets: references, updatedAt: now() }, $inc: { revision: 1, assetVersion: 1 } }, { returnDocument: 'after' });
+          // Another process may have saved custom content or uploaded a page
+          // while the original was being checked. Return that version untouched.
+          const current = upgraded || await owned(owner, id);
+          await activeOwner(owner);
+          return lessonView(current);
+        }
         const doc = { _id: id, ownerId: owner, schemaVersion: 1, ...clean, sourceTemplate: { id: template.id, sourceHash: template.sourceHash }, revision: 1, assets: references, assetVersion: 0, createdAt: now(), updatedAt: now() };
         try { await collection.insertOne(doc); }
         catch (error) { if (error.code !== 11000) throw error; return lessonView(await owned(owner, id)); }

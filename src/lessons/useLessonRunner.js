@@ -34,33 +34,43 @@ function saveMapping(room, lesson, mapping) {
 
 // The private preparation document stays in this tutor-only hook. Only the explicit
 // studentProjection is passed to existing room actions, with generic image titles.
-export function useLessonRunner(wb, room, ready, { onReadReady } = {}) {
+export function useLessonRunner(wb, room, ready, { onReadReady, onLessonOpen } = {}) {
   const [lesson, setLesson] = useState(null), [choices, setChoices] = useState([]);
   const [loading, setLoading] = useState(false), [busy, setBusy] = useState(false);
   const [error, setError] = useState(null), [activeId, setActiveId] = useState(null);
   const [saving, setSaving] = useState(false), [savedMessage, setSavedMessage] = useState(null);
-  const latest = useRef({ wb, room, ready, lesson, onReadReady });
-  latest.current = { wb, room, ready, lesson, onReadReady };
-  const generation = useRef(0), loadGeneration = useRef(0), live = useRef(true);
+  const latest = useRef({ wb, room, ready, lesson, onReadReady, onLessonOpen });
+  latest.current = { wb, room, ready, lesson, onReadReady, onLessonOpen };
+  const generation = useRef(0), loadGeneration = useRef(0), live = useRef(true), autoStart = useRef(null);
   const mapping = useRef({ bindings: Object.create(null), sources: Object.create(null) }), catalogue = useRef(null), running = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; generation.current++; loadGeneration.current++; }; }, []);
   useEffect(() => {
     generation.current++; running.current = 0; setBusy(false); setActiveId(null);
     mapping.current = lesson ? loadMapping(room, lesson) : { bindings: Object.create(null), sources: Object.create(null) };
   }, [room.code, room.key, lesson?.id]);
-  const choose = async id => {
+  useEffect(() => {
+    // A connection boundary cancels an in-flight import, including an automatic
+    // first activity. A later reconnect must not silently start it a second time.
+    if (!ready) {
+      if (running.current) setError('The connection changed. Choose the activity again.');
+      generation.current++; running.current = 0; setBusy(false);
+    }
+  }, [ready]);
+  const choose = async (id, { start = false } = {}) => {
     const ticket = ++loadGeneration.current;
+    autoStart.current = start ? { id, ticket } : null;
     generation.current++; running.current = 0; setLoading(true); setError(null); setActiveId(null); setSavedMessage(null);
     try {
       const value = await getLesson(id);
       if (!live.current || ticket !== loadGeneration.current) return;
       setLesson(value); mapping.current = loadMapping(latest.current.room, value);
+      if (start) latest.current.onLessonOpen?.();
     } catch (failure) { if (live.current && ticket === loadGeneration.current) setError(failure.message); }
     finally { if (live.current && ticket === loadGeneration.current) { setLoading(false); setBusy(false); } }
   };
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('lesson');
-    if (id) void choose(id);
+    if (id) void choose(id, { start: true });
   }, []);
   const refreshChoices = async () => {
     setLoading(true); setError(null);
@@ -82,7 +92,7 @@ export function useLessonRunner(wb, room, ready, { onReadReady } = {}) {
     };
     inspect();
   });
-  const activate = async index => {
+  const activate = async (index, { resume = false } = {}) => {
     const { lesson: plan, room: destination, ready: connected } = latest.current;
     let board = latest.current.wb;
     const activity = plan?.activities[index];
@@ -116,6 +126,9 @@ export function useLessonRunner(wb, room, ready, { onReadReady } = {}) {
       scope = { ...latest.current.wb.pageScope(), writeContext: latest.current.wb.pictureWriteContext };
       if (!current()) throw new Error('The board changed. Choose the activity again.');
       setActiveId(activity.id);
+      // Reloading the classroom recovers the activity identity without changing
+      // the tutor's existing board, zoom, or reading presentation.
+      if (resume && binding.ready) return;
       const remember = () => saveMapping(destination, plan, mapping.current);
       if (!binding.boxes) { if (latest.current.wb.boxes !== shared.boxes) latest.current.wb.setBoxes(shared.boxes); await waitFor(value => value.boxes === shared.boxes, ticket, scope); binding.boxes = true; remember(); }
       if (!binding.letters) {
@@ -175,6 +188,20 @@ export function useLessonRunner(wb, room, ready, { onReadReady } = {}) {
     } catch (failure) { if (live.current && generation.current === ticket) setError(failure.message); }
     finally { if (running.current === ticket) running.current = 0; if (live.current && generation.current === ticket) setBusy(false); }
   };
+  useEffect(() => {
+    const request = autoStart.current;
+    if (!request || request.ticket !== loadGeneration.current || request.id !== lesson?.id || loading || busy || !ready || !wb.pageReady || wb.pagePending) return;
+    // Consume the explicit URL request before starting async work. Rerenders,
+    // reconnects, and review-note saves must never import the activity again.
+    autoStart.current = null;
+    const known = lesson.activities.map((activity, index) => ({ index, binding: mapping.current.bindings[activity.id] }))
+      .filter(({ binding }) => binding && wb.pages.some(page => page.id === binding.pageId));
+    const current = known.find(({ binding }) => binding.pageId === wb.pageId);
+    if (current) void activate(current.index, { resume: true });
+    // A resumed room may currently show an unrelated board page. Leave that
+    // selection intact instead of jumping back to the first prepared activity.
+    else if (!known.length && lesson.activities.length) void activate(0);
+  }, [lesson, loading, busy, ready, wb.pageReady, wb.pagePending, wb.pageId, room.code, room.key]);
   const saveReview = async (id, reviewNextTime, reviewNote) => {
     const current = latest.current.lesson;
     if (!current || saving) return false;

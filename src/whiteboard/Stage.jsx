@@ -15,6 +15,7 @@ import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileWidth
 import { clampPiece, isFacePiece, pieceSize } from '../../shared/pieces.js';
 import { Minus, Plus, Scan } from 'lucide-react';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
+import { useTutorGuideView } from './useTutorGuideView.js';
 import { picturePlacementBounds } from './picturePlacement.js';
 import { pictureOverlapState } from './pictureGeometry.js';
 import { pictureDragPosition, usePointerLifecycle } from './pointerLifecycle.js';
@@ -170,8 +171,8 @@ export default function Stage({
   // The board's frame on screen: all of it fitted (view is null), or zoomed and panned by this
   // person alone. The board's own coordinates never change, so the other screen never notices.
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [view, setView] = useState(null);
-  const { fill, bar: alphabetBar, align, sticky } = useContext(BoardFit);
+  const { fill, bar: alphabetBar, align, sticky, tutorGuideFit } = useContext(BoardFit);
+  const [view, setView] = useTutorGuideView(me === 'tutor' && Boolean(tutorGuideFit));
   const fillTop = alphabetBar && strip ? BELOW_STRIP : 0; // the alphabet has its own bar, so start at the writing
   // With sound boxes on, a phone filling its screen with the board centres on them (they're a
   // centred row), rather than starting at the board's left edge.

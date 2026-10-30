@@ -1,0 +1,109 @@
+{
+  "renderedAt": "2026-10-29T23:05:07.711Z",
+  "size": {
+    "w": 1600,
+    "h": 1700
+  },
+  "sheets": [
+    {
+      "id": "sound-cue",
+      "bytes": 575906,
+      "sha256": "770eed01f3b778d9f5346ae2c324c4d1f9abf0af705ee9d1ef750e25be743549",
+      "targets": [
+        {
+          "text": "ă",
+          "font": 500
+        }
+      ],
+      "outOfBounds": []
+    },
+    {
+      "id": "word-work",
+      "bytes": 105504,
+      "sha256": "5166c855cdbe4efde05f2d9c54c74631bebaa75c9d59dbb09d925f0f08e22a1e",
+      "targets": [
+        {
+          "text": "măt",
+          "font": 240
+        },
+        {
+          "text": "m",
+          "font": 150
+        },
+        {
+          "text": "a",
+          "font": 150
+        },
+        {
+          "text": "t",
+          "font": 150
+        },
+        {
+          "text": "măt",
+          "font": 150
+        },
+        {
+          "text": "păt",
+          "font": 150
+        },
+        {
+          "text": "săt",
+          "font": 150
+        },
+        {
+          "text": "săp",
+          "font": 150
+        },
+        {
+          "text": "tăp",
+          "font": 150
+        },
+        {
+          "text": "măp",
+          "font": 150
+        }
+      ],
+      "outOfBounds": []
+    },
+    {
+      "id": "reading",
+      "bytes": 79989,
+      "sha256": "807f22832e5adad0697e04328e05e1f90d757b83d1161b9fec6950dccda033c5",
+      "targets": [
+        {
+          "text": "Pat sat.",
+          "font": 128
+        },
+        {
+          "text": "Tap, Pat, tap!",
+          "font": 128
+        },
+        {
+          "text": "Pat sat.",
+          "font": 128
+        },
+        {
+          "text": "Tap, tap, tap!",
+          "font": 128
+        }
+      ],
+      "outOfBounds": []
+    },
+    {
+      "id": "meaning",
+      "bytes": 599977,
+      "sha256": "0f1b29a32588f37ac0a568c523b4e284bb16f58cd7123cf9cadea06b521bf211",
+      "targets": [
+        {
+          "text": "mat",
+          "font": 200
+        },
+        {
+          "text": "map",
+          "font": 200
+        }
+      ],
+      "outOfBounds": []
+    }
+  ]
+}

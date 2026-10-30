@@ -27,12 +27,12 @@ const action = tree => elements(tree, item => item.type === 'button' && item.pro
 const settle = async hook => { for (let i = 0; i < 8; i++) await Promise.resolve(); return hook.render(); };
 afterEach(() => { mounted.splice(0).forEach(hook => hook.unmount()); test.list.mockReset(); test.copy.mockReset(); test.navigate.mockReset(); });
 describe('included lesson private-copy action', () => {
-  it('opens the returned private copy once, even after two rapid taps', async () => {
+  it('opens the returned private copy in the classroom once, even after two rapid taps', async () => {
     test.list.mockResolvedValue([template]); const copy = deferred(); test.copy.mockReturnValue(copy.promise);
     const hook = mount(); hook.render(); const button = action(await settle(hook));
     const first = button.props.onClick(); await button.props.onClick(); expect(test.copy).toHaveBeenCalledOnce();
     copy.resolve({ id: 'existing-edited-private-copy', revision: 8 }); await first;
-    expect(test.navigate).toHaveBeenCalledWith('/lessons/existing-edited-private-copy');
+    expect(test.navigate).toHaveBeenCalledWith('/whiteboard/teach?lesson=existing-edited-private-copy');
   });
   it('aborts a pending copy and suppresses late navigation when the gallery is left', async () => {
     test.list.mockResolvedValue([template]); const copy = deferred(); test.copy.mockReturnValue(copy.promise);

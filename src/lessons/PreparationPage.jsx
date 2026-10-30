@@ -63,7 +63,7 @@ export function IncludedLessons({ onAuthenticationRequired }) {
     const controller = new AbortController(); controllerRef.current = controller; copying.current = id; setUsing(id); setCopyError(null);
     try {
       const lesson = await createLessonFromTemplate(id, { signal: controller.signal });
-      if (active.current && !controller.signal.aborted) navigate(`/lessons/${lesson.id}`);
+      if (active.current && !controller.signal.aborted) navigate(`/whiteboard/teach?lesson=${encodeURIComponent(lesson.id)}`);
     } catch (failure) {
       if (active.current && !controller.signal.aborted && !aborted(failure)) { setCopyError(failure); if (failure.status === 401) authRef.current?.(); }
     } finally {
