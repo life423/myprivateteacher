@@ -95,11 +95,15 @@ const prep=page=>page.getByRole('region',{name:'Activity editor',exact:true});
 const panel=page=>page.getByRole('region',{name:'Prepared lesson',exact:true});
 async function openLesson(room){
   if(await panel(room.tutor).isVisible())return;
-  const open=room.tutor.getByRole('button',{name:/^(Lesson|Prepared lesson)$/});
+  const direct=room.tutor.getByRole('button',{name:'Tutor guide',exact:true});
+  if(await direct.isVisible()){await activate(room,direct);await panel(room.tutor).waitFor({state:'visible'});return;}
+  const open=room.tutor.getByRole('button',{name:'Lesson',exact:true});
   if(!await open.isVisible())await activate(room,room.tutor.getByRole('button',{name:'Materials',exact:true}));
   await activate(room,open);await panel(room.tutor).waitFor({state:'visible'});
 }
 async function endButton(room){
+  const close=room.tutor.getByRole('button',{name:'Close tutor guide',exact:true});
+  if(await close.isVisible())await activate(room,close);
   const button=room.tutor.getByRole('button',{name:'End session',exact:true});
   if(!await button.isVisible())await activate(room,room.tutor.getByRole('button',{name:'Lesson controls',exact:true}));
   await button.waitFor();return button;
@@ -218,18 +222,46 @@ async function run(base,mobile){
       await tutor.reload();await tutor.getByRole('textbox',{name:'Lesson name',exact:true}).waitFor();
       return{type:'dictation',staleFieldsPresentInPrivateRecord:true,activationMustRemainBlank:true};
     });
-    if(!await check(room,'Teaching opens the private plan without publishing it or auto-starting an activity',async()=>{
+    if(!await check(room,'Teach this lesson automatically opens Review while keeping the plan and later materials private',async()=>{
       await activate(room,tutor.getByRole('button',{name:/^Teach this lesson/}));await tutor.waitForURL(/\/whiteboard\/teach\?lesson=/);
       await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='room'));
       room.code=await tutor.evaluate(()=>window.lessonReceived.find(msg=>msg.t==='room').code);
       await student.goto(`${base}/whiteboard/${room.code}`);await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='presence'&&msg.student));
-      await openLesson(room);await panel(tutor).getByRole('button',{name:'Start activity',exact:true}).waitFor();
-      await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',0);
-      assert.equal(realtime.rooms.get(room.code).pages.size,1);assert.equal(realtime.rooms.get(room.code).pictures.size,0,'Unopened private assets must not be preloaded into the room');
-      return{explicitStart:true,...await privacy(room)};
+      // The explicit teaching URL must open its private panel and load Review
+      // without another click. Do not call openLesson here: that would hide a
+      // regression in automatic discovery on the phone sheet.
+      await panel(tutor).waitFor({state:'visible'});await waitActive(room,0);
+      await bothCount(room,'[data-letter-tile]',2);await bothCount(room,'[data-picture-piece]',1);
+      assert.equal(realtime.rooms.get(room.code).pages.size,1);assert.equal(realtime.rooms.get(room.code).pictures.size,1,'Only the opened Review card may enter the room; later private worksheets must remain unloaded');
+      assert(await panel(tutor).getByRole('button',{name:'Activity is on the board',exact:true}).isDisabled());
+      const guide=tutor.getByRole('complementary',{name:'Tutor guide',exact:true}),surface=tutor.locator('[data-board-surface]');
+      const geometry=async(page=tutor)=>({bounds:await page.locator('[data-board-surface]').boundingBox(),zoom:await page.getByRole('button',{name:'Zoom to 100%',exact:true}).innerText()});
+      const docked=await guide.getAttribute('data-docked')==='true';
+      const opened=await geometry(),studentView=await geometry(student);await activate(room,tutor.getByRole('button',{name:'Close tutor guide',exact:true}));
+      await tutor.locator('[data-tutor-guide][data-state="closed"]').waitFor({state:'attached'});await pause(220);
+      const closed=await geometry();
+      if(docked)assert(closed.bounds.width>opened.bounds.width+80,'Closing the docked guide must restore useful tutor board space');
+      else assert.deepEqual(closed,opened,'Closing the overlay must not resize, move or zoom the board');
+      assert.deepEqual(await geometry(student),studentView,'Tutor guide boundaries must not alter the student viewport');
+      assert.equal(await tutor.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Tutor guide','Close returns focus to its visible launcher');
+      await openLesson(room);await pause(220);assert.deepEqual(await geometry(),opened,docked?'Reopening the dock must fit the same tutor board space':'Opening the overlay must not resize, move or zoom the board');
+      assert.deepEqual(await geometry(student),studentView,'Opening the tutor guide must not focus or resize the student board');
+      const guideBounds=await guide.boundingBox();assert(guideBounds&&guideBounds.width<=600.5&&guideBounds.x>=0&&guideBounds.y>=0);
+      if(docked){
+        assert(opened.bounds.x+opened.bounds.width<=guideBounds.x+1,'The fitted tutor board must not overlap its docked guide');
+        assert(guideBounds.width>=520&&guideBounds.width<=560.5,'The dock keeps a readable wide column');
+        const show=tutor.getByRole('button',{name:'Show tools',exact:true});await show.waitFor();const target=await show.boundingBox();assert(target.width>=44&&target.height>=44);
+        await activate(room,show);await tutor.getByRole('button',{name:'Hide tools',exact:true}).waitFor();
+        await activate(room,tutor.getByRole('button',{name:'Hide tools',exact:true}));await show.waitFor();
+      }
+      for(const name of['Previous activity','Next activity']){const bounds=await panel(tutor).getByRole('button',{name,exact:true}).boundingBox();assert(bounds&&bounds.height>=44&&bounds.y+bounds.height<=options.viewport.height+1,'Activity footer remains usable inside the viewport');}
+      await tutor.keyboard.press('Escape');await tutor.locator('[data-tutor-guide][data-state="closed"]').waitFor({state:'attached'});await pause(220);
+      assert.equal(await tutor.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Tutor guide','Escape returns focus to the visible launcher');await openLesson(room);
+      return{automaticFirstActivity:true,privatePanelOpened:true,laterMaterialsUnloaded:true,guideWidth:guideBounds.width,guideDocked:docked,tutorBoardFitsBesideGuide:docked,overlayGeometryUnchanged:!docked,studentViewUnchanged:true,closeAndEscapeFocusReturn:true,...await privacy(room)};
     }))return;
     await check(room,'Review opens only its chosen letters/card; Next provides a blank private-dictation page',async()=>{
-      await activate(room,panel(tutor).getByRole('button',{name:'Start activity',exact:true}));await waitActive(room,0);
+      await waitActive(room,0);
+      assert(await panel(tutor).getByRole('button',{name:'Activity is on the board',exact:true}).isDisabled());
       await bothCount(room,'[data-letter-tile]',2);await bothCount(room,'[data-picture-piece]',1);
       room.reviewPage=realtime.rooms.get(room.code).pageId;
       await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,1);
@@ -242,7 +274,8 @@ async function run(base,mobile){
       await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,2);
       await bothCount(room,'[data-letter-tile]',3);assert.equal(realtime.rooms.get(room.code).board.boxes,3);
       room.buildPage=realtime.rooms.get(room.code).pageId;
-      await activate(room,panel(tutor).getByRole('button',{name:'Return to materials',exact:true}));
+      await activate(room,tutor.getByRole('button',{name:'Close tutor guide',exact:true}));
+      if(!await tutor.getByRole('tab',{name:'Letters',exact:true}).isVisible())await activate(room,tutor.getByRole('button',{name:'Materials',exact:true}));
       await activate(room,tutor.getByRole('tab',{name:'Letters',exact:true}));
       await tutor.getByRole('textbox',{name:'Add tiles',exact:true}).fill('x');await activate(room,tutor.getByRole('button',{name:'Add',exact:true}));await bothCount(room,'[data-letter-tile]',4);
       const ids=[...realtime.rooms.get(room.code).board.tiles.keys()];
@@ -304,6 +337,7 @@ async function run(base,mobile){
         if(await controls.isVisible())await activate(room,controls.getByRole('button',{name:'Close lesson controls',exact:true}));
 
       }finally{release();await context.unroute(matcher,handler);}
+      await openLesson(room);
       await activate(room,panel(tutor).getByRole('button',{name:'Save review note',exact:true}));
       await panel(tutor).getByRole('status').filter({hasText:'Review note saved'}).waitFor();
       assert.equal((await documentFor(room)).activities[2].reviewNote,newer);room.expectedNote=newer;
@@ -314,8 +348,10 @@ async function run(base,mobile){
       await student.evaluate(()=>window.lessonSockets.findLast(ws=>ws.readyState===WebSocket.OPEN)?.close(1000,'fixture reconnect'));
       await student.waitForFunction(n=>window.lessonReceived.slice(n).some(msg=>msg.t==='board'&&msg.reason==='sync'),before);
       await chooseActivity(room,0);await chooseActivity(room,3);await chooseActivity(room,2);await bothCount(room,'[data-letter-tile]',4);
-      const count=realtime.rooms.get(room.code).pages.size;await tutor.reload();await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='board'));await openLesson(room);
-      await chooseActivity(room,2);await bothCount(room,'[data-letter-tile]',4);assert.equal(realtime.rooms.get(room.code).pages.size,count,'Refresh must reuse activity pages rather than duplicate them');
+      const count=realtime.rooms.get(room.code).pages.size;await tutor.reload();await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='board'));
+      await panel(tutor).waitFor({state:'visible'});await waitActive(room,2);await bothCount(room,'[data-letter-tile]',4);
+      assert.equal(realtime.rooms.get(room.code).pageId,room.buildPage,'Refresh must recover the current mapped activity instead of returning to Review');
+      assert.equal(realtime.rooms.get(room.code).pages.size,count,'Refresh must reuse activity pages rather than duplicate them');
       await tutor.screenshot({path:join(out,`private-tutor-plan-${mobile?'phone':'desktop'}.png`)});
       await student.screenshot({path:join(out,`student-materials-only-${mobile?'phone':'desktop'}.png`)});
       return{sameActivityPage:true,...await privacy(room)};
@@ -325,8 +361,8 @@ async function run(base,mobile){
       const ids=[...live.pages.get(oldPage).tiles.keys()],pageCount=live.pages.size;
       const changed={...before,activities:before.activities.map((activity,index)=>index===2?{...activity,type:'dictation',boxes:0,letters:'c a t',cardIds:[card.id],assetIds:[room.assetId],targets:`${dictationTarget} revised template`}:activity)};
       assert.equal((await request(context,base,`/${room.id}`,'PUT',changed)).status,200);
-      await tutor.reload();await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='board'));await openLesson(room);
-      await chooseActivity(room,2);await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',0);
+      await tutor.reload();await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='board'));
+      await panel(tutor).waitFor({state:'visible'});await waitActive(room,2);await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',0);
       assert.equal(live.board.boxes,0);assert.notEqual(live.pageId,oldPage,'A changed student projection cannot reuse a board containing the earlier answer');
       assert.equal(live.pages.size,pageCount+1);assert.deepEqual([...live.pages.get(oldPage).tiles.keys()],ids,'The earlier board remains intact');
       assert(await panel(tutor).getByText(`${dictationTarget} revised template`,{exact:true}).isVisible());

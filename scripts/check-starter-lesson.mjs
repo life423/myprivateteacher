@@ -102,10 +102,16 @@ async function activityList(room){
 const prep=page=>page.getByRole('region',{name:'Activity editor',exact:true});
 const panel=page=>page.getByRole('region',{name:'Prepared lesson',exact:true});
 async function openLesson(room){
-  if(await panel(room.tutor).isVisible())return;
-  const open=room.tutor.getByRole('button',{name:/^(Lesson|Prepared lesson)$/});
-  if(!await open.isVisible())await activate(room,room.tutor.getByRole('button',{name:'Materials',exact:true}));
-  await activate(room,open);await panel(room.tutor).waitFor({state:'visible'});
+  if(!await panel(room.tutor).isVisible())await activate(room,room.tutor.getByRole('button',{name:'Tutor guide',exact:true}));
+  await panel(room.tutor).waitFor({state:'visible'});
+  await room.tutor.waitForFunction(()=>{const node=document.querySelector('[data-tutor-guide]');if(!node)return false;const style=getComputedStyle(node),rect=node.getBoundingClientRect();return style.visibility==='visible'&&Number(style.opacity)===1&&rect.left>=0&&rect.right<=innerWidth+1;});
+}
+
+async function closeGuide(room){
+  const guide=room.tutor.locator('[data-tutor-guide]');
+  if(await guide.getAttribute('data-state')==='open')await activate(room,guide.getByRole('button',{name:'Close tutor guide',exact:true}));
+  await room.tutor.waitForFunction(()=>document.querySelector('[data-tutor-guide]')?.getAttribute('data-state')==='closed');
+  await guide.waitFor({state:'hidden'});
 }
 async function endButton(room){
   const button=room.tutor.getByRole('button',{name:'End session',exact:true});
@@ -165,8 +171,9 @@ async function run(base,mobile){
         await included.getByRole('heading',{name:template.title,exact:true}).waitFor();
         const use=included.getByRole('button',{name:'Use this lesson',exact:true});
         if(mobile&&browserName!=='webkit')await use.tap();else await use.click();
-        await page.waitForURL(/\/lessons\/[^/]+$/);await page.getByRole('textbox',{name:'Lesson name',exact:true}).waitFor();
-        const id=new URL(page.url()).pathname.split('/').at(-1);
+        await page.waitForURL(/\/whiteboard\/teach\?lesson=/);
+        await page.waitForFunction(()=>document.querySelectorAll('[data-letter-tile]').length===5);
+        const id=new URL(page.url()).searchParams.get('lesson');
         if(owner==='first')room.id=id;else room.otherId=id;
       }
       assert.notEqual(room.id,room.otherId,'Copies must belong to separate tutors');
@@ -174,7 +181,7 @@ async function run(base,mobile){
       assert.equal((await request(other,base,`/${room.id}`)).status,404);
       assert.equal(templateFixture.assets.records.size,1,'The published PNG has one immutable source');
       assert.equal(fixture.assets.records.size,0,'Private copies reference global bytes rather than copying them');
-      return{visibleToBothTutors:true,separatePrivateCopies:true,sourcePngCopies:1};
+      return{visibleToBothTutors:true,separatePrivateCopies:true,sourcePngCopies:1,opensClassroom:true,automaticReviewTiles:5};
     }))return;
     if(!await check(room,'Private edits survive Use this lesson again without changing the other tutor or global template',async()=>{
       const current=await documentFor(room);
@@ -182,7 +189,9 @@ async function run(base,mobile){
       assert.equal((await request(context,base,`/${room.id}`,'PUT',{...current,activities})).status,200);
       await tutor.goto(`${base}/lessons`);
       await activate(room,tutor.getByRole('region',{name:'Included lessons',exact:true}).getByRole('button',{name:'Use this lesson',exact:true}));
-      await tutor.waitForURL(`**/lessons/${room.id}`);await tutor.getByRole('textbox',{name:'Lesson name',exact:true}).waitFor();
+      await tutor.waitForURL(`**/whiteboard/teach?lesson=${room.id}`);
+      await tutor.waitForFunction(()=>document.querySelectorAll('[data-letter-tile]').length===5);
+      await tutor.goto(`${base}/lessons/${room.id}`);await tutor.getByRole('textbox',{name:'Lesson name',exact:true}).waitFor();
       assert.equal((await documentFor(room)).activities[0].directions,activities[0].directions,'Using again preserves the tutor edits');
       const second=await request(other,base,`/${room.otherId}`);assert.equal(second.status,200);assert(!JSON.stringify(second.data.lesson).includes('PRIVATE_STARTER_'));
       const global=await context.request.get(`${base}/api/lesson-templates/${template.id}`);assert.deepEqual((await global.json()).template,room.globalTemplate);
@@ -198,8 +207,9 @@ async function run(base,mobile){
       await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='room'));
       room.code=await tutor.evaluate(()=>window.lessonReceived.find(msg=>msg.t==='room').code);
       await student.goto(`${base}/whiteboard/${room.code}`);await tutor.waitForFunction(()=>window.lessonReceived.some(msg=>msg.t==='presence'&&msg.student));
+      await closeGuide(room);
       for(const page of[tutor,student])for(const button of await page.getByRole('button',{name:'Close this message',exact:true}).all())if(await button.isVisible())await button.click();
-      await openLesson(room);await activate(room,panel(tutor).getByRole('button',{name:'Start activity',exact:true}));await waitActive(room,0);
+      await openLesson(room);await waitActive(room,0);
       await bothCount(room,'[data-letter-tile]',5);assert.equal(realtime.rooms.get(room.code).board.boxes,0);
       assert.deepEqual([...realtime.rooms.get(room.code).board.tiles.values()].map(item=>item.text),['a','m','s','t','p']);
       await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,1);await bothCount(room,'[data-letter-tile]',5);assert.equal(realtime.rooms.get(room.code).board.boxes,3);
@@ -211,6 +221,7 @@ async function run(base,mobile){
       assert.equal(await tutor.locator('section[aria-label="Prepared lesson"] select[aria-label="Lesson activity"]').inputValue(),'3');
       assert.equal(realtime.rooms.get(room.code).board.boxes,0);
       await student.waitForFunction(()=>window.lessonReceived.some(message=>message.t==='focus'&&message.reading===true));
+      await closeGuide(room);
       for(const page of[tutor,student])await page.waitForFunction(({font,nativeWidth})=>{
         const element=document.querySelector('[data-picture-piece] > svg');
         return element&&font*element.getBoundingClientRect().width/nativeWidth>=20;

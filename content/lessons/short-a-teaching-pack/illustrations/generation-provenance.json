@@ -1,0 +1,80 @@
+{
+  "createdDate": "2026-10-29",
+  "method": "Built-in image_gen.imagegen; no CLI/API fallback and no manual bitmap editing.",
+  "intendedUse": "Original illustrations for the My Private Teacher short-a teaching pack; teaching text and phonics marks are typeset separately.",
+  "style": "Restrained textured painted textbook object illustrations, age-neutral, isolated objects.",
+  "assets": [
+    {
+      "id": "apple",
+      "file": "apple.png",
+      "source": "/Users/andrewclark/.codex/generated_images/01a189df-b889-7651-b2d4-7b42e0651cb2/exec-138c38ec-31f9-4b14-861c-b04961519f47.png",
+      "prompt": "Use case: scientific-educational. Asset type: original premium elementary textbook object illustration for an oral vocabulary and short-a sound cue. Primary request: one clearly recognizable whole red apple with a small green leaf and visible natural brown stem. Style/medium: restrained hand-painted gouache with fine paper-like brush texture, simple precise forms, soft subtle dimensional shading, crisp graceful edges, age-neutral and sophisticated educational editorial illustration. Composition: one isolated centered apple, entire object visible, ample transparent margin. Lighting: soft diffuse upper-left illumination, no cast shadow. Palette: natural muted rich red, fresh restrained green leaf, warm brown stem. Background: genuine transparency. Constraints: exactly one apple, no bite, no other objects, no face, no hands, no letters or text, no numbers, no logo, no watermark, no label, no decorative marks, no cartoon outline, no white rectangular background. This illustration will be paired with separately typeset phonics text, so generate no typography.",
+      "referenceImages": [],
+      "visualReview": "Whole recognizable apple, green leaf, visible stem, no text, transparent background.",
+      "sha256": "ad407ba09ba508f7a4de6a9058603b87ebd39ecd8d62b1c999301a591e9463a2",
+      "bytes": 1806429,
+      "width": 1307,
+      "height": 1203,
+      "mode": "RGBA",
+      "alphaRange": [
+        0,
+        255
+      ],
+      "cornerAlpha": 0
+    },
+    {
+      "id": "mat",
+      "file": "mat.png",
+      "source": "/Users/andrewclark/.codex/generated_images/01a189df-b889-7651-b2d4-7b42e0651cb2/exec-f23c4f25-3770-46f3-9fdc-f8f8b24b4bab.png",
+      "prompt": "Use case: scientific-educational. Asset type: original premium elementary textbook object illustration for oral vocabulary. Input image: style reference ONLY, do not depict an apple. Primary request: exactly one rectangular flatwoven floor mat, lying flat, in slight three-quarter view so its rectangular shape and woven surface are clear. Warm cream natural cotton fibers with two restrained muted-violet border stripes near the two short ends and short tidy fringe at those ends. Style/medium: match the reference's elegant hand-painted gouache, fine paper-like brush texture, precise simple forms, soft subtle dimensional shading, crisp graceful edges, age-neutral sophisticated educational editorial illustration. Composition: single isolated mat, entire object and fringe visible, centered with ample transparent margin. Lighting: soft diffuse upper-left illumination, no cast shadow. Background: genuine transparency. Constraints: unmistakably a flat small floor mat, not rolled up, not a yoga mat, not a towel, no furniture, no apples, no extra objects, no people or hands, no lettering, words, numbers, labels, logos, watermark, decorative motifs, thick cartoon outline or rectangular backdrop. All teaching typography will be added separately.",
+      "referenceImages": [
+        "apple.png (style reference only)"
+      ],
+      "visualReview": "Recognizable flat cream woven mat with muted violet border stripes and fringe. Transparent outside, with a soft semitransparent cream halo; inspect against the final white page.",
+      "sha256": "a2e152c274316354b6a5dfa8ae359e72c704174b6a8acb2b5383ebd4865a3590",
+      "bytes": 2398073,
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGBA",
+      "alphaRange": [
+        0,
+        254
+      ],
+      "cornerAlpha": 0
+    },
+    {
+      "id": "map",
+      "file": "map.png",
+      "source": "/Users/andrewclark/.codex/generated_images/01a189df-b889-7651-b2d4-7b42e0651cb2/exec-de0b5182-2382-4b50-8950-25fd80ba78a5.png",
+      "prompt": "Use case: scientific-educational. Asset type: original premium elementary textbook object illustration for oral vocabulary. Input image: style reference ONLY, do not depict an apple. Primary request: exactly one clearly recognizable folded paper map, ivory paper folded into three connected accordion panels, partially open in a slight three-quarter view. On its surface show simplified soft teal river or lake, sage green land areas, a few thin quiet roads, all unlabelled. Style/medium: match the reference's elegant restrained hand-painted gouache, fine paper-like brush texture, precise simple forms, soft subtle dimensional shading, crisp graceful edges, sophisticated age-neutral educational editorial illustration. Composition: single isolated map, all paper edges visible, centered with generous transparent margin around it. Lighting: diffuse upper-left illumination with restrained fold shading ON the paper. Background: genuine transparency with clean alpha outside the paper; NO cast shadow, NO soft halo, NO luminous glow, NO blurred color haze. Constraints: unmistakably a folded map, not a book, no extra objects, no compass letters, no text, no words, no numbers, no place names, no map labels, no typography, no logos, no watermark, no people or hands, no thick cartoon outline, no white rectangular background. All teaching typography will be added separately.",
+      "referenceImages": [
+        "apple.png (style reference only)"
+      ],
+      "visualReview": "Recognizable unlabelled three-panel folded map with teal water and sage land, no letters or numbers, clean transparent background.",
+      "sha256": "4140fcc83fe100b2c61a52f74713558c2dea537556f9f3fb9ceda2fcee99592e",
+      "bytes": 1976372,
+      "width": 1308,
+      "height": 1203,
+      "mode": "RGBA",
+      "alphaRange": [
+        0,
+        255
+      ],
+      "cornerAlpha": 0
+    }
+  ],
+  "discardedVariants": [
+    {
+      "asset": "mat",
+      "source": "/Users/andrewclark/.codex/generated_images/01a189df-b889-7651-b2d4-7b42e0651cb2/exec-1995c2e3-8169-4c6d-b694-7b308ce865a1.png",
+      "prompt": "Use case: background-extraction. Edit target: the provided woven floor mat illustration. Change only the background alpha: REMOVE the diffuse cream/tan blurry halo, glow, shadow and color haze surrounding the woven mat. Make every area outside the actual fibers and fringe fully transparent. Preserve the exact mat shape, cream weave, muted-violet border stripes, fringe, three-quarter view, painted texture and colors. Keep the complete object visible with a clean natural edge and fine individual fringe fibers. Do not redraw or change the object, add any content, add a backdrop, add shadows or glow, add text or marks. This is a premium textbook cutout that must composite cleanly on pure white paper.",
+      "reason": "Targeted halo-removal edit retained a similar halo. Original selected mat preserved."
+    },
+    {
+      "asset": "mat",
+      "source": "/Users/andrewclark/.codex/generated_images/01a189df-b889-7651-b2d4-7b42e0651cb2/exec-21d5dc23-2251-4807-b47e-ada0d9528e37.png",
+      "prompt": "Create a NEW isolated textbook illustration of one cream rectangular woven floor mat with two muted violet stripe bands and short fringe. Use restrained finely textured hand-painted gouache, precise clean contours and simple believable woven fibers. Slight overhead three-quarter view. Object only: its cream woven surface, stripes, fringe. Absolutely NO surrounding glow, no shadow, no aura, no blurred haze, no drop shadow, no ambient occlusion outside the mat, no surface beneath it. Everything outside the actual woven mat and fringe is empty transparent alpha. Keep a generous empty margin around all four sides and all fringe. This is a crisp educational object cutout for a premium printed literacy textbook. No text, no letters, no logos, no decorative symbols, no other objects, no people, no rolled ends. The woven mat itself is opaque. Its outline and fringe edges are clean and fully separated from the transparent canvas. A real flat small floor mat, not a towel or yoga mat. Restrained editorial realism, no thick cartoon outlines.",
+      "reason": "New generation retained a similar soft halo. Original selected mat preserved."
+    }
+  ]
+}

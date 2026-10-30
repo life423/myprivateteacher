@@ -1,9 +1,13 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Minimize2, Pencil, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Minimize2, Pencil, X } from 'lucide-react';
 import { BOARD_SHAPE } from './stage.js';
 import VideoPanel from './VideoPanel.jsx';
 import { BoardFit } from './viewport.js';
 import { chooseArrangement } from './arrangement.js';
+import { TUTOR_GUIDE_WIDTH, canDockTutorGuide } from '../lessons/guideLayout.js';
+
+const SIDE = { fill: false, bar: false, align: 'center', tutorGuideFit: false };
+const SIDE_GUIDE = { ...SIDE, tutorGuideFit: true };
 
 const FILL = { fill: true, bar: false };
 const FILL_WITH_BAR = { fill: true, bar: true };
@@ -26,6 +30,7 @@ function useArrangement() {
     arrangement: chooseArrangement(window.innerWidth, window.innerHeight),
     shortLandscape: window.innerHeight < 500 && window.innerWidth > window.innerHeight && window.innerWidth >= 568,
     viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
   });
   const [arrangement, setArrangement] = useState(pick);
   useEffect(() => {
@@ -297,8 +302,34 @@ function ExitFocus({ onClick, inline = false }) {
   );
 }
 
-export default function WhiteboardLayout({ header, banner, tools, board, alphabet, call, peerName, panels = [], controls, onPanelChange, persistentControls }) {
-  const { arrangement, shortLandscape, viewportWidth } = useArrangement();
+export function DesktopTools({ tools, open, onToggle }) {
+  return <div data-desktop-tools data-state={open ? 'open' : 'closed'} className='flex max-h-full shrink-0 flex-col items-center gap-2'>
+    <button type='button' aria-label={open ? 'Hide tools' : 'Show tools'} title={open ? 'Hide tools' : 'Show tools'} aria-expanded={open} onClick={onToggle} className='flex h-11 min-w-11 shrink-0 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-1 text-[10px] font-bold leading-3 text-slate-700 hover:bg-violet-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500'>
+      {open ? <ChevronLeft className='h-4 w-4' aria-hidden='true' /> : <ChevronRight className='h-4 w-4' aria-hidden='true' />}<span>Tools</span>
+    </button>
+    <div hidden={!open} inert={!open ? '' : undefined} className={`${open ? '' : 'hidden'} min-h-0 overflow-y-auto rounded-2xl`}>{tools}</div>
+  </div>;
+}
+
+export default function WhiteboardLayout({ header, banner, tools, board, alphabet, call, peerName, panels = [], controls, onPanelChange, persistentControls, guideOpen }) {
+  const view = useArrangement();
+  const { shortLandscape, viewportWidth, viewportHeight } = view;
+  // Dock only where the existing adaptive layout has room for a side column.
+  // Opening the guide never switches branches or remounts Stage/an active call.
+  const tutorDesktop = guideOpen !== undefined && canDockTutorGuide(viewportWidth, viewportHeight);
+  const arrangement = view.arrangement;
+  const guideDocked = tutorDesktop && guideOpen;
+  const [railOpen, setRailOpen] = useState(() => !guideOpen);
+  const railBeforeGuide = useRef(guideOpen ? true : null);
+  useLayoutEffect(() => {
+    if (guideOpen === undefined) return;
+    if (guideOpen) {
+      if (railBeforeGuide.current === null) railBeforeGuide.current = railOpen;
+      setRailOpen(false);
+    } else if (railBeforeGuide.current !== null) {
+      setRailOpen(railBeforeGuide.current); railBeforeGuide.current = null;
+    }
+  }, [guideOpen]);
   const landscapeWidth = shortLandscapePanelWidth(viewportWidth);
   const [active, setActive] = useState(panels[0]?.id);
   // The bottom sheet: closed, open or full. Upright tablets have room for it docked open.
@@ -308,7 +339,7 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
   const panelNodes = useRef({});
   const revealFrame = useRef(null);
   const current = panels.some((p) => p.id === active) ? active : panels[0]?.id;
-  const visiblePanel = !focus && (arrangement === 'side' || sheet !== 'closed') ? current : null;
+  const visiblePanel = !guideDocked && !focus && (arrangement === 'side' || sheet !== 'closed') ? current : null;
   useEffect(() => {
     onPanelChange?.(visiblePanel);
   }, [onPanelChange, visiblePanel]);
@@ -400,11 +431,12 @@ export default function WhiteboardLayout({ header, banner, tools, board, alphabe
         {resourceBar}
         {!focus && banner}
         <div className='relative flex min-h-0 flex-1 items-start justify-center gap-4 p-4'>
-          {tools}
+          {tools && (tutorDesktop ? <DesktopTools tools={tools} open={railOpen} onToggle={() => setRailOpen(was => !was)} /> : tools)}
           <main className='wb-board relative isolate min-w-0 rounded-2xl bg-slate-100 shadow' style={BOARD_SHAPE}>
-            {board}
+            <BoardFit.Provider value={guideDocked ? SIDE_GUIDE : SIDE}>{board}</BoardFit.Provider>
           </main>
-          <aside data-workspace-sidebar aria-label='Lesson tools' className={`-m-1 flex h-full min-h-0 w-64 shrink-0 flex-col gap-2 overflow-hidden p-1 xl:w-72 ${focus ? 'hidden' : ''}`}>
+          {guideDocked && <div data-tutor-guide-reservation aria-hidden='true' style={{ width: TUTOR_GUIDE_WIDTH }} className='h-full shrink-0' />}
+          <aside data-workspace-sidebar aria-label='Lesson tools' hidden={guideDocked || focus} inert={guideDocked || focus ? '' : undefined} className={`-m-1 flex h-full min-h-0 w-64 shrink-0 flex-col gap-2 overflow-hidden p-1 xl:w-72 ${focus || guideDocked ? 'hidden' : ''}`}>
             <div className='shrink-0'><VideoPanel call={call} peerName={peerName} fill /></div>
             {panels.length > 1 && (
               <div role='tablist' aria-label='Things for the board' className='sticky top-0 z-10 grid shrink-0 grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow'>
