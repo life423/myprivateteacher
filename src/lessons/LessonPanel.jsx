@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, BookOpen, Check, EyeOff, Flag } from 'lucide-react';
 import { Link, useNavigationGuard } from '../router.jsx';
+import LessonMaterials from './LessonMaterials.jsx';
 
 const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors duration-150 motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40';
 const names = { review: 'Review', build: 'Build words', dictation: 'Dictation', read: 'Read' };
@@ -32,7 +33,7 @@ export function directionBlocks(text = '') {
 function Directions({ text }) {
   return <div className='space-y-4'>{directionBlocks(text).map((block, index) => ['Background', 'Readiness'].includes(block.heading) ? <details key={index} className='rounded-xl border border-slate-200 bg-slate-50 px-3'><summary className='min-h-11 cursor-pointer list-inside py-3 text-sm font-semibold text-slate-700'>{block.heading}</summary><p className='pb-3 whitespace-pre-wrap text-base leading-7 text-slate-700 [overflow-wrap:anywhere]'>{block.text}</p></details> : <section key={index} className='min-w-0'>{block.heading && <h4 className='mb-1 text-sm font-bold text-violet-800'>{block.heading}</h4>}<p className='whitespace-pre-wrap text-base leading-7 text-slate-700 [overflow-wrap:anywhere] sm:text-[17px]'>{block.text}</p></section>)}</div>;
 }
-export default function LessonPanel({ runner }) {
+export default function LessonPanel({ runner, library = [], loadLibraryImage, onOpenMaterial }) {
   const [selected, setSelected] = useState(0), [notesOpen, setNotesOpen] = useState(false);
   const { lesson, loading, busy, error, index } = runner;
   useEffect(() => { if (index >= 0) setSelected(index); }, [index]);
@@ -56,11 +57,12 @@ export default function LessonPanel({ runner }) {
           <div className='min-w-0 space-y-3 rounded-xl border border-violet-100 bg-violet-50/40 p-4'>
             <p className='text-xs font-bold uppercase tracking-wide text-violet-700'>{names[activity.type]}</p>
             <h3 className='text-xl font-bold leading-7 text-slate-900 [overflow-wrap:anywhere]'>{activity.title || names[activity.type]}</h3>
+            <LessonMaterials key={`${lesson.id}:${activity.id}`} lesson={lesson} activity={activity} activityIndex={selected} library={library} loadLibraryImage={loadLibraryImage} onOpenMaterial={onOpenMaterial} disabled={busy || loading || !runner.ready} />
             {activity.directions && <Directions text={activity.directions} />}
             {activity.targets && <div><p className='mb-2 text-sm font-semibold text-slate-600'>For you to say or model</p><ul aria-label='Private practice words or sentences' className='flex flex-wrap gap-2'>{activity.targets.split(/\r?\n/).map(value => value.trim()).filter(Boolean).map((value, index) => <li key={index} className='max-w-full rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-base font-semibold leading-6 text-slate-800 [overflow-wrap:anywhere]'>{value}</li>)}</ul></div>}
           </div>
-          <button type='button' disabled={busy || !runner.ready || index === selected} onClick={() => runner.activate(selected)} className={`${button} w-full bg-violet-600 text-white hover:bg-violet-700`}>{busy ? 'Opening activity…' : index === selected ? 'Activity is on the board' : 'Start activity'}</button>
-          <p className='text-xs leading-5 text-slate-500'>{activity.type === 'dictation' ? 'Your student gets a writing area. The words above stay private.' : 'Selected materials open on their own page. Returning keeps the work on that page.'}</p>
+          <button type='button' disabled={busy || !runner.ready || index === selected} onClick={() => runner.activate(selected)} className={`${button} w-full bg-violet-600 text-white hover:bg-violet-700`}>{busy ? 'Opening activity…' : index === selected ? 'Activity page is open' : 'Start activity'}</button>
+          <p className='text-xs leading-5 text-slate-500'>{activity.type === 'dictation' ? 'Your student gets a writing area. The words above stay private.' : 'Each activity has its own board page. Choose teaching pieces when you want to share them. Returning keeps the work on that page.'}</p>
           <button type='button' aria-expanded={notesOpen} onClick={() => setNotesOpen(value => !value)} className={`${button} w-full justify-start text-slate-700 hover:bg-slate-50`}><Flag className='h-4 w-4' aria-hidden='true' />Review next time{activity.reviewNextTime && <span className='ml-auto rounded bg-amber-100 px-2 py-1 text-xs text-amber-900'>Flagged</span>}</button>
           {lesson.activities.map(item => <div key={item.id} hidden={!notesOpen || item.id !== activity.id}><ReviewNote activity={item} runner={runner} /></div>)}
         </> : <p className='text-sm leading-6 text-slate-600'>This lesson has no activities yet. Add them in preparation.</p>}

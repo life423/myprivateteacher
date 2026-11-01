@@ -162,6 +162,11 @@ export default function PicturesPanel({
   onViewPicture,
   onCropPiece,
   onCancelCrop,
+  preparedPicture = null, // Tutor-private lesson source, never placed as a whole page.
+  onAddPreparedSource,
+  onClosePreparedPicture,
+  onAddPreparedLetter,
+  onAddPreparedBoxes,
 }) {
   const student = !canAdd;
   const [openId, setOpenId] = useState(null);
@@ -226,18 +231,19 @@ export default function PicturesPanel({
 
   const worksheet = material === 'worksheet';
   const panelTitle = worksheet ? 'Worksheets' : 'Pictures';
-  const scopedPictures = layout === 'drawer' && searchQuery === undefined ? pictures : matchingMaterials(pictures, material, searchQuery || '');
+  const visiblePictures = student ? pictures.filter(picture => picture.material !== 'lesson-source') : pictures;
+  const scopedPictures = layout === 'drawer' && searchQuery === undefined ? visiblePictures : matchingMaterials(visiblePictures, material, searchQuery || '');
   const catalogVisible = canAdd && showLibrary && !worksheet;
   const catalogReady = libraryState.status === 'ready';
   const catalogIds = useMemo(() => new Set(library.map((item) => item.id)), [library]);
   // A library card appears once in the tutor's catalog, even after it enters the lesson.
   const sessionPictures = catalogVisible ? scopedPictures.filter((item) => !item.library || (catalogReady && !catalogIds.has(item.library))) : scopedPictures;
-  const shown = pictures; // Opening a granted/session picture does not change permissions.
+  const shown = visiblePictures; // Source sheets back board pieces; they are not student worksheets.
 
   const previewCard = library.find((item) => item.id === previewCardId) || null;
-  const pic = previewCard || shown.find((p) => p.id === openId) || null;
-  const sessionPic = previewCard ? pictures.find((item) => item.library === previewCard.id) || null : pic;
-  const src = previewCard ? preview.src : pic ? srcFor(pic.id) : null;
+  const pic = preparedPicture || previewCard || shown.find((p) => p.id === openId) || null;
+  const sessionPic = preparedPicture ? pictures.find((item) => item.id === preparedPicture.id) || null : previewCard ? pictures.find((item) => item.library === previewCard.id) || null : pic;
+  const src = preparedPicture ? preparedPicture.src : previewCard ? preview.src : pic ? srcFor(pic.id) : null;
   const size = pic ? `${pic.w}x${pic.h}` : '';
   const picOffers = sessionPic ? offers.filter((o) => o.pic === sessionPic.id) : [];
   const face = libraryFaceCrop(pic);
@@ -278,7 +284,7 @@ export default function PicturesPanel({
 
 
   // Each picture's parts are found once, when the tutor first opens it.
-  useEffect(() => {
+  useLayoutEffect(() => {
     setRegions([]);
     setFindingRegions(false);
     setSelection(cropMode && openPictureRequest.crop ? { ...openPictureRequest.crop } : null);
@@ -308,7 +314,7 @@ export default function PicturesPanel({
     setBusy(busyRef.current);
   };
 
-  const backToCatalog = () => { setOpenId(null); setPreviewCardId(null); if (cropMode) onCancelCrop?.(); };
+  const backToCatalog = () => { if (preparedPicture) { onClosePreparedPicture?.(); return; } setOpenId(null); setPreviewCardId(null); if (cropMode) onCancelCrop?.(); };
   const viewCard = (item) => { if (onViewPicture) { onViewPicture({ id: item.id, library: true }); return; } setNote(null); setPlacedNote(null); setOpenId(null); setPreview({ status: 'loading', src: null }); setPreviewCardId(item.id); };
   useEffect(() => {
     if (!openPictureRequest?.id) return;
@@ -317,6 +323,11 @@ export default function PicturesPanel({
     else { setPreviewCardId(null); setOpenId(openPictureRequest.id); }
   }, [openPictureRequest]);
   const ensureSessionPicture = async (picture) => {
+    if (preparedPicture && picture.id === preparedPicture.id) {
+      const result = await onAddPreparedSource?.(preparedPicture);
+      if (result?.error || !result?.id) throw new Error(result?.error || 'This lesson material could not be added. Please try again.');
+      return { ...picture, ...result };
+    }
     if (!library.some((item) => item.id === picture.id)) return picture;
     const existing = pictures.find((item) => item.library === picture.id);
     if (existing) return existing;
@@ -472,29 +483,47 @@ export default function PicturesPanel({
     working(true);
     setNote(null);
     try {
+      const teachingPart = preparedPicture?.parts?.find(part => sameCrop(part, crop));
+      if (teachingPart?.boxes) {
+        if (!onAddPreparedBoxes?.(teachingPart.boxes, preparedPicture)) throw new Error('The sound boxes could not be added. Reconnect and try again.');
+        setSelection(null); setNote(`${teachingPart.boxes} sound boxes added to the board.`);
+        return true;
+      }
+      if (teachingPart?.letter) {
+        const result = onAddPreparedLetter?.(teachingPart.letter, preparedPicture);
+        if (!result?.added || result.skipped || result.full || result.cancelled) throw new Error('This letter tile could not be added. Reconnect or make space and try again.');
+        setSelection(null);
+        setNote(`${teachingPart.letter} letter tile added to the tray. Drag it into a sound box or onto the board.`);
+        return true;
+      }
       const picture = await ensureSessionPicture(sourcePicture);
       const centre = stageApi?.current?.centre?.();
       const bounds = stageApi?.current?.bounds?.();
-      let placement = picturePlacement(picture, centre, { bounds, crop });
+      if (preparedPicture && !bounds) throw new Error('Wait for the board to be ready, then add the piece again.');
+      const scale = stageApi?.current?.scale || 1;
+      const preferredWidth = preparedPicture ? Math.min(bounds.w * 0.8, bounds.h * crop.w / crop.h * 0.8,
+        teachingPart?.fontSize ? Math.max(120 / scale, 32 * crop.w / teachingPart.fontSize / scale) : 200 / scale * crop.w / Math.max(crop.w, crop.h)) : undefined;
+      let placement = picturePlacement(picture, centre, { bounds, crop, preferredWidth });
       if (!placement) return false;
       if (!automatic) {
         const w = startingWidth(crop);
         placement = { pic: picture.id, crop, x: dropAt.x - w / 2, y: dropAt.y - w * crop.h / crop.w / 2, w };
       }
       const pieceId = onPlace({ ...placement, offer: offerId, region: regionId,
-        ...(automatic ? { automatic: true, centre, bounds } : {}) });
+        ...(automatic ? { automatic: true, centre, bounds, preferredWidth } : {}) });
       const status = stageApi?.current?.placementStatus?.();
       if (!pieceId) {
         setNote(status?.error || 'This picture could not be added to the board. Please try again.');
         return false;
       }
-      stageApi?.current?.selectPiece?.(pieceId);
+      stageApi?.current?.selectPiece?.(pieceId, { preserveView: Boolean(preparedPicture) });
       stageApi?.current?.reportPlacement?.(status);
       setNote(student && isFacePiece({ crop }, picture)
         ? 'Added to the board. Drag to move it. Your tutor controls its size.'
         : 'Added to the board. Drag to move it, or use a corner to resize.');
-      backToCatalog();
-      onPlaced?.({ keepOpen: Boolean(options.keepOpen) });
+      if (preparedPicture) setSelection(null);
+      else backToCatalog();
+      onPlaced?.({ keepOpen: Boolean(preparedPicture || options.keepOpen) });
       if (student) setSelection(null);
       return true;
     } catch (error) {
@@ -625,6 +654,7 @@ export default function PicturesPanel({
       else hint = 'Your tutor hasn’t given you a part of this picture yet.';
     }
     if (cropMode) hint = 'Choose the area to keep, then apply the crop to the selected picture.';
+    if (preparedPicture) hint = selection ? 'Add this piece, then choose another. The complete sheet is not placed on the board.' : 'Choose a word, letter or picture. Use Draw a box for any part Magic select misses.';
     const bright = [...available.map((o) => o.crop), ...takeable];
     const dim = `M0 0H${pic.w}V${pic.h}H0Z${bright.map((c) => `M${c.x} ${c.y}h${c.w}v${c.h}h${-c.w}Z`).join('')}`;
     return (
@@ -636,7 +666,7 @@ export default function PicturesPanel({
           className='flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-sm font-semibold text-violet-700 hover:bg-violet-50'
         >
           <ArrowLeft className='h-4 w-4' aria-hidden='true' />
-          All pictures
+          {preparedPicture ? 'Back to tutor guide' : 'All pictures'}
         </button>
         {student && guidePic && guidePic !== pic.id && (
           <div role='status' className='flex flex-wrap items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-800'>
@@ -649,7 +679,7 @@ export default function PicturesPanel({
         )}
         {student && guidePic === pic.id && <p className='text-sm font-semibold text-sky-700'>Your tutor picked this one.</p>}
         {!student && peerPic === sessionPic?.id && <p className='text-sm font-semibold text-violet-700'>Your student is looking at this too.</p>}
-        {onGuide && (
+        {onGuide && !preparedPicture && (
           <button
             type='button'
             aria-pressed={guiding}
@@ -725,6 +755,9 @@ export default function PicturesPanel({
             ))}
           </div>
         )}
+        {preparedPicture?.parts?.length > 0 && <div data-editor-control role='group' aria-label='Ready teaching pieces' className='flex max-h-28 shrink-0 flex-wrap gap-1 overflow-y-auto rounded-lg border border-slate-200 p-1'>
+          {preparedPicture.parts.map(part => <button key={part.id} type='button' disabled={busy || !src} aria-pressed={Boolean(selection && sameCrop(part, selection))} onClick={() => { setSelection(partOf(part)); setHover(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 disabled:opacity-50 ${selection && sameCrop(part, selection) ? 'bg-violet-100 text-violet-900' : 'text-slate-700 hover:bg-slate-100'}`}>{part.label}</button>)}
+        </div>}
         <p data-editor-control className='shrink-0 text-xs text-slate-500'>{hint}</p>
         <div data-editor-control className='flex shrink-0 flex-wrap gap-2 [&>button]:min-h-11 [&>button]:flex-1'>
         {cropMode && <button type='button' disabled={busy || !src || !selection} onClick={() => {
@@ -732,12 +765,12 @@ export default function PicturesPanel({
           onPlaced?.({ keepOpen: false, cropped: true });
         }} className={primary}><Check className='h-4 w-4' aria-hidden='true' />Apply crop</button>}
         {!cropMode && (!student || (selection && (chosen || chosenRegion) && canTake)) && (
-          <button type='button' disabled={busy || !src} onClick={(event) => place(selection || (!student && face) || defaultPictureCrop(pic), undefined, undefined, chosen?.id, chosenRegion?.id, { keepOpen: !student && keepPictureLibraryOpen(event, view.keepOpen) })} className={primary}>
+          <button type='button' disabled={busy || !src || (preparedPicture && !selection)} onClick={(event) => place(selection || (!student && face) || defaultPictureCrop(pic), undefined, undefined, chosen?.id, chosenRegion?.id, { keepOpen: !student && keepPictureLibraryOpen(event, view.keepOpen) })} className={primary}>
             <Plus className='h-4 w-4' aria-hidden='true' />
-            {selection ? 'Add selected part to board' : face ? 'Add face' : 'Add picture to board'}
+            {preparedPicture && busy ? 'Adding piece…' : selection || preparedPicture ? 'Add selected part to board' : face ? 'Add face' : 'Add picture to board'}
           </button>
         )}
-        {!cropMode && !student && face && <button type='button' disabled={busy || !src} onClick={(event) => place(defaultPictureCrop(pic), undefined, undefined, undefined, undefined, { keepOpen: keepPictureLibraryOpen(event, view.keepOpen) })} className={secondary}>Add whole card</button>}
+        {!cropMode && !student && face && !preparedPicture && <button type='button' disabled={busy || !src} onClick={(event) => place(defaultPictureCrop(pic), undefined, undefined, undefined, undefined, { keepOpen: keepPictureLibraryOpen(event, view.keepOpen) })} className={secondary}>Add whole card</button>}
         {!cropMode && !student && selection && !offered && (
           <button type='button' disabled={busy || !src} onClick={giveSelection} className={secondary}>
             <Gift className='h-4 w-4' aria-hidden='true' />

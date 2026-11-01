@@ -4,7 +4,7 @@ import { objectToolbarPosition } from './objectToolbarPosition.js';
 
 const action = 'inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-slate-700 hover:bg-violet-50 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500';
 
-export default function ObjectToolbar({ object, kind, label, layout, viewport, topInset, reserved, locked, resizeLocked, placementNotice, onCrop, onDuplicate, onDelete, onClear }) {
+export default function ObjectToolbar({ object, kind, label, layout, viewport, topInset, reserved, locked, resizeLocked, placementNotice, onCrop, onDuplicate, onDelete, onClear, onPointerInput }) {
   const ref = useRef(null);
   const [size, setSize] = useState({ width: 260, height: 54 });
   const [measuredReserved, setMeasuredReserved] = useState([]);
@@ -22,7 +22,12 @@ export default function ObjectToolbar({ object, kind, label, layout, viewport, t
     const observer = new ResizeObserver(update); observer.observe(node); if (layers) observer.observe(layers); return () => observer.disconnect();
   }, [object.id, viewport.width, viewport.height, layout.left, layout.top, layout.scale]);
   const at = objectToolbarPosition(object, layout, viewport, size, { topInset, reserved: measuredReserved.length ? measuredReserved : reserved });
-  return <section ref={ref} data-object-toolbar={kind} aria-label={`Selected ${kind}`} style={{ left: at.left, top: at.top, maxWidth: Math.max(0, viewport.width - 16) }} className='absolute z-30 w-max rounded-xl border border-violet-200 bg-white/95 p-1 shadow-lg'>
+  // Toolbar input is an HTML action, never a board drag, resize or selection.
+  const stopInput = event => event.stopPropagation();
+  return <section ref={ref} data-object-toolbar={kind} aria-label={`Selected ${kind}`} style={{ left: at.left, top: at.top, maxWidth: Math.max(0, viewport.width - 16) }}
+    onPointerDown={event => { event.stopPropagation(); onPointerInput?.(); }} onPointerUp={stopInput} onClick={stopInput} onDoubleClick={stopInput}
+    onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClear(); } }}
+    className='pointer-events-auto absolute z-30 w-max rounded-xl border border-violet-200 bg-white/95 p-1 shadow-lg'>
     {locked && <p role='status' className='max-w-64 px-2 py-1 text-xs text-slate-600'>The other person is moving this {kind}.</p>}
     {placementNotice && <p role='status' className='max-w-64 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-950'>{placementNotice}</p>}
     <div role='toolbar' aria-label={`${label} actions`} className='flex flex-wrap items-center gap-0.5'>

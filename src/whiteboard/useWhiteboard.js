@@ -336,7 +336,7 @@ export function useWhiteboard(role, send) {
       const allowed = () => pageSession.current.ready && pageSession.current.current(actionScope);
       const sendBound = message => sendPageMessage(message, actionScope);
       return {
-        add({ offer, region, pic, crop, x, y, w, automatic = false, centre, bounds }) {
+        add({ offer, region, pic, crop, x, y, w, automatic = false, centre, bounds, preferredWidth }) {
           if (!allowed()) return null;
           const obstacles = picturePlacementObstacles([...pieces.current.values()], pendingPieces.current);
           if (obstacles.length >= MAX_PIECES) {
@@ -351,7 +351,7 @@ export function useWhiteboard(role, send) {
           }
           const size = pieceSize(chosen, w);
           const placed = automatic
-            ? picturePlacement(picture, centre, { pieces: obstacles, bounds, crop: chosen })
+            ? picturePlacement(picture, centre, { pieces: obstacles, bounds, crop: chosen, preferredWidth })
             : clampPiece(size, x, y);
           if (!placed) return null;
           const id = makeId('piece');

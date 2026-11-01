@@ -21,11 +21,19 @@ const lesson = (item = read) => ({ id: 'lesson-a', title: 'Private plan', revisi
 function board() {
   const wb = { board: { strokes: [] }, tiles: [], pieces: [], offers: [], boxes: 0, currentGame: null, pageReady: true, pagePending: false, pages: [{ id: 'page-1' }], pageId: 'page-1', pageEpoch: 0, pictureWriteContext: {}, preserved: [] };
   wb.pageScope = () => ({ pageId: wb.pageId, pageEpoch: wb.pageEpoch });
-  wb.setBoxes = count => { wb.boxes = count; };
+  wb.setBoxes = vi.fn(count => { wb.boxes = count; });
   wb.addTiles = vi.fn(text => { wb.tiles.push(...text.split(' ').map((value, n) => ({ id: `tile-${n}`, text: value }))); return { skipped: 0, full: false }; });
   wb.addPreparedPicture = vi.fn(async (prepared, room, options) => ({ id: options.id, w: prepared.w, h: prepared.h }));
+  wb.addLibraryCard = vi.fn();
   wb.pieceActions = { add: vi.fn(({ pic, crop }) => { const id = `piece-${wb.pieces.length}`; wb.pieces.push({ id, pic, crop }); return id; }) };
-  wb.pageActions = { add: vi.fn(() => { wb.preserved.push({ pageId: wb.pageId, tiles: structuredClone(wb.tiles) }); wb.pageId = `page-${wb.pages.length + 1}`; wb.pages.push({ id: wb.pageId }); wb.pageEpoch++; wb.pictureWriteContext = {}; wb.tiles = []; wb.pieces = []; wb.boxes = 0; return true; }), switch: vi.fn() };
+  const snapshots = new Map();
+  const snapshot = () => ({ tiles: structuredClone(wb.tiles), pieces: structuredClone(wb.pieces), strokes: structuredClone(wb.board.strokes), boxes: wb.boxes });
+  const keep = () => { const value = snapshot(); snapshots.set(wb.pageId, value); wb.preserved.push({ pageId: wb.pageId, ...value }); };
+  const show = id => { const value = snapshots.get(id) || { tiles: [], pieces: [], strokes: [], boxes: 0 }; wb.pageId = id; wb.pageEpoch++; wb.pictureWriteContext = {}; wb.tiles = structuredClone(value.tiles); wb.pieces = structuredClone(value.pieces); wb.board.strokes = structuredClone(value.strokes); wb.boxes = value.boxes; };
+  wb.pageActions = {
+    add: vi.fn(() => { keep(); const id = `page-${wb.pages.length + 1}`; wb.pages.push({ id }); show(id); return true; }),
+    switch: vi.fn(id => { if (!wb.pages.some(page => page.id === id)) return false; keep(); show(id); return true; }),
+  };
   return wb;
 }
 const signature = async activity => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(studentProjection(activity))))), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -39,13 +47,16 @@ beforeEach(() => {
 });
 afterEach(() => { mounted.splice(0).forEach(item => item.unmount()); vi.unstubAllGlobals(); });
 async function loaded(hook) { await hook.value.choose('lesson-a'); await vi.waitFor(() => expect(hook.value.lesson?.id).toBe('lesson-a')); }
-describe('prepared material room and activity lifetime', () => {
+describe('prepared activity room and page lifetime', () => {
   it('does not trust ready bindings from another room with the same recycled four-digit code', async () => {
-    storage.set('lesson-pages:6106:OLD-room-key:lesson-a', JSON.stringify(await readyBinding(read)));
+    const review = { ...read, type: 'review', letters: 'a m s t p', assetIds: [] };
+    test.get.mockResolvedValue(lesson(review));
+    storage.set('lesson-pages:6106:OLD-room-key:lesson-a', JSON.stringify(await readyBinding(review)));
     // The old format must also be ignored, rather than silently migrated to a new room.
-    storage.set('lesson-pages:6106:lesson-a', JSON.stringify(await readyBinding(read)));
+    storage.set('lesson-pages:6106:lesson-a', JSON.stringify(await readyBinding(review)));
     const wb = board(), hook = mount(wb, { code: '6106', key: 'NEW-room-key' }); await loaded(hook); await hook.value.activate(0);
-    expect(wb.addPreparedPicture).toHaveBeenCalledOnce(); expect(wb.pieces).toHaveLength(1); expect(hook.value.index).toBe(0);
+    expect(wb.tiles.map(tile => tile.text)).toEqual(['a', 'm', 's', 't', 'p']); expect(hook.value.index).toBe(0);
+    expect(wb.addPreparedPicture).not.toHaveBeenCalled(); expect(wb.pieces).toEqual([]);
     expect(storage.has('lesson-pages:6106:NEW-room-key:lesson-a')).toBe(true);
   });
   it('gives a changed Build to Dictation projection a fresh page while preserving the previous word', async () => {
@@ -63,13 +74,49 @@ describe('prepared material room and activity lifetime', () => {
     await hook.value.choose(plan.id); await Promise.resolve(); await hook.value.activate(0);
     expect(wb.pageActions.add).not.toHaveBeenCalled(); expect(wb.addTiles).toHaveBeenCalledOnce(); expect(wb.tiles.map(item => item.text)).toEqual(['sh', 'i', 'p']);
   });
-  it('does not revive an old worksheet fetch after disconnect and same-page-epoch reconnect', async () => {
-    let resolve; const reply = new Promise(done => { resolve = done; }); fetch.mockReturnValue(reply);
-    const room = { code: '6106', key: 'room-key' }, wb = board(), hook = mount(wb, room); await loaded(hook);
-    const opening = hook.value.activate(0); await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-    hook.update([wb, room, false]); wb.pictureWriteContext = {}; hook.update([wb, room, true]);
-    resolve({ ok: true, blob: async () => new Blob(['worksheet']) }); await opening;
-    expect(wb.addPreparedPicture).not.toHaveBeenCalled(); expect(wb.pieces).toEqual([]); expect(hook.value.index).toBe(-1); expect(hook.value.error).toMatch(/changed/);
+  it('recovers a page setup interrupted by a disconnect only after an explicit retry', async () => {
+    const room = { code: '6106', key: 'room-key' }, wb = board(), hook = mount(wb, room);
+    wb.pieces.push({ id: 'teacher-choice', pic: 'manual-source', crop: { x: 0, y: 0, w: 40, h: 50 } });
+    const add = wb.pageActions.add.getMockImplementation();
+    wb.pageActions.add.mockImplementationOnce(() => { wb.pagePending = true; return true; });
+    await loaded(hook);
+    const opening = hook.value.activate(0); await vi.waitFor(() => expect(wb.pageActions.add).toHaveBeenCalledOnce());
+    hook.update([wb, room, false]); wb.pictureWriteContext = {}; wb.pagePending = false; hook.update([wb, room, true]);
+    await opening;
+    expect(hook.value.index).toBe(-1); expect(hook.value.error).toMatch(/connection changed/);
+    expect(wb.pageActions.add).toHaveBeenCalledOnce(); expect(wb.pieces[0].id).toBe('teacher-choice');
+    wb.pageActions.add.mockImplementation(add); await hook.value.activate(0);
+    expect(hook.value.error).toBeNull(); expect(hook.value.index).toBe(0);
+    expect(wb.preserved[0].pieces[0].id).toBe('teacher-choice');
+    expect(fetch).not.toHaveBeenCalled(); expect(wb.addPreparedPicture).not.toHaveBeenCalled();
+  });
+
+  it('keeps review cards and worksheets private when opening or navigating activities', async () => {
+    const review = { ...read, id: 'review-a', type: 'review', letters: 'a m s t p', assetIds: [], cardIds: ['mouth-a'] };
+    test.get.mockResolvedValue({ ...lesson(), activities: [review, read] });
+    const wb = board(), onReadReady = vi.fn(), hook = mount(wb, { code: '6106', key: 'room-key' }, true, { onReadReady });
+    await loaded(hook); await hook.value.activate(0);
+    expect(wb.tiles.map(tile => tile.text)).toEqual(['a', 'm', 's', 't', 'p']);
+    const choice = { id: 'chosen-part', pic: 'teacher-selected-picture', crop: { x: 10, y: 20, w: 40, h: 50 }, x: 200, y: 300, w: 80, h: 100 };
+    wb.pieces.push(choice); wb.board.strokes.push({ id: 'student-ink', pts: [10, 20] });
+    await hook.value.activate(1); expect(hook.value.index).toBe(1); expect(wb.pieces).toEqual([]);
+    await hook.value.activate(0);
+    expect(wb.pieces).toEqual([choice]); expect(wb.board.strokes[0].id).toBe('student-ink');
+    expect(test.catalog).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    expect(wb.addLibraryCard).not.toHaveBeenCalled(); expect(wb.addPreparedPicture).not.toHaveBeenCalled();
+    expect(wb.pieceActions.add).not.toHaveBeenCalled(); expect(onReadReady).not.toHaveBeenCalled();
+  });
+
+  it('clears an earlier ready label before a failed explicit retry and allows recovery', async () => {
+    const wb = board(), room = { code: '6106', key: 'room-key' }, hook = mount(wb, room);
+    await loaded(hook); await hook.value.activate(0); expect(hook.value.index).toBe(0);
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    vi.stubGlobal('crypto', { subtle: { digest: vi.fn().mockRejectedValueOnce(new Error('Activity preparation failed.')).mockImplementation(digest) } });
+    await hook.value.activate(0);
+    expect(hook.value.index).toBe(-1); expect(hook.value.busy).toBe(false); expect(hook.value.error).toBe('Activity preparation failed.');
+    expect(JSON.parse(storage.get('lesson-pages:6106:room-key:lesson-a')).bindings[read.id].ready).toBe(false);
+    await hook.value.activate(0);
+    expect(hook.value.index).toBe(0); expect(hook.value.error).toBeNull(); expect(wb.pageActions.add).not.toHaveBeenCalled();
   });
 });
 
@@ -103,11 +150,24 @@ describe('explicit classroom lesson startup', () => {
     await vi.waitFor(() => expect(hook.value.index).toBe(1));
     expect(wb.addTiles).not.toHaveBeenCalled(); expect(wb.pageActions.add).not.toHaveBeenCalled(); expect(wb.pageActions.switch).not.toHaveBeenCalled(); expect(onReadReady).not.toHaveBeenCalled(); expect(wb.tiles).toEqual([{ id: 'existing-work', text: 'sat' }]);
   });
-  it('resumes a ready reading page without downloading, placing, or refocusing the worksheet', async () => {
+  it('resumes a ready reading page without downloading, replacing, or refocusing existing work', async () => {
     window.location.search = '?lesson=lesson-a'; storage.set('lesson-pages:6106:room-key:lesson-a', JSON.stringify(await readyBinding(read)));
-    const wb = board(), onReadReady = vi.fn(), hook = mount(wb, { code: '6106', key: 'room-key' }, true, { onReadReady });
+    const wb = board(), onReadReady = vi.fn();
+    wb.pieces = [{ id: 'manually-placed-worksheet', pic: '00000000000000000000000000000001', x: 125, y: 230, w: 200, h: 400 }];
+    wb.board.strokes = [{ id: 'student-writing', pts: [100, 100, 110, 120] }];
+    const work = structuredClone({ pieces: wb.pieces, strokes: wb.board.strokes });
+    const hook = mount(wb, { code: '6106', key: 'room-key' }, true, { onReadReady });
     await waitUntilStarted(hook);
     expect(fetch).not.toHaveBeenCalled(); expect(wb.addPreparedPicture).not.toHaveBeenCalled(); expect(wb.pieceActions.add).not.toHaveBeenCalled(); expect(onReadReady).not.toHaveBeenCalled();
+    expect(wb.pieces).toEqual(work.pieces); expect(wb.board.strokes).toEqual(work.strokes);
+  });
+  it('opens a read activity from its URL without downloading or placing its image or zooming', async () => {
+    window.location.search = '?lesson=lesson-a';
+    const wb = board(), onReadReady = vi.fn(), hook = mount(wb, { code: '6106', key: 'room-key' }, true, { onReadReady });
+    await waitUntilStarted(hook);
+    expect(hook.value.lesson.assets).toHaveLength(1); expect(hook.value.activeId).toBe(read.id);
+    expect(fetch).not.toHaveBeenCalled(); expect(wb.addPreparedPicture).not.toHaveBeenCalled();
+    expect(wb.pieceActions.add).not.toHaveBeenCalled(); expect(onReadReady).not.toHaveBeenCalled(); expect(wb.pieces).toEqual([]);
   });
   it('creates a new page for changed public materials instead of overwriting a resumed activity', async () => {
     window.location.search = '?lesson=lesson-a'; storage.set('lesson-pages:6106:room-key:lesson-a', JSON.stringify(await readyBinding(review)));
@@ -134,14 +194,16 @@ describe('explicit classroom lesson startup', () => {
     await hook.value.choose('lesson-b'); resolveOriginal(lesson(review)); await Promise.resolve(); hook.update([wb, room, true, { onLessonOpen }]);
     await vi.waitFor(() => expect(hook.value.lesson?.id).toBe('lesson-b')); expect(wb.addTiles).not.toHaveBeenCalled(); expect(onLessonOpen).not.toHaveBeenCalled();
   });
-  it('does not revive a cancelled automatic import after reconnecting', async () => {
-    window.location.search = '?lesson=lesson-a'; let resolveWorksheet; fetch.mockReturnValue(new Promise(resolve => { resolveWorksheet = resolve; }));
-    const room = { code: '6106', key: 'room-key' }, wb = board(), hook = mount(wb, room); hook.value;
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-    hook.update([wb, room, false]); wb.pictureWriteContext = {}; hook.update([wb, room, true]);
-    resolveWorksheet({ ok: true, blob: async () => new Blob(['worksheet']) });
+  it('does not automatically retry an interrupted URL page setup after reconnecting', async () => {
+    window.location.search = '?lesson=lesson-a';
+    const room = { code: '6106', key: 'room-key' }, wb = board(); wb.tiles = [{ id: 'existing-work', text: 'p' }];
+    wb.pageActions.add.mockImplementation(() => { wb.pagePending = true; return true; });
+    const hook = mount(wb, room); hook.value;
+    await vi.waitFor(() => expect(wb.pageActions.add).toHaveBeenCalledOnce());
+    hook.update([wb, room, false]); wb.pictureWriteContext = {}; wb.pagePending = false; hook.update([wb, room, true]);
     await vi.waitFor(() => expect(hook.value.busy).toBe(false));
-    expect(wb.addPreparedPicture).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledOnce(); expect(hook.value.index).toBe(-1);
+    expect(wb.pageActions.add).toHaveBeenCalledOnce(); expect(hook.value.index).toBe(-1); expect(hook.value.error).toMatch(/connection changed/);
+    expect(wb.tiles[0].id).toBe('existing-work'); expect(fetch).not.toHaveBeenCalled(); expect(wb.addPreparedPicture).not.toHaveBeenCalled();
   });
   it('ignores an explicit lesson response after the classroom is left', async () => {
     window.location.search = '?lesson=lesson-a'; let resolve; test.get.mockReturnValue(new Promise(done => { resolve = done; }));

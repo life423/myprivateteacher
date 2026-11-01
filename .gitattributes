@@ -1,0 +1,2 @@
+# Generated articulation SVGs are compared byte-for-byte with their renderer.
+src/assets/articulation/*.svg text eol=lf

@@ -1,5 +1,6 @@
-import { readingRectangle, settleReadingFrame } from './readingFocus.js';
 import LessonPanel from '../lessons/LessonPanel.jsx';
+import { lessonAssetUrl } from '../lessons/api.js';
+import { partsForTeachingImage } from '../lessons/teachingPieceParts.js';
 import TutorGuide from '../lessons/TutorGuide.jsx';
 import { useLessonRunner } from '../lessons/useLessonRunner.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,11 +25,12 @@ import { ClearButton, HandsSwitch, LinesButton, Switch, ToolButton, ToolRail } f
 import { isLineSize } from '../../shared/lines.js';
 import TileBar from './TileBar.jsx';
 import PicturesPanel, { PictureDrawer } from './PicturesPanel.jsx';
-import { pictureUrl } from './pictures.js';
+import { newPictureId, pictureUrl } from './pictures.js';
 import { cleanPictureLibraryView, loadPictureLibraryView, savePictureLibraryView } from './pictureLibraryView.js';
 import { LessonGate } from '../account/TeachGate.jsx';
 import { useVideoCall } from './useVideoCall.js';
-import { CopyButton, FocusButton, MessageScreen, StageNotice, StatusPill, TopBar } from './ui.jsx';
+import { CopyButton, FocusButton, MessageScreen, StatusPill, TopBar } from './ui.jsx';
+import { clearStudentJoinHistory, StudentJoinHint, StudentJoinInstructions, useStudentJoinHelp } from './StudentJoinHelp.jsx';
 
 const SAVED = 'wb-tutor';
 const round4 = (n) => Math.round(n * 10000) / 10000;
@@ -54,7 +56,7 @@ const rememberedLines = () => {
 
 // The controls are grouped by the tutor's task, with current states in plain text.
 // All settings remain in the room; this component only presents the existing actions.
-export function TutorLessonControls({ studentTools, onStudentTools, hands, onHands, lines, onLines, strip, onStrip, pointing, activity, showStudentView, onStudentView, studentHere, onShareView, onFocus }) {
+export function TutorLessonControls({ studentTools, onStudentTools, hands, onHands, lines, onLines, strip, onStrip, pointing, activity, showStudentView, onStudentView, studentHere, onShareView, onFocus, joinHelp }) {
   const switchRow = 'flex min-h-11 items-center justify-between gap-2 [&>button]:min-h-11 [&>button]:min-w-0 [&>button]:flex-1 [&>button]:rounded-lg';
   return (
     <div className='w-full space-y-4'>
@@ -123,6 +125,7 @@ export function TutorLessonControls({ studentTools, onStudentTools, hands, onHan
           </div>
         </div>
       </section>
+      {joinHelp}
     </div>
   );
 }
@@ -134,7 +137,6 @@ export default function TutorRoom() {
   const [tool, setTool] = useState('none');
   const [busy, setBusy] = useState(false);
   const [gated, setGated] = useState(null); // why the server won't start a lesson ('sign-in', 'plan')
-  const [tip, setTip] = useState(null);
   const [selectedTileId, setSelectedTileId] = useState(null); // clicked, ready to change
   const [activePanel, setActivePanel] = useState(null);
   const layout = useRef(null); // the shared layout: open a panel, focus mode
@@ -148,17 +150,20 @@ export default function TutorRoom() {
   const [browsing, setBrowsing] = useState(false); // the picture library slide-out
   const [picturePreviewOpen, setPicturePreviewOpen] = useState(false);
   const [pictureOpenRequest, setPictureOpenRequest] = useState(null);
+  const [preparedMaterial, setPreparedMaterial] = useState(null);
+  const preparedMaterialRef = useRef(null), materialRequest = useRef(0);
+  const clearPreparedMaterial = () => { materialRequest.current++; preparedMaterialRef.current = null; setPreparedMaterial(null); };
   const [gamesOpen, setGamesOpen] = useState(false);
   const [lessonOpen, setLessonOpen] = useState(() => Boolean(new URLSearchParams(window.location.search).get('lesson')));
   const guideTrigger = useRef(null);
-  const openPicture = (request) => { setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); };
+  const openPicture = (request) => { clearPreparedMaterial(); setPictureOpenRequest({ ...request, n: Date.now() }); setBrowsing(true); };
   const [pictureLibraryView, setPictureLibraryView] = useState(loadPictureLibraryView);
   const updatePictureLibraryView = useCallback((patch) => setPictureLibraryView((current) => {
     const next = cleanPictureLibraryView({ ...current, ...patch });
     return Object.keys(next).every((key) => next[key] === current[key]) ? current : next;
   }), []);
   useEffect(() => { savePictureLibraryView(pictureLibraryView); }, [pictureLibraryView]);
-  const closePictureLibrary = () => { setBrowsing(false); setPicturePreviewOpen(false); setPictureOpenRequest(null); };
+  const closePictureLibrary = () => { clearPreparedMaterial(); setBrowsing(false); setPicturePreviewOpen(false); setPictureOpenRequest(null); };
   const [studentBrowse, setStudentBrowse] = useState({ open: false, pic: null }); // where the student is browsing
   const [guidePic, setGuidePic] = useState(null); // the picture this tutor is pointing at
   // The picture library, which this tutor's live room can draw from.
@@ -205,7 +210,6 @@ export default function TutorRoom() {
   const studentToolsRef = useRef(studentTools);
   const sendRef = useRef(() => {});
   const lastPoint = useRef(null);
-  const tipShown = useRef(false);
   roomRef.current = room;
   studentToolsRef.current = studentTools;
 
@@ -242,6 +246,7 @@ export default function TutorRoom() {
           setSelectedTileId(null); setStudentMarker(null); setMyMarker(null);
           setStudentView(null); myView.current = null;
           setGuidePic(null); setPictureOpenRequest(null); setPicturePreviewOpen(false); setBrowsing(false);
+          clearPreparedMaterial();
           setTool('none');
         }
         wb.handle(msg);
@@ -282,12 +287,6 @@ export default function TutorRoom() {
       } else if (msg.t === 'tools') {
         setStudentTools(Boolean(msg.on));
       } else if (msg.t === 'presence') {
-        if (msg.student && !studentHere) {
-          if (!tipShown.current) {
-            tipShown.current = true;
-            setTip('Tip: drag a hand to point at a letter');
-          }
-        }
         if (!msg.student) {
           setStudentMarker(null);
           call.peerGone();
@@ -309,18 +308,69 @@ export default function TutorRoom() {
     },
   });
   sendRef.current = send;
+  const joinHelp = useStudentJoinHelp({ code: room.code, roomKey: room.key, ready: status === 'open' && Boolean(confirmedRoom) && !gated && !busy, studentHere });
   const lessonRunner = useLessonRunner(wb, room, status === 'open' && Boolean(confirmedRoom), {
     onLessonOpen: () => setLessonOpen(true),
-    onReadReady: async (piece, current, origin) => {
-      const rect = readingRectangle(piece);
-      if (!rect || !current()) return false;
-      layout.current?.closeSheet();
-      if (!(await settleReadingFrame(stageApi, current)) || !current()) return false;
-      if (!stageApi.current?.showRect(rect)) return false;
-      wb.sendPageMessage({ t: 'focus', ...rect, reading: true }, origin);
-      return true;
-    },
   });
+  const materialContext = useRef(null);
+  materialContext.current = { wb, room, ready: status === 'open' && Boolean(confirmedRoom) && wb.pageReady && !wb.pagePending, lesson: lessonRunner.lesson };
+  const materialPreviews = useMemo(() => new Map(), [room.code, room.key, lessonRunner.lesson?.id]);
+  useEffect(() => () => {
+    materialRequest.current++;
+    for (const source of materialPreviews.values()) { source.controller.abort(); if (source.src) URL.revokeObjectURL(source.src); }
+    materialPreviews.clear();
+  }, [materialPreviews]);
+
+  const materialDestinationCurrent = (source) => {
+    const context = materialContext.current;
+    return context.ready && context.room.code === source.room.code && context.room.key === source.room.key && context.wb.pictureWriteContext === source.writeContext && context.lesson?.id === source.lessonId;
+  };
+  const openLessonMaterial = async (request) => {
+    const context = materialContext.current;
+    const activity = context.lesson?.activities[request.activityIndex];
+    if (!context.ready || activity?.id !== request.activityId) throw new Error('Wait for this activity to be ready, then choose its pieces.');
+    clearPreparedMaterial();
+    const ticket = materialRequest.current;
+    if (request.kind === 'library') { openPicture({ id: request.cardId, library: true }); return; }
+    if (activity.type !== 'read' || !activity.assetIds.includes(request.assetId)) throw new Error('This material is not part of the selected activity.');
+    const asset = context.lesson.assets?.find(item => item.id === request.assetId);
+    if (!asset) throw new Error('This lesson material is missing. Reopen the saved preparation.');
+    const destination = { room: context.room, writeContext: context.wb.pictureWriteContext, lessonId: context.lesson.id };
+    let source = materialPreviews.get(asset.id);
+    if (!source) {
+      source = { id: newPictureId(), controller: new AbortController(), src: null };
+      source.promise = fetch(lessonAssetUrl(context.lesson.id, asset.id), { cache: 'no-store', signal: source.controller.signal }).then(async response => {
+        if (!response.ok) throw new Error('This lesson material could not be opened. Please try again.');
+        source.blob = await response.blob();
+        if (source.controller.signal.aborted) throw new Error('The lesson changed. Open its materials again.');
+        const digest = await crypto.subtle.digest('SHA-256', await source.blob.arrayBuffer());
+        const imageHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+        source.parts = partsForTeachingImage(imageHash, asset.w, asset.h);
+        source.src = URL.createObjectURL(source.blob);
+        return source;
+      }).catch(error => { if (materialPreviews.get(asset.id) === source) materialPreviews.delete(asset.id); throw error; });
+      materialPreviews.set(asset.id, source);
+    }
+    await source.promise;
+    if (ticket !== materialRequest.current || !materialDestinationCurrent(destination)) throw new Error('The board changed. Choose the material again.');
+    const prepared = { ...destination, id: source.id, w: asset.w, h: asset.h, src: source.src, blob: source.blob, parts: source.parts, title: 'Lesson material' };
+    preparedMaterialRef.current = prepared;
+    setPreparedMaterial(prepared); setPictureOpenRequest(null); setPicturePreviewOpen(true); setBrowsing(true);
+  };
+  const addPreparedSource = async (source) => {
+    if (preparedMaterialRef.current !== source || !materialDestinationCurrent(source)) return { error: 'The board changed. Choose the material again.' };
+    const result = await materialContext.current.wb.addPreparedPicture({ blob: source.blob, w: source.w, h: source.h }, source.room, { id: source.id, material: 'lesson-source', title: 'Lesson material' });
+    if (preparedMaterialRef.current !== source || !materialDestinationCurrent(source)) return { error: 'The board changed. Choose the material again.' };
+    return result;
+  };
+  const addPreparedLetter = (letter, source) => {
+    if (preparedMaterialRef.current !== source || !materialDestinationCurrent(source)) return { added: 0, cancelled: true };
+    return materialContext.current.wb.addTiles(letter);
+  };
+  const addPreparedBoxes = (count, source) => {
+    if (preparedMaterialRef.current !== source || !materialDestinationCurrent(source)) return false;
+    return materialContext.current.wb.setBoxes(count);
+  };
   useEffect(() => {
     if (status !== 'open') { hands.disconnect(); wb.disconnect(); }
   }, [status, hands.disconnect, wb.disconnect]);
@@ -374,12 +424,6 @@ export default function TutorRoom() {
   }, [confirmedRoom, status, libraryAttempt]);
 
   useEffect(() => {
-    if (!tip) return undefined;
-    const timer = setTimeout(() => setTip(null), 5000);
-    return () => clearTimeout(timer);
-  }, [tip]);
-
-  useEffect(() => {
     const onKey = (event) => {
       if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return; // leave typing alone
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
@@ -404,6 +448,7 @@ export default function TutorRoom() {
     if (!navigate('/whiteboard')) return;
     send({ t: 'end' });
     sessionStorage.removeItem(SAVED);
+    clearStudentJoinHistory();
   };
 
   // Shows your pointer here and on the student's screen.
@@ -492,7 +537,7 @@ export default function TutorRoom() {
       aria-haspopup='dialog'
       aria-expanded={browsing}
       aria-controls='tutor-picture-library'
-      onClick={() => setBrowsing(true)}
+      onClick={() => { clearPreparedMaterial(); setPictureOpenRequest(null); setBrowsing(true); }}
       className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-sm font-bold text-violet-800 hover:border-violet-400 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${compact ? 'gap-1.5 px-2' : 'gap-2 px-3'}`}
     >
       <LayoutGrid className='h-5 w-5' aria-hidden='true' />
@@ -508,6 +553,7 @@ export default function TutorRoom() {
       guideOpen={lessonOpen}
       persistentControls={<>{pictureLibraryShortcut()}{guideShortcut()}</>}
       header={
+        <div data-tutor-header>
         <TopBar
           title='Alphabet Whiteboard'
           menuSummary={<span className={`rounded-md px-2 py-1 text-xs font-semibold ${studentTools ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'}`}>Student tools {studentTools ? 'on' : 'off'}</span>}
@@ -527,6 +573,7 @@ export default function TutorRoom() {
             studentHere={studentHere}
             onShareView={() => myView.current && pageSend({ t: 'focus', ...myView.current })}
             onFocus={() => layout.current?.setFocus(true)}
+            joinHelp={joinHelp.helpVisible && <StudentJoinInstructions code={room.code} site={window.location.host} />}
           />}
           end={
             <button
@@ -548,6 +595,8 @@ export default function TutorRoom() {
           {pictureLibraryShortcut(true)}
           {guideShortcut()}
         </TopBar>
+        {joinHelp.hintVisible && <StudentJoinHint code={room.code} site={window.location.host} onDismiss={joinHelp.dismissHint} />}
+        </div>
       }
       tools={!(bridge.game || phoneme.active) && (
         <ToolRail label='Your tools'>
@@ -621,10 +670,6 @@ export default function TutorRoom() {
             onLeave={onLeave}
             onStroke={{ start: (p) => wb.stroke.start(tool, p), move: wb.stroke.move, end: wb.stroke.end }}
           />
-          {!studentHere && room.code && (
-            <StageNotice>Your student opens myprivateteacher.com and enters {room.code} in Join your lesson</StageNotice>
-          )}
-          {studentHere && tip && <StageNotice>{tip}</StageNotice>}
         </>
         )
       }
@@ -652,12 +697,17 @@ export default function TutorRoom() {
 
     />
     <TutorGuide open={lessonOpen} onClose={() => setLessonOpen(false)} returnFocusRef={guideTrigger} actions={room.code && lessonRunner.lesson ? <span className='min-[360px]:hidden'><CopyButton compact text={`${window.location.origin}/whiteboard/${room.code}`} label='Copy lesson link' /></span> : null}>
-      <LessonPanel runner={lessonRunner} />
+      <LessonPanel runner={lessonRunner} library={library} loadLibraryImage={loadLibraryImage} onOpenMaterial={openLessonMaterial} />
     </TutorGuide>
-    <PictureDrawer id='tutor-picture-library' open={browsing} onClose={closePictureLibrary} previewOpen={picturePreviewOpen} catalogReady={libraryState.status === 'ready'} catalogScrollTop={pictureLibraryView.scrollTop} onCatalogScroll={(scrollTop) => updatePictureLibraryView({ scrollTop })}>
+    <PictureDrawer id='tutor-picture-library' title={preparedMaterial ? 'Choose teaching pieces' : 'Picture library'} open={browsing} onClose={closePictureLibrary} previewOpen={picturePreviewOpen} catalogReady={libraryState.status === 'ready'} catalogScrollTop={pictureLibraryView.scrollTop} onCatalogScroll={(scrollTop) => updatePictureLibraryView({ scrollTop })}>
       <PicturesPanel
         {...pictureProps}
         openPictureRequest={pictureOpenRequest}
+        preparedPicture={preparedMaterial}
+        onAddPreparedSource={addPreparedSource}
+        onAddPreparedLetter={addPreparedLetter}
+        onAddPreparedBoxes={addPreparedBoxes}
+        onClosePreparedPicture={closePictureLibrary}
         onCropPiece={wb.pieceActions.crop}
         onCancelCrop={() => setPictureOpenRequest(null)}
         layout='drawer'

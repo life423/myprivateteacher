@@ -82,11 +82,11 @@ export function findPicturePlacement(size, centre, { pieces = [], bounds } = {})
   return fallback ? { x: fallback.x, y: fallback.y, overlaps: fallback.overlaps, crowded: true, visible: true } : null;
 }
 
-export function picturePlacement(picture, centre, { pieces = [], bounds, crop: chosenCrop } = {}) {
+export function picturePlacement(picture, centre, { pieces = [], bounds, crop: chosenCrop, preferredWidth } = {}) {
   const crop = cleanCrop(chosenCrop || defaultPictureCrop(picture), picture);
   if (!picture?.id || !crop) return null;
   const area = picturePlacementBounds(bounds);
-  const width = Math.min(startingWidth(crop), area.w, area.h * crop.w / crop.h);
+  const width = Math.min(Number.isFinite(preferredWidth) && preferredWidth > 0 ? preferredWidth : startingWidth(crop), area.w, area.h * crop.w / crop.h);
   const size = pieceSize(crop, width);
   const placed = findPicturePlacement(size, centre, { pieces, bounds: area });
   if (!placed) return null;
