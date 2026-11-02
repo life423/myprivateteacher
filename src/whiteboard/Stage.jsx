@@ -237,20 +237,28 @@ export default function Stage({
   const selectedLetter = movable && !selectedPiece ? tiles.find((tile) => tile.id === (selectedTile || localTileId)) || null : null;
   const selectLetter = (id) => { setSelectedPieceId(null); setLocalTileId(id); tileActions?.select?.(id); };
   const clearSelection = () => { setSelectedPieceId(null); setLocalTileId(null); tileActions?.select?.(null); };
+  const dismissSelection = () => {
+    const toolbarHadFocus = wrapRef.current?.querySelector('[data-object-toolbar]')?.contains(document.activeElement);
+    pointers.cancelAll('deselect');
+    clearSelection();
+    setGrip(null);
+    setPlacementNotice('');
+    if (toolbarHadFocus) svgRef.current?.focus({ preventScroll: true });
+  };
   useEffect(() => {
     if (!selectedPiece && !selectedLetter) return undefined;
-    const escape = event => { if (event.key === 'Escape' && !layersOpen && !event.target.closest?.('[role=dialog]')) clearSelection(); };
+    const escape = event => { if (event.key === 'Escape' && !layersOpen && !event.target.closest?.('[role=dialog]')) dismissSelection(); };
     window.addEventListener('keydown', escape); return () => window.removeEventListener('keydown', escape);
   }, [selectedPiece?.id, selectedLetter?.id, layersOpen]);
   const selectedFace = Boolean(selectedPiece && isFacePiece(selectedPiece, pictures.find((picture) => picture.id === selectedPiece.pic)));
   const canResizeSelected = Boolean(selectedPiece && canEditPieces && (me === 'tutor' || !selectedFace));
-  const selectPiece = (id) => {
+  const selectPiece = (id, { preserveView = false } = {}) => {
     setSelectedPieceId(id);
     setLocalTileId(null);
     tileActions?.select?.(null);
     onSelectPiece?.(id);
     const piece = pieces.find((p) => p.id === id);
-    if (piece && seen && (piece.x < seen.x || piece.y < seen.y || piece.x + piece.w > seen.x + seen.w || piece.y + piece.h > seen.y + seen.h)) {
+    if (!preserveView && piece && seen && (piece.x < seen.x || piece.y < seen.y || piece.x + piece.w > seen.x + seen.w || piece.y + piece.h > seen.y + seen.h)) {
       autoFill.current = false;
       const scale = Math.min(layoutRef.current.scale, size.width / (piece.w + 80), size.height / (piece.h + 80));
       setView({ scale, cx: piece.x + piece.w / 2, cy: piece.y + piece.h / 2 });
@@ -769,9 +777,10 @@ export default function Stage({
         ref={svgRef}
         viewBox={viewBox}
         preserveAspectRatio='xMidYMid meet'
-        className={`absolute inset-0 h-full w-full ${cursor} touch-none`}
+        className={`absolute inset-0 h-full w-full ${cursor} touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-violet-500`}
         style={{ WebkitTouchCallout: 'none' }}
         role='img'
+        tabIndex={-1}
         aria-label={letters.length ? `Alphabet strip, pointing at ${letters.join(' and ')}` : 'Alphabet strip and whiteboard'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -865,7 +874,8 @@ export default function Stage({
         onCrop={selectedPiece && me === 'tutor' && onCropPiece ? () => onCropPiece(selectedPiece) : null}
         onDuplicate={selectedPiece ? canDuplicatePieces ? () => duplicatePiece(selectedPiece.id) : null : canManageTiles && tileActions?.duplicate ? () => { const copy = tileActions.duplicate(selectedLetter.id); if (copy) selectLetter(copy); } : null}
         onDelete={selectedPiece ? canDeletePieces ? () => { pieceActions.remove(selectedPiece.id); clearSelection(); } : null : canManageTiles ? () => { tileActions.remove(selectedLetter.id); clearSelection(); } : null}
-        onClear={clearSelection}
+        onPointerInput={() => pointers.cancelAll('object-toolbar')}
+        onClear={dismissSelection}
       />}
       </div>
       <div data-board-footer className='relative z-50 flex h-11 shrink-0 items-center justify-between gap-1 border-t border-slate-200/70 bg-slate-50 px-1'>

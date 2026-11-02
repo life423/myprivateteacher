@@ -16,6 +16,19 @@ describe('materials browsing', () => {
     expect(matchingMaterials(pictures, 'picture', '').map((p) => p.id)).toEqual(['b', 'c']);
     expect(matchingMaterials(pictures, 'worksheet', 'missing')).toEqual([]);
   });
+  it('keeps prepared lesson sources out of the ordinary Pictures and Worksheets results', () => {
+    const pictures = [
+      { id: 'source', title: 'Sound cue', material: 'lesson-source' },
+      { id: 'worksheet', title: 'Sound cue worksheet', material: 'worksheet' },
+      { id: 'picture', title: 'Sound cue picture' },
+    ];
+    expect(materialKind(pictures[0])).toBe('lesson-source');
+    expect(matchingMaterials(pictures, 'picture').map(item => item.id)).toEqual(['picture']);
+    expect(matchingMaterials(pictures, 'worksheet').map(item => item.id)).toEqual(['worksheet']);
+    expect(matchingMaterials(pictures, 'picture', 'sound cue').map(item => item.id)).toEqual(['picture']);
+    expect(matchingMaterials(pictures, 'worksheet', 'sound cue').map(item => item.id)).toEqual(['worksheet']);
+    expect(materialKind({ material: 'unknown' })).toBe('picture');
+  });
   it('offers real letter/digraph choices without interpreting freeform words as new sounds', () => {
     expect(matchingLetters('sh')).toEqual(['sh']);
     expect(matchingLetters('c')).toEqual(['c', 'ch', 'ck']);

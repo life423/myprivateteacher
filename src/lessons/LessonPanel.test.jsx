@@ -3,6 +3,7 @@ const hooks = vi.hoisted(() => ({ current: null, guards: [] }));
 vi.mock('react', () => ({ useState: value => hooks.current.useState(value), useRef: value => hooks.current.useRef(value), useEffect: setup => hooks.current.useEffect(setup) }));
 vi.mock('../router.jsx', () => ({ Link: () => null, useNavigationGuard: enabled => hooks.guards.push(enabled) }));
 import LessonPanel, { directionBlocks } from './LessonPanel.jsx';
+import LessonMaterials, { teachingMaterials } from './LessonMaterials.jsx';
 function mount(Component, initialProps) {
   const slots = []; let index = 0, props = initialProps;
   const runtime = {
@@ -54,6 +55,52 @@ describe('prepared lesson private review controls', () => {
       expect(find(tree, 'select').props.disabled).toBe(true);
     }
     expect(find(mount(LessonPanel, { runner: runner(), onClose: vi.fn() }).render(), 'select').props.disabled).toBe(false);
+  });
+});
+
+describe('private teaching-piece selection', () => {
+  const cards = [
+    { id: 'lips', title: 'Lip Popper', sounds: ['p', 'b', 'm'] },
+    { id: 'snake', title: 'Snake Sound', sounds: ['s', 'z'] },
+    { id: 'ship', title: 'Quiet Sound', sounds: ['sh'] },
+  ];
+  it('uses public review letters and includes each mouth family once, without using private targets', () => {
+    const review = { ...activity, letters: 'm p', targets: 'sh', cardIds: ['snake'] };
+    expect(teachingMaterials({ id: 'plan' }, review, cards).map(item => item.cardId)).toEqual(['lips', 'snake']);
+    expect(teachingMaterials({ id: 'plan' }, { ...review, cardIds: [] }, [...cards, cards[0]]).map(item => item.cardId)).toEqual(['lips']);
+  });
+  it('keeps dictation and word-building targets out of picture suggestions', () => {
+    const secret = { ...activity, letters: 'm p', targets: 'Private answer', cardIds: ['lips'], assetIds: ['answers'] };
+    const plan = { id: 'plan', assets: [{ id: 'answers' }] };
+    expect(teachingMaterials(plan, { ...secret, type: 'dictation' }, cards)).toEqual([]);
+    expect(teachingMaterials(plan, { ...secret, type: 'build' }, cards)).toEqual([]);
+  });
+  it('opens only an existing prepared source after an explicit tutor action, without sharing private directions', async () => {
+    const onOpenMaterial = vi.fn().mockResolvedValue(undefined);
+    const read = { ...activity, type: 'read', title: 'Read about Pat', directions: 'Tutor-only teaching notes', targets: 'Secret target', assetIds: ['reading', 'missing'] };
+    const plan = { id: 'plan', assets: [{ id: 'reading' }] };
+    const material = teachingMaterials(plan, read, cards);
+    expect(material).toHaveLength(1);
+    expect(material[0].src).toBe('/api/lessons/plan/assets/reading');
+    const view = mount(LessonMaterials, { lesson: plan, activity: read, activityIndex: 2, library: cards, onOpenMaterial });
+    const button = find(view.render(), 'button');
+    expect(onOpenMaterial).not.toHaveBeenCalled();
+    await button.props.onClick();
+    expect(onOpenMaterial).toHaveBeenCalledExactlyOnceWith({ kind: 'asset', assetId: 'reading', activityId: read.id, activityIndex: 2, label: 'Read about Pat · 1' });
+  });
+  it('keeps an unsuccessful open retryable and blocks another open while disconnected', async () => {
+    const onOpenMaterial = vi.fn().mockRejectedValueOnce(new Error('Reconnect before opening this material.')).mockResolvedValue(undefined);
+    const view = mount(LessonMaterials, { lesson: { id: 'plan' }, activity: { ...activity, letters: 'm' }, activityIndex: 0, library: cards, onOpenMaterial });
+    await find(view.render(), 'button').props.onClick();
+    const error = elements(view.render(), node => node.props?.role === 'alert')[0];
+    expect(error.props.children).toBe('Reconnect before opening this material.');
+    await find(view.render(), 'button').props.onClick();
+    expect(onOpenMaterial).toHaveBeenCalledTimes(2);
+    expect(elements(view.render(), node => node.props?.role === 'alert')).toHaveLength(0);
+    const offline = view.render({ lesson: { id: 'plan' }, activity: { ...activity, letters: 'm' }, activityIndex: 0, library: cards, onOpenMaterial, disabled: true });
+    expect(find(offline, 'button').props.disabled).toBe(true);
+    await find(offline, 'button').props.onClick();
+    expect(onOpenMaterial).toHaveBeenCalledTimes(2);
   });
 });
 

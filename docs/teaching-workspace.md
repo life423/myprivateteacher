@@ -91,6 +91,67 @@ Relevant product precedents were read in first-party documentation: FigJam, Miro
 | [Linear](https://linear.app/changelog/2024-12-18-personalized-sidebar) | Separate daily work from infrequent configuration. |
 
 
+## Student joining help — November 1, 2026
+
+Returning tutors must be able to prepare without dismissing instructions. Remove automatic grey notices from the tutor's board, including the joining message and the hand-pointing tip. Keep the lesson code and Copy lesson link visible.
+
+- Show the short joining hint inline below the header, outside the board, only on its first confirmed display in this browser. Remember presentation even without dismissal; a reload or another lesson must not show it again. Withhold it in landscape below 500px high to preserve board space; rotation to portrait may show the still-unseen hint. Storage restrictions limit this memory to the current page.
+- Got it dismisses the hint and returns keyboard focus to Copy lesson link. Student arrival also removes it without leaving focus on a removed element.
+- Keep How students join as an optional disclosure in Lesson controls until the room's first successful student connection. Then remove it for that room, including through a temporary disconnect or reload. Remember the room identity using its key; End session clears that room's join history.
+- Use the current host in the instructions and current origin in the copied link. Local lesson codes must not direct students to the production server.
+
+Validation: production build and 18 focused tests pass. Actual isolated tutor/student WebSockets verified dismissal with Enter, reload both with and without dismissal, a new lesson, first student arrival, disconnect and reload. The hint does not repeat; joining help disappears after connection and stays gone for that room. Removing a focused Got it returns focus to Copy lesson link; removing an open, focused joining disclosure returns focus to Lesson controls. Tested QA pages logged no console errors.
+
+Rendered 1440×900 desktop, 768×1024 tablet, 393×852 phone and narrow 320×640 states have no horizontal overflow. The hint stays outside the board and Got it meets the 44px target. At fresh 740×390 landscape the hint is withheld, leaving 184px of board height instead of 123px; rotating to 320px-wide portrait correctly presents it once. These checks do not establish physical-device touch, screen-reader behavior, 200% text enlargement or measured Core Web Vitals.
+
+The following scores review this change only. They are conservative internal design heuristics, not measured product-quality results.
+
+| Dimension | Score | Evidence or next action |
+| --- | --- | --- |
+| Visual hierarchy | 9/10 | The working board stays clear; optional joining help is secondary to teaching controls. |
+| Usability | 9/10 | Repeat visits, new lessons and the join/disconnect/reload lifecycle avoid repeated instructions while retaining help before the first join. |
+| Aesthetics | 9/10 | The inline hint uses existing purple, spacing and typography rather than another floating surface. |
+| Interaction design | 9/10 | Enter dismissal and student-arrival removal restore focus to the appropriate stable header control. |
+| Responsiveness | 9/10 | Phone, tablet, desktop, narrow portrait and short landscape inspected; landscape deferral preserves board space and rotation retains first-use behavior. |
+| Accessibility | 8/10 | Native buttons/disclosure, visible focus and 44px dismissal target; next test screen-reader output and 200% text enlargement. |
+| Performance | 8/10 | No new dependency or network request for help; measure LCP, INP and CLS rather than claiming Core Web Vitals compliance. |
+| Product coherence | 9/10 | Code/copy stay available, optional help belongs in Lesson controls, and local instructions match the running host. |
+
+Next prioritize screen-reader and 200% text-enlargement checks, then physical-device touch and performance measurement. Browser-sized checks do not replace those validations.
+
+## Tutor-controlled teaching pieces — November 1, 2026
+
+The tutor rejected automatic worksheet deployment and the resulting camera changes. A premade lesson must support teaching with separate words, letters, pictures and reading strips, rather than enlarge a complete worksheet for the student. Opening an activity or using Previous/Next prepares its board page, letter tiles and sound boxes only. It does not import a picture or worksheet, fit a sheet, or send a reading-focus command to the student. Existing page work remains intact.
+
+Teaching pieces sits in the Tutor guide before the directions. Review activities offer relevant existing mouth/sound families, using public letter tiles and explicit card choices rather than private targets. Read activities offer their prepared sources. Dictation never turns private answers into picture suggestions. Choose parts opens a tutor-only preview; it does not upload or place the complete source merely because the preview opens.
+
+- The four existing short-a source images provide 26 named selections, checked against their exact SHA-256 and 1600×1700 dimensions. These include the short-a cue, apple, mouth photograph and diagram, instruction fragments, model and practice words, individual m/a/t letters, three sound boxes, four reading strips, and mat/map pictures and labels. A changed or unrelated image gets no guessed preset coordinates.
+- Letter selections create native letter tiles; the sound-box selection uses native shared sound boxes. Words, sentences, photographs and diagrams become individual crop pieces. Magic Select and Draw a box remain available for any other part. Do not describe raster crops as editable native text.
+- The tutor explicitly adds each selected piece. Size it to the current visible board area and preserve the camera. Keep the source chooser open for several additions. Prepared-source mode hides whole-page addition.
+- An uploaded crop backing is classified as `lesson-source` and excluded from student Pictures and Worksheets lists. The chosen piece still references source image bytes; this classification and crop are presentation controls, not cryptographic privacy or secure redaction.
+- The contextual toolbar's X and Escape deselect the current object and dismiss its controls without deleting it. Stop toolbar pointer input from restarting board gestures; return keyboard focus to the board when dismissal removes the focused toolbar.
+
+This work reuses the existing illustrations and library cards. It does not republish a template, overwrite immutable originals, or modify a tutor's saved custom preparation.
+
+Verification: the production build and the full suite of 683 tests in 81 suites pass. Actual browser checks verified an individually selected letter crop, a named marked-word crop, a separate Map illustration and a Pat sat. sentence strip. Native m/a/t tiles and three sound boxes were added from the source chooser; all three tiles were dragged into the boxes and snapped to the expected shared positions. The exact camera viewBox stayed unchanged across activity activation, source preview and part addition on desktop and tablet. Mouse X and Escape dismissed the contextual toolbar while retaining the piece; Escape left the Tutor guide open. After the first part was added, the prepared backing remained absent from both student Pictures and Worksheets lists, while the chosen strip appeared on the student's board. This confirms the rendered student experience, not secure redaction of backing bytes.
+
+Rendered phone 393×852, tablet 768×1024, and desktop 1440×900 and 2560×1215 states were inspected. On the phone, the native preset selector was exercised, all 11 ready-piece buttons met the 44px target, Add remained visible and there was no horizontal overflow. On tablet, adding păt preserved the exact viewBox. These checks do not establish physical-device touch, screen-reader behavior, 200% text enlargement or measured Core Web Vitals.
+
+These scores apply to this teaching-pieces change only. They are conservative internal design-review heuristics, not measured product-quality results.
+
+| Dimension | Score | Evidence or prioritized follow-up |
+| --- | --- | --- |
+| Visual hierarchy | 9/10 | The guide holds optional source material and the board holds deliberately selected teaching pieces. |
+| Usability | 9/10 | Words, sentence strips, pictures, repeated additions and native tile-to-box snapping were exercised under tutor control. |
+| Aesthetics | 9/10 | Reuses the established guide, source editor and board-object styling. |
+| Interaction design | 9/10 | Activation, private preview and explicit additions preserve the camera; X/Escape retain the object and Escape leaves the guide open. |
+| Responsiveness | 9/10 | Phone, tablet and two desktop layouts inspected; phone Add remains visible, named controls meet the 44px target and no horizontal overflow was found. |
+| Accessibility | 8/10 | Named preset buttons and native letter/box controls avoid drag-only input; keyboard dismissal/focus checked. Next test screen-reader output and 200% text enlargement. |
+| Performance | 8/10 | Sources reuse bounded existing images and build/tests pass; measure loading, LCP, INP and CLS before making performance claims. |
+| Product coherence | 9/10 | The tutor controls pacing and revelation; dictation remains private and existing board mechanics do the work. |
+
+Next prioritize screen-reader and text-enlargement verification, then physical-device touch and performance measurement. Cropping does not replace tutor review of what a chosen piece communicates to the learner.
+
 ## Keep existing teaching behavior
 
 The alphabet is a shared pointing reference. Alphabet-to-board pickup was removed at the user's request and must stay removed. Materials creates letter tiles; existing board tiles remain movable when permissions allow. Retain sound-box snapping/counters, shared pointing gloves, picture permissions, student face-size restrictions, upload safeguards, worksheets, layers and zoom. Sidebar navigation must not send lesson mutations or reset a game, media stream or board.

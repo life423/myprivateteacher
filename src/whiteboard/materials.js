@@ -17,7 +17,7 @@ export function saveMaterialsView(scope, view) {
   try { sessionStorage.setItem(`mpt.materials.${scope}`, JSON.stringify(cleanMaterialsView(view))); }
   catch { /* The lesson still works when browser storage is unavailable. */ }
 }
-export const materialKind = (picture) => picture?.material === 'worksheet' ? 'worksheet' : 'picture';
+export const materialKind = (picture) => picture?.material === 'lesson-source' ? 'lesson-source' : picture?.material === 'worksheet' ? 'worksheet' : 'picture';
 export function matchingMaterials(pictures, kind, query = '') {
   const terms = String(query).trim().toLowerCase().split(/\s+/).filter(Boolean);
   return pictures.filter((picture) => materialKind(picture) === kind && terms.every((term) => `${picture.title || ''} ${(picture.sounds || []).join(' ')}`.toLowerCase().includes(term)));

@@ -38,6 +38,23 @@ describe('direct picture placement', () => {
     }
   });
 
+  it('keeps a readable preferred strip size inside the visible board without changing its shape', () => {
+    const strip = { id: 'sentence', w: 800, h: 160 };
+    const placed = picturePlacement(strip, centre, { bounds, preferredWidth: 480 });
+    expect(placed.w).toBe(480);
+    expect(placed.x + placed.w / 2).toBeCloseTo(centre.x, 0);
+    expect(placed.w * strip.h / strip.w).toBe(96);
+    expect(placed.placement.visible).toBe(true);
+  });
+
+  it('bounds oversized preferred material to the current view instead of requiring a camera change', () => {
+    const picture = { id: 'portrait', w: 1600, h: 1700 };
+    const placed = picturePlacement(picture, centre, { bounds, preferredWidth: 4000 });
+    expect(placed.w).toBeLessThanOrEqual(bounds.w);
+    expect(placed.w * picture.h / picture.w).toBeLessThanOrEqual(bounds.h + 0.1);
+    expect(placed.placement.visible).toBe(true);
+  });
+
   it('finds the nearest free obstacle edge and does not miss a narrow exact gap', () => {
     const placed = findPicturePlacement({ w: 100, h: 100 }, { x: 300, y: 400 }, { bounds: { x: 100, y: 200, w: 400, h: 400 }, pieces: [{ x: 250, y: 350, w: 100, h: 100 }] });
     expect(Math.hypot(placed.x - 250, placed.y - 350)).toBe(112);

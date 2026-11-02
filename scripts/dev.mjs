@@ -36,8 +36,29 @@ function launch(args, options) {
   return { child, done };
 }
 
+async function stopWindowsTree(child) {
+  // Kill the owned tree while its parent still exists. Killing Node's watch
+  // process first can orphan the actual server and leave its port listening.
+  await new Promise((resolve) => {
+    const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    let timer;
+    const finish = () => { clearTimeout(timer); resolve(); };
+    killer.once('error', finish);
+    killer.once('exit', finish);
+    timer = setTimeout(() => { killer.kill(); finish(); }, 2000);
+  });
+}
+
 async function stop({ child, done }) {
   if (!child.pid) return;
+  if (process.platform === 'win32') {
+    // Do not target a PID belonging to a child that has already exited.
+    if (child.exitCode !== null || child.signalCode !== null) { await done; return; }
+    await stopWindowsTree(child);
+  }
   const kill = (signal) => {
     try {
       if (process.platform === 'win32') child.kill(signal);
@@ -53,7 +74,15 @@ async function stop({ child, done }) {
   clearTimeout(timer);
   if (!exited) {
     kill('SIGKILL');
-    await done;
+    if (process.platform !== 'win32') await done;
+    else {
+      const forcedExit = await Promise.race([
+        done.then(() => true),
+        new Promise((resolve) => { timer = setTimeout(() => resolve(false), 2000); }),
+      ]);
+      clearTimeout(timer);
+      if (!forcedExit) throw new Error('The development child process did not stop.');
+    }
   }
 }
 
