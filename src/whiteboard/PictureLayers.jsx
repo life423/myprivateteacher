@@ -1,12 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowUpToLine, Check, EyeOff, Layers, Lock, Minus, Plus, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, Check, EyeOff, Layers, Lock, X } from 'lucide-react';
 import { pictureOverlapState } from './pictureGeometry.js';
+import NativePieceContent from './NativePieceContent.jsx';
+import { cleanPieceContent } from '../../shared/pieces.js';
+import ObjectSizeControl from './ObjectSizeControl.jsx';
 
 const control = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500';
 
 function Thumbnail({ piece, picture, src }) {
   const clip = useId();
   if (!picture) return <span className='h-11 w-11 shrink-0 rounded-lg bg-slate-100' />;
+  const content = cleanPieceContent(piece.content);
+  if (content) return <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-slate-200' aria-hidden='true'><NativePieceContent content={content} width={40} height={40 * piece.h / piece.w} /></span>;
   const { crop } = piece;
   return (
     <svg width='44' height='44' viewBox={`${crop.x} ${crop.y} ${crop.w} ${crop.h}`} className='shrink-0 rounded-lg bg-white ring-1 ring-slate-200' aria-hidden='true'>
@@ -20,8 +25,9 @@ export function pictureNames(pieces, pictures) {
   return new Map(pieces.map((piece) => {
     const picture = pictures.find((p) => p.id === piece.pic);
     const number = pictures.findIndex((p) => p.id === piece.pic) + 1;
-    const copies = pieces.filter((p) => p.pic === piece.pic);
-    const name = picture?.title || `Picture ${number || 1}`;
+    const nativeName = piece.content?.kind === 'breve' ? 'Breve' : piece.content?.text;
+    const copies = pieces.filter(p => nativeName ? (p.content?.kind === 'breve' ? 'Breve' : p.content?.text) === nativeName : !p.content && p.pic === piece.pic);
+    const name = nativeName || picture?.title || `Picture ${number || 1}`;
     return [piece.id, copies.length > 1 ? `${name} · ${copies.findIndex((p) => p.id === piece.id) + 1}` : name];
   }));
 }
@@ -30,7 +36,7 @@ export function pictureNames(pieces, pictures) {
 // Selecting a row does not change the stack; Front and Back are deliberate tutor actions.
 export default function PictureLayers({
   pieces, pictures, selected, me, srcFor, onSelect, onClear, onOpenChange,
-  onLayer, onResize, canResize, canShrink, canGrow, resizeLocked = false,
+  onLayer, onSizeStart, onSizeChange, onSizeEnd, canResize, resizeCorner, resizeLocked = false,
   height = 500, topOffset = 8, overlapState: suppliedOverlap, inline = false, above = false, open: externalOpen,
 }) {
   const [localOpen, setLocalOpen] = useState(false);
@@ -38,6 +44,7 @@ export default function PictureLayers({
   const setOpen = (value) => { const next = typeof value === 'function' ? value(open) : value; if (externalOpen === undefined) setLocalOpen(next); onOpenChange?.(next); };
   const element = useRef(null);
   const toggle = useRef(null);
+  const sizeOpen = useRef(false), dismissSize = useRef(null);
   const id = useId();
   const availableHeight = Math.max(0, height - (inline ? 0 : topOffset));
   const names = pictureNames(pieces, pictures);
@@ -93,7 +100,7 @@ export default function PictureLayers({
               <div><h3 className='text-sm font-bold text-slate-800'>Pictures on the board</h3><p className='text-xs text-slate-500'>Front to back</p></div>
               <button type='button' aria-label='Close layers' onClick={quiet} className={`${control} shrink-0 px-2`}><X className='h-4 w-4' aria-hidden='true' /></button>
             </div>
-            {availableHeight >= 240 && <p className='shrink-0 border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600'>{overlapping ? 'Amber edges mark overlapping pictures. Select a covered picture here, then use Front to reveal it. ' : ''}Writing and letter tiles stay above pictures.</p>}
+            {availableHeight >= 240 && <p className='shrink-0 border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600'>{overlapping ? 'Amber edges mark overlapping pictures. Select a covered picture here, then use Front to reveal it. ' : ''}Photos sit below writing and tiles. Text and spelling marks sit above tiles.</p>}
             <div className='min-h-0 overflow-y-auto'>
             <ol className='p-1'>
               {ordered.map((piece, index) => {
@@ -114,9 +121,12 @@ export default function PictureLayers({
             </ol>
             {selected && <div className='shrink-0 border-t border-slate-100 p-2'>
               <p className='truncate px-1 text-xs font-semibold text-slate-700'>{names.get(selected.id)}</p>
-              <p role='status' className='px-1 text-[11px] text-slate-500'>{heldElsewhere ? `${owner} is moving this picture.` : resizeLocked ? 'Drag to move · Your tutor controls size' : 'Drag to move · Corners resize'}</p>
-              {(canResize || canOrder) && <div role='group' aria-label='Picture size and order' className='mt-1 flex flex-wrap gap-1'>
-                {canResize && <><button type='button' disabled={heldElsewhere || !canShrink} onClick={() => onResize(0.8)} className={control}><Minus className='h-4 w-4' aria-hidden='true' />Smaller</button><button type='button' disabled={heldElsewhere || !canGrow} onClick={() => onResize(1.25)} className={control}><Plus className='h-4 w-4' aria-hidden='true' />Larger</button></>}
+              <p role='status' className='px-1 text-[11px] text-slate-500'>{heldElsewhere ? `${owner} is moving this picture.` : resizeLocked ? 'Drag to move · Your tutor controls size' : 'Drag to move · Use Size to resize'}</p>
+              {(canResize || canOrder) && <div role='group' aria-label='Picture size and order' className='mt-1 flex flex-wrap gap-1' onKeyDown={event => {
+                if (event.key !== 'Escape' || !sizeOpen.current) return;
+                event.preventDefault(); event.stopPropagation(); dismissSize.current?.();
+              }}>
+                {canResize && <ObjectSizeControl key={selected.id} piece={selected} label={selected.content?.kind === 'breve' ? 'Breve' : selected.content?.kind === 'text' ? 'Text' : 'Picture'} disabled={heldElsewhere} onStart={onSizeStart} onChange={onSizeChange} onEnd={onSizeEnd} buttonClassName={control} corner={resizeCorner} dismissRef={dismissSize} onOpenChange={open => { sizeOpen.current = open; }} />}
                 {canOrder && <><button type='button' aria-label='Bring picture to front' disabled={heldElsewhere || ordered[0]?.id === selected.id} onClick={() => onLayer(selected.id, 'front')} className={control}><ArrowUpToLine className='h-4 w-4' aria-hidden='true' />Front</button><button type='button' aria-label='Send picture to back' disabled={heldElsewhere || ordered.at(-1)?.id === selected.id} onClick={() => onLayer(selected.id, 'back')} className={control}><ArrowDownToLine className='h-4 w-4' aria-hidden='true' />Back</button></>}
               </div>}
             </div>}

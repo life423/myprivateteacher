@@ -5,7 +5,7 @@ import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
 import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, duplicateTilePosition, nextHome, snapTile, tileKind } from '../shared/tiles.js';
 import { cleanBoxTap, cleanBoxTaps, cleanSoundBoxState, nextBoxEpoch } from '../shared/soundBoxes.js';
-import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, isFacePiece, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
+import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, cleanPieceContent, isFacePiece, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
 import { cleanAct } from '../shared/bridge.js';
 import { cleanIntent } from '../shared/phoneme.js';
 
@@ -422,11 +422,13 @@ export function attachRealtime(server, options = {}) {
     const pic = room.pictures.get(p.pic);
     const crop = cleanCrop(p.crop, pic);
     if (!crop) return null;
-    const size = pieceSize(crop, Number.isFinite(p.w) ? p.w : startingWidth(crop));
+    const content = cleanPieceContent(p.content);
+    if (p.content !== undefined && !content) return null;
+    const size = pieceSize(crop, Number.isFinite(p.w) ? p.w : content ? undefined : startingWidth(crop), content);
     const pos = clampPiece(size, p.x, p.y);
     if (!pos) return null;
     room.zTop += 1;
-    return { id: p.id, pic: pic.id, crop, ...pos, ...size, z: room.zTop, heldBy: null };
+    return { id: p.id, pic: pic.id, crop, ...(content && { content }), ...pos, ...size, z: room.zTop, heldBy: null };
   };
 
   // A part of a picture the tutor gives the student, checked, or null.
@@ -434,13 +436,15 @@ export function attachRealtime(server, options = {}) {
     if (!o || !isStrokeId(o.id) || room.offers.has(o.id) || room.offers.size >= MAX_OFFERS) return null;
     const pic = room.pictures.get(o.pic);
     const crop = cleanCrop(o.crop, pic);
-    return crop ? { id: o.id, pic: pic.id, crop, taken } : null;
+    const content = cleanPieceContent(o.content);
+    if (o.content !== undefined && !content) return null;
+    return crop ? { id: o.id, pic: pic.id, crop, ...(content && { content }), taken } : null;
   };
 
   // Moves a piece, and resizes it too when a width comes along and this person may resize.
   const placePiece = (room, role, piece, msg) => {
     const canResize = canDraw(room, role) && (role === 'tutor' || !isFacePiece(piece, room.pictures.get(piece.pic)));
-    const size = Number.isFinite(msg.w) && canResize ? pieceSize(piece.crop, msg.w) : { w: piece.w, h: piece.h };
+    const size = Number.isFinite(msg.w) && canResize ? pieceSize(piece.crop, msg.w, piece.content) : { w: piece.w, h: piece.h };
     const pos = clampPiece(size, msg.x, msg.y);
     if (!pos) return false;
     Object.assign(piece, size, pos);
@@ -810,14 +814,22 @@ export function attachRealtime(server, options = {}) {
       }
     },
 
-    // Tutor only: wipe the board for both.
+    // Tutor only: clear all placed work on this page for both participants.
+    // Source images/offers remain in Materials, separate from their board pieces.
     clear(ws) {
       const room = ws.room;
-      if (!room || room.tutor !== ws) return;
+      if (!room || room.tutor !== ws || room.pageEpoch >= Number.MAX_SAFE_INTEGER) return;
+      preparePageChange(room);
       room.strokes = [];
       room.strokeById.clear();
+      room.tiles.clear();
+      room.pieces.clear();
       resetBoxTaps(room);
       for (const w of [room.tutor, room.student]) if (w) w.openStroke = null;
+      // An old queued add, drag or HTTP upload must not repopulate a cleared page.
+      // The new authority also cancels in-progress client gestures and restores.
+      room.pageEpoch++;
+      room.pictureGeneration++;
       broadcastBoard(room, 'clear');
     },
 
@@ -885,7 +897,8 @@ export function attachRealtime(server, options = {}) {
         const home = nextHome([...room.tiles.values()], text);
         room.zTop += 1;
         room.order += 1;
-        const tile = { id: item.id, text, kind: tileKind(text), x: home.hx, y: home.hy, ...home, z: room.zTop, order: room.order, heldBy: null };
+        const at = clampTile(text, item.x, item.y) || { x: home.hx, y: home.hy };
+        const tile = { id: item.id, text, kind: tileKind(text), ...at, ...home, z: room.zTop, order: room.order, heldBy: null };
         room.tiles.set(tile.id, tile);
         added.push(tile);
       }
@@ -1075,9 +1088,9 @@ export function attachRealtime(server, options = {}) {
       const region = role === 'student' && !offer && pagePictureIds(room.board).has(msg.piece?.pic) ? room.pictures.get(msg.piece?.pic)?.regions?.find((r) => r.id === msg.piece?.region) : null;
       if (role === 'student' && !region && (!offer || offer.taken)) return;
       const given = offer
-        ? { ...msg.piece, pic: offer.pic, crop: offer.crop }
+        ? { ...msg.piece, pic: offer.pic, crop: offer.crop, content: offer.content }
         : region
-          ? { ...msg.piece, crop: { x: region.x, y: region.y, w: region.w, h: region.h, r: region.r } }
+          ? { ...msg.piece, crop: { x: region.x, y: region.y, w: region.w, h: region.h, r: region.r }, content: undefined }
           : msg.piece;
       // A student cannot bypass the face-size restriction by forging the width
       // of a fresh copy. Existing tutor-sized faces keep their current size.
@@ -1154,7 +1167,7 @@ export function attachRealtime(server, options = {}) {
       if (piece.heldBy && piece.heldBy !== 'tutor') return send(ws, { t: 'piece:denied', piece });
       const crop = cleanCrop(msg.crop, ws.room.pictures.get(piece.pic));
       if (!crop) return;
-      const size = pieceSize(crop, piece.w);
+      const size = pieceSize(crop, piece.w, piece.content);
       Object.assign(piece, { crop, ...size, ...clampPiece(size, piece.x, piece.y), heldBy: null });
       broadcast(ws.room, { t: 'piece:drop', piece });
     },

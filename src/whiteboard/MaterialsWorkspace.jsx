@@ -93,10 +93,13 @@ export default function MaterialsWorkspace({ scope, tabs, activity, lesson }) {
               event.preventDefault(); choose(tabs[next].id, true);
             }} className={`min-h-11 min-w-0 rounded-t-lg border-b-2 px-1 text-xs font-bold transition-colors duration-150 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-500 ${current === tab.id ? 'border-violet-600 bg-violet-50 text-violet-800' : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>{tab.label}</button>)}
           </div>
-          <div className={`relative ${constrained ? 'mt-2' : 'mt-3'}`}>
+          <div className={`flex items-center gap-1 ${constrained ? 'mt-2' : 'mt-3'}`}>
+            <div className='relative min-w-0 flex-1'>
             <Search className='pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500' aria-hidden='true' />
             <input ref={search} type='search' aria-label={`Search ${selected?.label.toLowerCase()}`} placeholder={`Search ${selected?.label.toLowerCase()}`} value={view[current]?.query || ''} onChange={(event) => changeQuery(event.target.value)} autoComplete='off' spellCheck={false} className='min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-10 text-sm text-slate-800 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-500' />
             {view[current]?.query && <button type='button' aria-label={`Clear ${selected?.label.toLowerCase()} search`} onClick={() => { changeQuery(''); search.current?.focus(); }} className='absolute right-0 top-0 inline-flex h-11 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100'><X className='h-4 w-4' aria-hidden='true' /></button>}
+            </div>
+            {selected?.actions && <div key={current} data-materials-actions className='flex shrink-0 items-center'>{selected.actions}</div>}
           </div>
         </header>
         <div ref={area} data-materials-scroll={!constrained || undefined} onScroll={rememberScroll} className={`min-h-0 p-3 ${constrained ? 'shrink-0' : 'flex-1 overflow-y-auto'}`} onWheel={stopRestoring} onPointerDown={stopRestoring} onKeyDownCapture={stopRestoring}>

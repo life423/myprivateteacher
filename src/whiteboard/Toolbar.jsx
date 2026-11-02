@@ -14,7 +14,7 @@ export function ToolRail({ label, children }) {
   );
 }
 
-export function ToolButton({ icon: Icon, label, pressed, expanded, controls, disabled = false, danger = false, swatch, onClick }) {
+export function ToolButton({ icon: Icon, label, description, pressed, expanded, controls, disabled = false, danger = false, swatch, onClick }) {
   let tone = 'text-slate-700 hover:bg-violet-50';
   if (danger) tone = 'bg-rose-600 text-white';
   else if (pressed) tone = 'bg-violet-600 text-white shadow';
@@ -26,8 +26,9 @@ export function ToolButton({ icon: Icon, label, pressed, expanded, controls, dis
       aria-pressed={expanded === undefined ? pressed : undefined}
       aria-expanded={expanded}
       aria-controls={controls}
-      title={label}
+      title={description || label}
       aria-label={label}
+      aria-description={description}
       className={`flex min-h-11 w-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] font-semibold transition-colors disabled:opacity-30 ${tone}`}
     >
       <span className='relative'>
@@ -85,6 +86,7 @@ export function ClearButton({ icon, onClear, label = 'Clear board' }) {
     <div className='mt-2 border-t border-slate-200 pt-2'><ToolButton
       icon={icon}
       label={armed ? 'Clear now?' : label}
+      description={armed ? 'Clear all ink, counters, letters and placed pieces from this page? This cannot be undone.' : 'Clear all ink, counters, letters and placed pieces from this page. Materials and saved lessons stay available.'}
       danger={armed}
       onClick={() => {
         if (!armed) return setArmed(true);

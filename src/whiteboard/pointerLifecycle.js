@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { clampPiece, pieceSize } from '../../shared/pieces.js';
+import { clampPiece } from '../../shared/pieces.js';
+import { pieceCornerResize } from './pictureGeometry.js';
 
 // The same termination path serves captured input and the window fallback. Remove a
 // pointer before calling its owner: releasePointerCapture can synchronously report loss.
@@ -65,13 +66,8 @@ export function usePointerLifecycle(onMove, onFinish) {
   return controller.current;
 }
 
-// Reuse the pointer-move calculation at release, including a final resize sample.
+// Reuse the move calculation at release, including a final undelivered sample.
 export function pictureDragPosition(drag, point) {
-  if (drag.mode === 'move') return clampPiece({ w: drag.w, h: drag.h }, point.x + drag.dx, point.y + drag.dy);
-  const ratio = drag.crop.h / drag.crop.w;
-  const dx = Math.abs(point.x - drag.ax), dy = Math.abs(point.y - drag.ay) / ratio;
-  const size = pieceSize(drag.crop, drag.hx && drag.hy ? Math.max(dx, dy) : drag.hx ? dx : dy);
-  const x = drag.hx === 1 ? drag.ax : drag.hx === -1 ? drag.ax - size.w : drag.ax - size.w / 2;
-  const y = drag.hy === 1 ? drag.ay : drag.hy === -1 ? drag.ay - size.h : drag.ay - size.h / 2;
-  return { ...clampPiece(size, x, y), w: size.w };
+  if (drag.mode === 'resize') return pieceCornerResize(drag.origin, drag.start, point, drag.corner);
+  return clampPiece({ w: drag.w, h: drag.h }, point.x + drag.dx, point.y + drag.dy);
 }

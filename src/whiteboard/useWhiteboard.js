@@ -1,9 +1,9 @@
 import { DEFAULT_LINES, isLineSize } from '../../shared/lines.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
-import { BOX_COUNTS, MAX_TILES, cleanTileText } from '../../shared/tiles.js';
+import { BOX_COUNTS, MAX_TILES, TILE_HEIGHT, clampTile, cleanTileText, tileWidth } from '../../shared/tiles.js';
 import { cleanBoxTap, cleanSoundBoxState } from '../../shared/soundBoxes.js';
-import { MAX_PIECES, cleanCrop, clampPiece, pieceSize } from '../../shared/pieces.js';
+import { MAX_PIECES, cleanCrop, cleanPieceContent, clampPiece, pieceSize } from '../../shared/pieces.js';
 import { findPicturePlacement, picturePlacement, picturePlacementObstacles, PICTURE_RESERVATION_MS } from './picturePlacement.js';
 import { newPictureId, pictureUrl, shrinkPicture } from './pictures.js';
 import { createPictureUploads, uploadPicture } from './pictureUploads.js';
@@ -336,7 +336,7 @@ export function useWhiteboard(role, send) {
       const allowed = () => pageSession.current.ready && pageSession.current.current(actionScope);
       const sendBound = message => sendPageMessage(message, actionScope);
       return {
-        add({ offer, region, pic, crop, x, y, w, automatic = false, centre, bounds, preferredWidth }) {
+        add({ offer, region, pic, crop, content: suppliedContent, x, y, w, automatic = false, centre, bounds, preferredWidth }) {
           if (!allowed()) return null;
           const obstacles = picturePlacementObstacles([...pieces.current.values()], pendingPieces.current);
           if (obstacles.length >= MAX_PIECES) {
@@ -349,14 +349,15 @@ export function useWhiteboard(role, send) {
             lastPlacement.current = { error: 'This picture is not available in the lesson yet. Please try again.' };
             return null;
           }
-          const size = pieceSize(chosen, w);
+          const content = cleanPieceContent(suppliedContent);
+          const size = pieceSize(chosen, w, content);
           const placed = automatic
-            ? picturePlacement(picture, centre, { pieces: obstacles, bounds, crop: chosen, preferredWidth })
+            ? picturePlacement(picture, centre, { pieces: obstacles, bounds, crop: chosen, preferredWidth, content })
             : clampPiece(size, x, y);
           if (!placed) return null;
           const id = makeId('piece');
-          const piece = { id, offer, region, pic, crop: chosen, x: placed.x, y: placed.y, w: automatic ? placed.w : size.w };
-          const reserved = { ...piece, h: piece.w * chosen.h / chosen.w };
+          const piece = { id, offer, region, pic, crop: chosen, ...(content && { content }), x: placed.x, y: placed.y, w: automatic ? placed.w : size.w };
+          const reserved = { ...piece, h: pieceSize(chosen, piece.w, content).h };
           pendingPieces.current.set(id, { piece: reserved, expiresAt: Date.now() + PICTURE_RESERVATION_MS });
           lastPlacement.current = placed.placement || { crowded: false, visible: true, overlaps: 0 };
           sendBound({ t: 'piece:add', piece });
@@ -371,11 +372,12 @@ export function useWhiteboard(role, send) {
             lastPlacement.current = { error: `Up to ${MAX_PIECES} pictures or parts fit on this board. Remove one before adding another.` };
             return null;
           }
-          const size = pieceSize(p.crop, p.w);
+          const size = pieceSize(p.crop, p.w, p.content);
           const at = findPicturePlacement(size, centre || { x: p.x + p.w / 2, y: p.y + p.h / 2 }, { pieces: obstacles, bounds });
           if (!at) return null;
           const copyId = makeId('piece');
-          const piece = { id: copyId, pic: p.pic, crop: p.crop, x: at.x, y: at.y, w: p.w };
+          const content = cleanPieceContent(p.content);
+          const piece = { id: copyId, pic: p.pic, crop: p.crop, ...(content && { content }), x: at.x, y: at.y, w: p.w };
           pendingPieces.current.set(copyId, { piece: { ...piece, h: size.h }, expiresAt: Date.now() + PICTURE_RESERVATION_MS });
           lastPlacement.current = at;
           sendBound({ t: 'piece:add', piece });
@@ -395,7 +397,7 @@ export function useWhiteboard(role, send) {
           const p = pieces.current.get(id);
           if (!p) return;
           const width = w ?? p.w;
-          Object.assign(p, { x, y, w: width, h: (width * p.crop.h) / p.crop.w });
+          Object.assign(p, { x, y, ...pieceSize(p.crop, width, p.content) });
           renderTiles();
           sendThrottled('piece', { t: 'piece:move', id, x, y, w });
         },
@@ -448,9 +450,10 @@ export function useWhiteboard(role, send) {
       const allowed = () => pageSession.current.ready && pageSession.current.current(actionScope);
       const sendBound = message => sendPageMessage(message, actionScope);
       return {
-        give({ pic, crop }) {
+        give({ pic, crop, content: suppliedContent }) {
           if (!allowed()) return null;
-          sendBound({ t: 'offer:add', offer: { id: makeId('offer'), pic, crop } });
+          const content = cleanPieceContent(suppliedContent);
+          sendBound({ t: 'offer:add', offer: { id: makeId('offer'), pic, crop, ...(content && { content }) } });
         },
         withdraw(id) {
           if (!allowed()) return null;
@@ -547,7 +550,7 @@ export function useWhiteboard(role, send) {
   }, [cancelPictureWrites, actionVersion]);
 
   // Tutor controls. Spaces separate tiles, so sh stays one tile and c a t makes three.
-  const addTiles = useCallback((input) => {
+  const addTiles = useCallback((input, { at } = {}) => {
     if (!pageSession.current.ready || !pageSession.current.current(actionScope)) return { added: 0, skipped: 0, full: false };
     const tokens = String(input)
       .split(' ')
@@ -555,7 +558,10 @@ export function useWhiteboard(role, send) {
       .filter(Boolean);
     const good = tokens.map(cleanTileText).filter(Boolean);
     const sending = good.slice(0, Math.max(0, MAX_TILES - tiles.current.size));
-    if (sending.length) sendPageMessage({ t: 'tile:add', tiles: sending.map((text) => ({ id: makeId('tile'), text })) }, actionScope);
+    if (sending.length) sendPageMessage({ t: 'tile:add', tiles: sending.map((text) => {
+      const position = sending.length === 1 && at ? clampTile(text, at.x - tileWidth(text) / 2, at.y - TILE_HEIGHT / 2) : null;
+      return { id: makeId('tile'), text, ...(position || {}) };
+    }) }, actionScope);
     return { added: sending.length, skipped: tokens.length - good.length, full: good.length > sending.length };
   }, [actionVersion]);
 

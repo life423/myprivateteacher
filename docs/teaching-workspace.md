@@ -152,6 +152,86 @@ These scores apply to this teaching-pieces change only. They are conservative in
 
 Next prioritize screen-reader and text-enlargement verification, then physical-device touch and performance measurement. Cropping does not replace tutor review of what a chosen piece communicates to the learner.
 
+## Native teaching selections and controls layering — November 2, 2026
+
+The tutor reported that lifting a breve brought white image background with it, and that Magic Select grouped adjacent letters. The required result is an independently selectable breve or letter that matches the board's font and style. The tutor also found Lesson controls opening behind the Tutor guide and requested that controls appear above it.
+
+Magic Select previously detected coarse rectangular regions on a reduced image, then displayed the original pixels with a frame and shadow. The reviewed short-a sources now use exact image-hash/dimension guards and fine semantic targets. The word-work sheet has 31 separate letter/mark targets, including all seven breves; no breve target includes its vowel. A separate Breve ready choice brings the four sheets to 27 named presets. Named letter controls provide an alternative to precise pointing at a small glyph. Unknown images remain ordinary crops; this change does not infer text through general OCR.
+
+Letters become existing board tiles. Breves become native vector marks, and known words, sentence strips and short instructions become native text using the same inherited font, weight and ink color as the tiles. Native pieces have no source-image background, photograph frame or shadow; text is movable and resizable, not editable through a new text editor. Photographs and diagrams retain their normal behavior. Render marks above letter tiles, allow independent selection when they overlap, and provide comfortable hit areas. Arrow keys nudge the selected native object; Shift uses a larger step.
+
+Reuse source images rather than uploading a PNG for every mark. Native content remains bounded and server-validated, with source/crop provenance and existing tutor/student permission, duplication and restoration paths. This does not turn source crops into secure redaction or reveal private preparation data. Adding and navigating still preserve the camera and teacher-controlled pacing.
+
+Lesson controls now renders through a body portal above the Tutor guide. Keep the guide open, bound the controls to the visible viewport and preserve Close, Escape, outside dismissal and focus return. On phone and tablet overlay layouts, place the guide below the measured session header so its launcher and session commands remain reachable.
+
+Validation: the production build and all 713 tests in 85 suites pass.
+
+Browser verification used actual Chrome tutor/student sessions: a separate native breve rendered without an image, frame or shadow on both boards; native word text matched the board font. The breve was dragged over a letter a and then moved independently; Arrow Right moved it by two board units and Arrow Left returned it. Reloading the tutor retained all three native piece IDs/content, recovered activity 3 and produced no fresh browser errors. The existing photo appearance is covered by unit checks. Phone 393×852 inspection found no horizontal overflow, all 14 ready selection controls at least 44px high and Add visible. Tablet 768×1024 addition preserved the exact camera viewBox, and Lesson controls remained accessible above the guide. On the phone, the measured header ended at 60px and the guide began at 68px; direct controls opening above the guide was rechecked on phone and tablet. Desktop 1440×900 and 2560×1215 layouts were inspected. These checks do not establish screen-reader output, 200% text enlargement, physical-device touch or measured Core Web Vitals.
+
+The following scores apply to this change only. They are conservative internal design-review heuristics, not measured product-quality results.
+
+| Dimension | Score | Evidence or prioritized follow-up |
+| --- | --- | --- |
+| Visual hierarchy | 9/10 | Native teaching ink has no competing photo frame; session commands remain above the guide. |
+| Usability | 9/10 | Separate mark/letter choices, repeated placement and independent mark movement were exercised. |
+| Aesthetics | 9/10 | Text and marks use the board's established typography and ink instead of copied worksheet paper. |
+| Interaction design | 9/10 | Dragging, keyboard nudging, camera preservation and control/guide layering were checked. |
+| Responsiveness | 9/10 | Phone, tablet and two desktop layouts inspected; Add and session commands remain reachable. |
+| Accessibility | 8/10 | Named controls and keyboard nudging reduce reliance on precise dragging; next verify screen readers and 200% enlargement. |
+| Performance | 8/10 | Reuses source assets without per-mark uploads; next measure loading, LCP, INP and CLS. |
+| Product coherence | 9/10 | Tutor-controlled letters, marks and words behave as teaching objects while existing images and permissions remain intact. |
+
+Next prioritize screen-reader and text-enlargement checks, then physical-device touch and measured performance. Do not infer broad OCR capability or educational effectiveness from these checks.
+
+### Consistent game starts and centered desktop tools
+
+The tutor's latest decisions keep game descriptions before their actions and give both game Start buttons the existing Bridge purple pill style. Bridge and Phoneme Pop now reuse `GameStartButton` for the same typography, padding, radius and interaction states. The desktop Tools disclosure and rail form one vertically centered group with 8px gaps. Bound the group on short windows and scroll the rail so Clear board stays reachable without covering the session header or board footer. Mobile keeps its existing tools arrangement.
+
+Focused verification passed 27 game tests and 18 layout tests. Actual Chrome desktop 2560px and phone 393px checks found identical Start-button styles: 44px height, 16px/700 text, 8px vertical and 20px horizontal padding, and 9999px radius, with no horizontal overflow. At 2560×1215, the Tools group spanned y432.5–842.5, centered at y637.5, matching the workspace y60–1215 center; gaps measured 8px. At short 1440×480, the rail stayed within y76–464; scrolling 22px made Clear board fully visible at y386–459, clear of header and footer. These checks support the product-coherence and responsiveness review above without establishing physical touch or assistive-technology results.
+
+### Earlier stepped-size trial — superseded November 2
+
+The tutor found the selected breve confusing because eight crowded resize handles hid the mark. The later explicit decision is one consistent resizing method for every picture, native word and spelling mark, rather than a special breve-only method. All pieces now use **Smaller / Larger** in the contextual toolbar; dragging moves them. Remove both the resize-handle graphics and their hit-testing so an invisible corner cannot turn a move into a resize. A thin dashed selection outline sits six screen pixels outside all selected content, independent of zoom. Keep the compact toolbar free of a permanent keyboard-instruction row; native Arrow-key nudging and Shift for larger steps remain available.
+
+Size actions preserve aspect ratio, existing bounds and the object's center where board edges permit. Crop remains an image-only action. Keep Duplicate, Delete, dismissal, student face-size restrictions and other-person-held locks unchanged. The selected mark must remain visible above a vowel, including at its minimum size, without a filled selection panel or a change to the board camera.
+
+Final verification passes all 713 tests in 85 suites and the production build; the focused selection checks also pass. Actual Chrome checks found the same Smaller/Larger actions on a photo, native text and a breve. Resizing the photo retained its 352×396 source crop; dragging the selected breve retained its 40×17.5 size, and the 24-unit minimum correctly disabled Smaller. At 393×852, all six photo actions fit in one 356.7×54px toolbar with each button at least 44×44px and no horizontal overflow. The 768×1024 tablet layout also keeps the controls in one row with no resize handles or overflow. These checks do not establish physical touch, screen-reader behavior or text-enlargement results.
+
+### Current continuous resizing and cleanup — November 2
+
+The owner approved a single proportional corner handle plus a compact **Size** slider for pictures, native text and breves. This supersedes the stepped Smaller/Larger trial above. The concern about a "whole word" referred to those button labels, not splitting lesson words into letters. Keep the interaction consistent and reduce the effort required to teach.
+
+All three piece types now share continuous resizing, existing aspect-ratio limits and permission checks. A minimum 44px screen-space selection frame gives a tiny mark breathing room. One 44×44px corner target sits outside that frame where space permits; another visible corner is used near viewport edges. Its corner stays fixed during a drag. The opposite content corner anchors direct resizing; Size uses a stable center. The camera is unchanged. Normal piece dragging still moves content. The same Size component is reused in Layers, and student mouth-photo restrictions remain server-enforced.
+
+The owner then requested visual refinement: the full action row remains on one line, the slider occupies a separate compact row, icons and labels have consistent spacing, and X is separated from editing actions. The two resize affordances share the same icon and diagonal. Toolbar measurements include the expanded panel's border box; the panel stays anchored during adjustment. Use an opaque surface so underlying lesson content does not show through. On narrow board surfaces, keep Size and Duplicate labels and use named Crop/Delete icon buttons with 44px targets. Escape closes Size before deselecting, including when focus has moved to another action.
+
+Session-image cleanup moved from the bottom of the scrolling catalog to a small options button beside the pinned Pictures/Worksheets search. Preserve a separate confirmation with Cancel focused first. Removal applies to the current page's images and their board pieces, not other pages, the saved lesson or the reusable picture library.
+
+The owner found **Clear board** misleading because it left a m s t p on the board. The tutor's existing two-tap action now clears the current page's ink, counter taps, letter tiles and placed picture/native pieces. Keep alphabet/lines/box settings, the Materials catalog, other pages and saved preparation. Clearing advances the page epoch and cancels pending gestures/uploads, so queued work cannot repopulate the cleared page. This action cannot be undone through the ink-only Undo control. Student clear requests remain denied.
+
+The desktop Tools disclosure now matches a rail action's 56×56.5px measured size, icon, label and alignment. The owner also asked how to delete board pages: there is currently no visible Delete page action. The server/hook already support tutor-only deletion and protect the last page; adding that UI remains a separate proposal.
+
+Validation: 746 tests in 89 suites pass, including pointer/final-release geometry, Stage integration, continuous slider input, permission/ownership checks, stale-message rejection after Clear board, cleanup confirmation and portal focus readiness. Production build and diff checks pass. Actual Chrome desktop inspection at 2560×1271 verified a 297.4px-wide native-object action row, four aligned 44px-high actions, a 106px expanded Size panel with 10px selection clearance, matching resize-icon rotation and equal Tools/Select/Draw dimensions. A direct corner drag resized the breve from 40×17.5 to 71.7×31.4 while preserving the exact camera viewBox; a slider Arrow Right adjustment resized text from 150 to 150.4 units, and Escape returned focus to Size while retaining selection.
+
+Release follow-up completed the previously interrupted browser checks using the selected local tab for view-only responsive inspection. At 320×852, 393×852 and 768×1024, the photo actions stayed in one row, every target measured at least 44×44px, the expanded Size panel stayed 106px high, matching icons were visible and there was no horizontal page overflow. The 393px panel measured 294.3px wide; the tablet panel with full text labels measured 365.6px. Saved phone/tablet screenshots show the settled expanded panel. The normal 2560×1215 viewport, original viewBox and open Tutor guide were restored afterwards; no temporary viewport remains.
+
+Browser keyboard checks confirmed image options focus their visible action on Enter, confirmation focuses Cancel and cancellation retains the image and restores the trigger. In a separate disposable room, Clear board removed all five a/m/s/t/p tiles and the placed photo together while retaining the same page, alphabet and Materials image. Removing that room's session image then dismissed the options control, focused Search pictures and retained all 28 reusable library cards. With the Tutor guide open, Escape from Duplicate closed only Size, retained the selected photo and guide, and restored Size focus. Lesson controls opened visibly above the guide with focus on Close. The release review fixed first-open focus occurring before a portal became visible and routed Size dismissal through its action group before the guide's document handler. Resizing/repositioning an already visible portal does not steal focus again. Screen-reader output, physical touch, 200% text enlargement and measured Core Web Vitals remain unverified.
+
+Conservative internal review, not measured product-quality scores:
+
+| Dimension | Score | Prioritized follow-up |
+| --- | --- | --- |
+| Visual hierarchy | 9/10 | Phone/tablet photos keep one action row and a separate compact Size row; no permanent cleanup button competes with materials. |
+| Usability | 9/10 | Direct resize, keyboard Size, cleanup confirmation/cancellation and current-page Clear board were exercised. |
+| Aesthetics | 9/10 | Rendered phone/tablet controls share spacing, slider styling and icon direction. |
+| Interaction design | 8/10 | Stable geometry, camera and keyboard focus checked; next verify physical touch and viewport-edge gesture handling. |
+| Responsiveness | 9/10 | Actual 320/393/768px layouts retained one action row, 44px targets and no horizontal overflow. |
+| Accessibility | 8/10 | Native range, named actions and Escape covered; verify screen readers, magnification and physical touch. |
+| Performance | 8/10 | Build passes without a dependency; measure LCP, INP and CLS rather than assuming. |
+| Product coherence | 9/10 | Shared controls preserve teacher pacing, permissions and lesson storage. |
+
+Proposed teaching-marks palette and saved-lesson integration are tracked in [issue #67](https://github.com/life423/myprivateteacher/issues/67). This is backlog work, not an implemented palette or a validated curriculum standard.
+
 ## Keep existing teaching behavior
 
 The alphabet is a shared pointing reference. Alphabet-to-board pickup was removed at the user's request and must stay removed. Materials creates letter tiles; existing board tiles remain movable when permissions allow. Retain sound-box snapping/counters, shared pointing gloves, picture permissions, student face-size restrictions, upload safeguards, worksheets, layers and zoom. Sidebar navigation must not send lesson mutations or reset a game, media stream or board.
@@ -162,7 +242,7 @@ Automated checks should cover retained whiteboard workflows, per-category search
 
 Compare the current and revised layout with tutors through this sequence: start a call, find Lip Biter and add its face, add letters, enable three sound boxes, return to the prior picture search, start a game, change its level, return to materials, then use a worksheet and Magic Select. Record wrong turns, assistance, repeated scrolling and lost state. Include novice and repeat tutors, touch and keyboard users, shorter landscape screens and magnification. Verify the video remains large enough to observe articulation.
 
-The next product milestone after workspace verification is tutor-controlled board pages, followed by saved lesson preparation and private tutor prompts. These are separate changes; this sidebar work does not introduce them.
+Tutor-controlled board pages, saved lesson preparation and private tutor prompts have since been delivered. The current workflow and its verification are recorded above; the original sidebar change did not itself introduce those features.
 
 ## Key references
 

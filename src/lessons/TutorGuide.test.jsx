@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const hooks = vi.hoisted(() => ({ current: null }));
-vi.mock('react', () => ({ useState: value => hooks.current.useState(value), useRef: value => hooks.current.useRef(value), useEffect: (setup, deps) => hooks.current.useEffect(setup, deps) }));
+vi.mock('react', () => ({ useState: value => hooks.current.useState(value), useRef: value => hooks.current.useRef(value), useEffect: (setup, deps) => hooks.current.useEffect(setup, deps), useLayoutEffect: (setup, deps) => hooks.current.useEffect(setup, deps) }));
 import TutorGuide from './TutorGuide.jsx';
 const mounted = [];
 function mount(props) {
@@ -30,7 +30,7 @@ describe('private tutor guide overlay', () => {
     expect(opened.props.className).toContain('translate-x-0'); expect(opened.props['aria-hidden']).toBeUndefined(); expect(opened.props.inert).toBeUndefined();
     expect(elements(closed, item => item === child)).toHaveLength(1); expect(elements(opened, item => item === child)).toHaveLength(1);
     // No scrim, body lock, board callback, or second mounted child belongs here.
-    expect(opened.props.onPointerDown).toBeUndefined(); expect(opened.props.style).toEqual({ '--tutor-guide-width': 'clamp(520px,40vw,560px)' }); expect(closeButton(opened).props.className).toContain('h-11');
+    expect(opened.props.onPointerDown).toBeUndefined(); expect(opened.props.style).toEqual({ '--tutor-guide-width': 'clamp(520px,40vw,560px)', top: 8 }); expect(closeButton(opened).props.className).toContain('h-11');
   });
   it('closes with Escape and returns focus without trapping focus away from the board', () => {
     const listeners = new Map(), onClose = vi.fn(), focus = vi.fn(), target = { isConnected: true, focus };
@@ -54,6 +54,18 @@ describe('private tutor guide overlay', () => {
 
 
 describe('adaptive tutor guide docking', () => {
+  it('reserves the actual session header on small screens, including header size changes', () => {
+    let bottom = 76, resized;
+    const header = { getBoundingClientRect: () => ({ bottom }) }, observe = vi.fn(), disconnect = vi.fn();
+    vi.stubGlobal('document', { querySelector: selector => selector === '[data-whiteboard-topbar]' ? header : null, activeElement: null, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('ResizeObserver', class { constructor(callback) { resized = callback; } observe = observe; disconnect = disconnect; });
+    const hook = mount({ open: true, onClose: vi.fn(), children: null }); hook.render(); hook.effects();
+    let tree = hook.render(); expect(tree.props.style.top).toBe(84); expect(observe).toHaveBeenCalledWith(header);
+    bottom = 108; resized(); tree = hook.render(); expect(tree.props.style.top).toBe(116);
+    expect(tree.props.className).not.toContain('top-2'); expect(tree.props.className).toContain('bottom-2');
+    hook.render({ open: false, onClose: vi.fn(), children: null }); hook.effects(); expect(disconnect).toHaveBeenCalledOnce();
+  });
   it('docks in an existing desktop side layout but keeps a readable overlay on tall tablets', () => {
     window.innerWidth = 1440; window.innerHeight = 900;
     const desktop = mount({ open: true, onClose: vi.fn(), children: null }).render();

@@ -245,6 +245,70 @@ describe('tutor-controlled board pages', () => {
     expect((await student.take('board', msg => msg.pageId === DEFAULT_PAGE_ID)).pictures.map(image => image.id)).toEqual([pic]);
   });
 
+  it('Clear board removes all current-page work for both participants while keeping materials and other pages', async () => {
+    const { tutor, code, key, room } = await openRoom();
+    const pic = await seed(tutor, code, key);
+    await change(tutor, { t: 'page:duplicate', id: DEFAULT_PAGE_ID, copyId: 'page-2' });
+    tutor.page({ t: 'tile:add', tiles: ['a', 'm', 's', 't', 'p'].map(text => ({ id: `practice-${text}`, text })) });
+    await tutor.take('tile:add', msg => msg.tiles.some(tile => tile.id === 'practice-a'));
+    for (const [id, content] of [['breve', { kind: 'breve' }], ['word', { kind: 'text', text: 'măt' }]]) {
+      tutor.page({ t: 'piece:add', piece: { id, pic, crop: fullCrop, content, x: 500, y: 500, w: 96 } });
+      await tutor.take('piece:add', msg => msg.piece.id === id);
+    }
+    const { student } = await join(code);
+    tutor.send({ t: 'tools', on: true }); await student.take('tools');
+    const current = room.board;
+    student.page({ t: 'clear' }); await barrier(student, tutor);
+    expect(current.tiles.size).toBe(6); expect(current.pieces.size).toBe(3);
+    expect(current.strokes).toHaveLength(1); expect(current.boxTaps).toEqual([1]);
+
+    tutor.page({ t: 'clear' });
+    const own = await tutor.take('board', msg => msg.reason === 'clear');
+    const peer = await student.take('board', msg => msg.reason === 'clear');
+    for (const cleared of [own, peer]) {
+      expect(cleared).toMatchObject({ pageId: 'page-2', pageEpoch: 2, strokes: [], tiles: [], pieces: [], boxes: 3, boxTaps: [], lines: 'small', strip: false });
+      expect(cleared.pictures.map(picture => picture.id)).toEqual([pic]);
+      expect(cleared.offers.map(offer => offer.id)).toEqual(['offer-face']);
+      expect(cleared.pictureIds).toEqual([pic]);
+    }
+    expect(room.pictures.size).toBe(1);
+    const first = await change(tutor, { t: 'page:switch', id: DEFAULT_PAGE_ID });
+    expect(first.strokes).toHaveLength(1);
+    expect(first.tiles.map(tile => tile.id)).toEqual(['tile-c']);
+    expect(first.pieces.map(piece => piece.id)).toEqual(['face']);
+    expect(first.boxTaps).toEqual([1]);
+  });
+
+  it('Clear board rejects stale additions, drags, callbacks and uploads rather than repopulating the page', async () => {
+    const { tutor, code, key, room } = await openRoom();
+    const pic = await seed(tutor, code, key);
+    const { student } = await join(code);
+    const old = { ...tutor.scope };
+    const token = realtime.pictures.beginWrite(code, key, old);
+    tutor.page({ t: 'tile:grab', id: 'tile-c' }); await tutor.take('tile:grab');
+    student.page({ t: 'piece:grab', id: 'face' }); await tutor.take('piece:grab');
+    tutor.page({ t: 's', id: 'open-before-clear', tool: 'pen', x: 500, y: 500 }); await tutor.take('ack');
+    tutor.page({ t: 'clear' });
+    await tutor.take('board', msg => msg.reason === 'clear');
+    await student.take('board', msg => msg.reason === 'clear');
+    tutor.page({ t: 'tile:add', tiles: [{ id: 'fresh-after-clear', text: 'a' }] }); await tutor.take('tile:add');
+    for (const request of [
+      { t: 'tile:add', tiles: [{ id: 'late-tile', text: 'z' }] },
+      { t: 'tile:drop', id: 'tile-c', x: 300, y: 400 },
+      { t: 'piece:add', piece: { id: 'late-piece', pic, crop: fullCrop, x: 400, y: 400 } },
+      { t: 'piece:move', id: 'face', x: 500, y: 500, w: 400 },
+      { t: 's', id: 'late-ink', tool: 'pen', x: 100, y: 300 },
+      { t: 'offer:remove', id: 'offer-face' }, { t: 'clear' },
+    ]) tutor.page(request, old);
+    student.page({ t: 'piece:drop', id: 'face', x: 400, y: 400 }, old);
+    await barrier(tutor, student, 'after-tutor'); await barrier(student, tutor, 'after-student');
+    expect(room.tiles.size).toBe(1); expect(room.tiles.has('fresh-after-clear')).toBe(true);
+    expect(room.strokes).toEqual([]); expect(room.pieces.size).toBe(0); expect(room.offers.size).toBe(1);
+    expect(room.tutor.openStroke).toBeNull(); expect(room.student.openStroke).toBeNull();
+    expect(realtime.pictures.add(image(code, key, 'b'.repeat(32), { writeToken: token })).status).toBe(409);
+    expect(room.pictures.size).toBe(1);
+  });
+
   it('returns the complete page list and current board after either participant reconnects', async () => {
     const { tutor, code, key } = await openRoom();
     const { ack } = await join(code);

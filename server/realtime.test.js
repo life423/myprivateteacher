@@ -1296,7 +1296,7 @@ describe('shared sound-box counters', () => {
     expect(realtime.rooms.get(code).boxTaps).toEqual([0, 2]);
   });
 
-  it('resets taps on count changes, explicit reset and Clear board while preserving tiles', async () => {
+  it('preserves tiles on count changes and tap reset, then clears placed work with Clear board', async () => {
     const { tutor, code } = await openRoom();
     await choose(tutor, null, 3);
     tutor.send({ t: 'tile:add', tiles: [{ id: 'sound-tile', text: 'sh' }] });
@@ -1329,14 +1329,15 @@ describe('shared sound-box counters', () => {
     expect(await choose(tutor, null, 5)).toMatchObject({ taps: [0], epoch: 3 });
     tutor.send({ t: 'clear' });
     const cleared = await tutor.take('board');
-    expect(cleared).toMatchObject({ boxes: 5, boxTaps: [], boxEpoch: 4, strokes: [] });
-    expect(cleared.tiles).toEqual([before]);
-    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 3 });
+    expect(cleared).toMatchObject({ boxes: 5, boxTaps: [], boxEpoch: 4, strokes: [], tiles: [], pieces: [], pageEpoch: 1 });
+    const scoped = message => tutor.send({ ...message, pageId: cleared.pageId, pageEpoch: cleared.pageEpoch });
+    scoped({ t: 'boxes:tap', index: 0, pressed: true, epoch: 3 });
     await nothing(tutor, 'boxes:set');
-    expect(await choose(tutor, null, 0)).toMatchObject({ count: 0, taps: [], epoch: 5 });
-    tutor.send({ t: 'boxes:tap', index: 0, pressed: true, epoch: 5 });
+    scoped({ t: 'boxes:set', count: 0 });
+    expect(await tutor.take('boxes:set')).toMatchObject({ count: 0, taps: [], epoch: 5 });
+    scoped({ t: 'boxes:tap', index: 0, pressed: true, epoch: 5 });
     await nothing(tutor, 'boxes:set');
-    expect([...realtime.rooms.get(code).tiles.values()]).toEqual([before]);
+    expect([...realtime.rooms.get(code).tiles.values()]).toEqual([]);
   });
 
   it('rejects malformed, legacy and stale tap requests without changing the exercise', async () => {

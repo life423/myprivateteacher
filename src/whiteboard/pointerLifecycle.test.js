@@ -63,15 +63,26 @@ describe('pointer lifecycle across board and browser boundaries', () => {
 });
 
 describe('picture release positions', () => {
+  it('uses a frozen resize origin through repeated previews and samples the final width at release', () => {
+    const origin = { x: 200, y: 300, w: 200, h: 100, crop: { x: 0, y: 0, w: 400, h: 200 } };
+    const drag = { ...origin, mode: 'resize', origin, start: { x: 500, y: 500 }, corner: 'se' };
+    Object.assign(drag, pictureDragPosition(drag, { x: 550, y: 525 }));
+    expect(drag.w).toBe(250);
+    Object.assign(drag, pictureDragPosition(drag, { x: 550, y: 525 }));
+    expect(drag.w).toBe(250);
+    expect(pictureDragPosition(drag, { x: 560, y: 530 })).toEqual({ x: 200, y: 300, w: 260, h: 130 });
+  });
+  it('moves small marks and photos without returning a resize operation', () => {
+    for (const size of [{ w: 40, h: 17.5 }, { w: 180, h: 220 }]) {
+      const position = pictureDragPosition({ ...size, dx: -10, dy: -5 }, { x: 500, y: 600 });
+      expect(position).toEqual({ x: 490, y: 595 });
+      expect(position).not.toHaveProperty('w');
+    }
+  });
   it('samples a final move point that was never delivered as pointermove', () => {
     const drag = { mode: 'move', x: 200, y: 300, w: 200, h: 100, dx: -40, dy: -25 };
     expect(pictureDragPosition(drag, { x: 800, y: 600 })).toEqual({ x: 760, y: 575 });
     expect(pictureDragPosition(drag, { x: 2000, y: 2000 })).toEqual({ x: 1376, y: 876 });
   });
 
-  it('samples final corner and edge resizing while preserving the crop ratio and anchors', () => {
-    const drag = { mode: 'resize', crop: { w: 400, h: 200 }, ax: 100, ay: 200, hx: 1, hy: 1 };
-    expect(pictureDragPosition(drag, { x: 500, y: 400 })).toEqual({ x: 100, y: 200, w: 400 });
-    expect(pictureDragPosition({ ...drag, hx: -1, hy: 0, ax: 800, ay: 400 }, { x: 400, y: 400 })).toEqual({ x: 400, y: 300, w: 400 });
-  });
 });

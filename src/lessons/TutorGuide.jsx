@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { TUTOR_GUIDE_WIDTH, canDockTutorGuide } from './guideLayout.js';
 
@@ -6,11 +6,28 @@ import { TUTOR_GUIDE_WIDTH, canDockTutorGuide } from './guideLayout.js';
 // overlays smaller screens. It never locks the page or discards private drafts.
 export default function TutorGuide({ open, onClose, returnFocusRef, children, actions, id = 'tutor-guide' }) {
   const [docked, setDocked] = useState(() => canDockTutorGuide(window.innerWidth, window.innerHeight));
+  const [overlayTop, setOverlayTop] = useState(8);
   useEffect(() => {
     const resize = () => setDocked(canDockTutorGuide(window.innerWidth, window.innerHeight));
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
+  useLayoutEffect(() => {
+    if (!open || docked) return undefined;
+    // On small screens the guide overlays the board, but session commands must
+    // remain reachable. Measure the real header so text sizing and wrapping
+    // cannot put Lesson controls underneath the guide again.
+    const header = document.querySelector?.('[data-whiteboard-topbar]');
+    const position = () => {
+      const bottom = header?.getBoundingClientRect().bottom;
+      setOverlayTop(Number.isFinite(bottom) ? Math.max(8, bottom + 8) : 8);
+    };
+    position();
+    const observer = header && typeof ResizeObserver === 'function' ? new ResizeObserver(position) : null;
+    if (header) observer?.observe(header);
+    window.addEventListener('resize', position);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', position); };
+  }, [open, docked]);
   const surface = useRef(null), closeButton = useRef(null), previousFocus = useRef(null);
   const latest = useRef({ onClose, returnFocusRef });
   latest.current = { onClose, returnFocusRef };
@@ -41,8 +58,8 @@ export default function TutorGuide({ open, onClose, returnFocusRef, children, ac
     data-tutor-guide
     data-state={open ? 'open' : 'closed'}
     data-docked={docked || undefined}
-    style={{ '--tutor-guide-width': TUTOR_GUIDE_WIDTH }}
-    className={`fixed ${docked ? 'bottom-4 right-4 top-20 w-[var(--tutor-guide-width)]' : 'bottom-2 right-2 top-2 w-[min(600px,calc(100vw-1rem))] sm:bottom-3 sm:right-3 sm:top-3'} z-40 flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-[transform,opacity,visibility] duration-[180ms] ease-out motion-reduce:transition-none ${open ? 'visible translate-x-0 opacity-100' : 'invisible translate-x-[calc(100%+1rem)] opacity-0 pointer-events-none'}`}
+    style={{ '--tutor-guide-width': TUTOR_GUIDE_WIDTH, ...(!docked ? { top: overlayTop } : {}) }}
+    className={`fixed ${docked ? 'bottom-4 right-4 top-20 w-[var(--tutor-guide-width)]' : 'bottom-2 right-2 w-[min(600px,calc(100vw-1rem))] sm:bottom-3 sm:right-3'} z-40 flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-[transform,opacity,visibility] duration-[180ms] ease-out motion-reduce:transition-none ${open ? 'visible translate-x-0 opacity-100' : 'invisible translate-x-[calc(100%+1rem)] opacity-0 pointer-events-none'}`}
   >
     <header className='flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-violet-50/70 px-4 py-2'>
       <h2 className='text-base font-bold text-slate-900'>Tutor guide</h2>

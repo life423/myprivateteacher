@@ -1,4 +1,4 @@
-import { cleanCrop, clampPiece, pieceSize, startingWidth } from '../../shared/pieces.js';
+import { cleanCrop, clampPiece, nativePieceMetrics, pieceSize, startingWidth } from '../../shared/pieces.js';
 import { WORK } from '../../shared/tiles.js';
 import { BOARD } from './stage.js';
 import { rectangleIntersection, rectangleUnionArea, validRectangle } from './pictureGeometry.js';
@@ -82,12 +82,13 @@ export function findPicturePlacement(size, centre, { pieces = [], bounds } = {})
   return fallback ? { x: fallback.x, y: fallback.y, overlaps: fallback.overlaps, crowded: true, visible: true } : null;
 }
 
-export function picturePlacement(picture, centre, { pieces = [], bounds, crop: chosenCrop, preferredWidth } = {}) {
+export function picturePlacement(picture, centre, { pieces = [], bounds, crop: chosenCrop, preferredWidth, content } = {}) {
   const crop = cleanCrop(chosenCrop || defaultPictureCrop(picture), picture);
   if (!picture?.id || !crop) return null;
   const area = picturePlacementBounds(bounds);
-  const width = Math.min(Number.isFinite(preferredWidth) && preferredWidth > 0 ? preferredWidth : startingWidth(crop), area.w, area.h * crop.w / crop.h);
-  const size = pieceSize(crop, width);
+  const metrics = nativePieceMetrics(content) || crop;
+  const width = Math.min(Number.isFinite(preferredWidth) && preferredWidth > 0 ? preferredWidth : nativePieceMetrics(content)?.w || startingWidth(crop), area.w, area.h * metrics.w / metrics.h);
+  const size = pieceSize(crop, width, content);
   const placed = findPicturePlacement(size, centre, { pieces, bounds: area });
   if (!placed) return null;
   const { x, y, overlaps, crowded, visible } = placed;

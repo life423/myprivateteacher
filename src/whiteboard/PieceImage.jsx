@@ -1,7 +1,14 @@
+import NativePieceContent from './NativePieceContent.jsx';
+import { cleanPieceContent } from '../../shared/pieces.js';
+
 // One picture piece on the board: a window onto its picture, rounded like the original.
 // Nothing is cropped or copied; the browser just shows that part of the picture.
 export default function PieceImage({ piece, pic, src, overlap }) {
   if (!pic) return null;
+  const content = cleanPieceContent(piece.content);
+  if (content) return <g data-picture-piece={piece.id} data-native-content={content.kind} data-overlap='false'>
+    <NativePieceContent content={content} x={piece.x} y={piece.y} width={piece.w} height={piece.h} />
+  </g>;
   const { crop } = piece;
   const clip = `piece-clip-${piece.id}`;
   const corner = ((crop.r || 0) * piece.w) / crop.w;
