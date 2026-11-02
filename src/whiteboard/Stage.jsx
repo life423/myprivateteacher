@@ -12,12 +12,13 @@ import { EraserMarker, PenMarker } from './Markers.jsx';
 import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
 import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileWidth } from '../../shared/tiles.js';
-import { clampPiece, isFacePiece, pieceSize } from '../../shared/pieces.js';
+import { isFacePiece } from '../../shared/pieces.js';
 import { Minus, Plus, Scan } from 'lucide-react';
+import ResizeIcon from './ResizeIcon.jsx';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
 import { useTutorGuideView } from './useTutorGuideView.js';
 import { picturePlacementBounds } from './picturePlacement.js';
-import { pictureOverlapState } from './pictureGeometry.js';
+import { nativePieceHit, nativePieceNudge, pieceCenteredResize, pieceResizeHandle, pieceSelectionOutline, pictureOverlapState } from './pictureGeometry.js';
 import { pictureDragPosition, usePointerLifecycle } from './pointerLifecycle.js';
 
 // Handwriting guides (top line, dashed midline, baseline) stay put even when the board grows.
@@ -33,21 +34,7 @@ const overTile = (p, t) => p.x >= t.x && p.x <= t.x + tileWidth(t.text) && p.y >
 
 // Picture pieces: selected with the pointer tools, then moved, resized (keeping their shape),
 // duplicated or deleted. Sizes here are in stage units.
-const HANDLE = 24; // how close counts as touching a resize handle
 const overRect = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-// The eight resize handles, corners and edge middles; hx and hy say which side (-1, 0 or 1).
-const handlesOf = (piece) =>
-  [-1, 0, 1]
-    .flatMap((hx) => [-1, 0, 1].map((hy) => ({ hx, hy })))
-    .filter(({ hx, hy }) => hx || hy)
-    .map(({ hx, hy }) => ({ hx, hy, x: piece.x + ((hx + 1) / 2) * piece.w, y: piece.y + ((hy + 1) / 2) * piece.h }));
-const HANDLE_CURSOR = { '-1,-1': 'nwse', '1,1': 'nwse', '1,-1': 'nesw', '-1,1': 'nesw', '-1,0': 'ew', '1,0': 'ew', '0,-1': 'ns', '0,1': 'ns' };
-const PIECE_CURSORS = {
-  nwse: 'cursor-nwse-resize',
-  nesw: 'cursor-nesw-resize',
-  ew: 'cursor-ew-resize',
-  ns: 'cursor-ns-resize',
-};
 // Letter highlights: violet under the student's hand, blue under the tutor's.
 // A letter a hand points at lights up in the hands' blue. `pointed` is those letters as one string.
 function letterTone(letter, pointed) {
@@ -164,10 +151,11 @@ export default function Stage({
   const holding = useRef(new Map()); // pointer id -> { side, dx, dy }: the hands this screen is moving
   const tileDrag = useRef(null);
   const pieceDrag = useRef(null);
+  const sizeAdjustment = useRef(null);
   const counterTap = useRef(null);
   const lastPen = useRef(-Infinity); // no Apple Pencil yet, so no touch counts as a palm
   const live = useRef({});
-  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, pieceActions, canManageTiles, strip, boxes, boxTaps, boxEpoch, onToggleSoundBox, canTapSoundBoxes, tool };
+  live.current = { onPoint, onLeave, onStroke, hands, handActions, canHoldHands, barApi, tiles, tileActions, pieceActions, pieces, canEditPieces, canManageTiles, strip, boxes, boxTaps, boxEpoch, onToggleSoundBox, canTapSoundBoxes, tool };
   // The board's frame on screen: all of it fitted (view is null), or zoomed and panned by this
   // person alone. The board's own coordinates never change, so the other screen never notices.
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -252,6 +240,8 @@ export default function Stage({
   }, [selectedPiece?.id, selectedLetter?.id, layersOpen]);
   const selectedFace = Boolean(selectedPiece && isFacePiece(selectedPiece, pictures.find((picture) => picture.id === selectedPiece.pic)));
   const canResizeSelected = Boolean(selectedPiece && canEditPieces && (me === 'tutor' || !selectedFace));
+  const selectionOutline = selectedPiece && pieceSelectionOutline(selectedPiece, layout.scale);
+  const resizeHandle = selectedPiece && canResizeSelected && pieceResizeHandle(selectedPiece, layout, size, pieceDrag.current?.mode === 'resize' ? pieceDrag.current.corner : null);
   const selectPiece = (id, { preserveView = false } = {}) => {
     setSelectedPieceId(id);
     setLocalTileId(null);
@@ -285,13 +275,37 @@ export default function Stage({
     if (!copy) return;
     selectPiece(copy);
   };
-  const resizePiece = (factor) => {
-    if (!selectedPiece || !canResizeSelected || !pieceActions || (selectedPiece.heldBy && selectedPiece.heldBy !== me)) return;
-    const size = pieceSize(selectedPiece.crop, selectedPiece.w * factor);
-    const at = clampPiece(size, selectedPiece.x + (selectedPiece.w - size.w) / 2, selectedPiece.y + (selectedPiece.h - size.h) / 2);
-    pieceActions.grab(selectedPiece.id);
-    pieceActions.drop(selectedPiece.id, at.x, at.y, size.w);
+  const finishSizeAdjustment = () => {
+    const adjustment = sizeAdjustment.current;
+    if (!adjustment) return;
+    sizeAdjustment.current = null;
+    const current = live.current.pieces.find(p => p.id === adjustment.origin.id);
+    if (!current || current.heldBy && current.heldBy !== me) return;
+    const { x, y, w } = adjustment.at;
+    adjustment.actions.drop(adjustment.origin.id, x, y, w);
   };
+  const startSizeAdjustment = () => {
+    pointers.cancelAll('size-control');
+    finishSizeAdjustment();
+    if (!selectedPiece || !canResizeSelected || !pieceActions || selectedPiece.heldBy && selectedPiece.heldBy !== me) return;
+    const origin = { ...selectedPiece };
+    sizeAdjustment.current = { origin, at: origin, actions: pieceActions };
+    pieceActions.grab(origin.id);
+  };
+  const changePieceSize = width => {
+    const adjustment = sizeAdjustment.current;
+    if (!adjustment || !Number.isFinite(width)) return;
+    const current = live.current.pieces.find(p => p.id === adjustment.origin.id);
+    if (!live.current.canEditPieces || !current || current.heldBy && current.heldBy !== me) return;
+    adjustment.at = pieceCenteredResize(adjustment.origin, width);
+    const { x, y, w } = adjustment.at;
+    adjustment.actions.move(adjustment.origin.id, x, y, w);
+  };
+  useEffect(() => {
+    // Page/tool/authority changes must not leave a captured object behind.
+    pointers.cancelAll('context-change');
+    finishSizeAdjustment();
+  }, [tool, canEditPieces, pieceActions, handEpoch]);
 
   // When the tutor switches sound boxes on, a phone showing the board at its screen-filling zoom
   // moves over to them. A view the person zoomed or panned themselves is left where it is.
@@ -347,6 +361,7 @@ export default function Stage({
   useEffect(() => {
     const el = wrapRef.current;
     const onWheel = (event) => {
+      if (event.target.closest?.('[data-object-size-control]')) return;
       const f = layoutRef.current;
       if (!f.scale) return;
       const p = local(event.clientX, event.clientY);
@@ -389,25 +404,32 @@ export default function Stage({
   // Window fallback listeners preserve the gesture if native capture is unavailable.
   const capture = event => pointers.capture(event);
 
+  const startCornerResize = event => {
+    event.stopPropagation();
+    if (event.button !== 0 || isPalm(event) || !selectedPiece || !canResizeSelected || selectedPiece.heldBy && selectedPiece.heldBy !== me) return;
+    event.preventDefault();
+    pointers.cancelAll('resize-start');
+    finishSizeAdjustment();
+    const start = toStage(event.clientX, event.clientY);
+    if (!start) return;
+    const handle = pieceResizeHandle(selectedPiece, layoutRef.current, sizeRef.current);
+    pointers.start(event);
+    capture(event);
+    if (event.pointerType === 'touch') gesture.current.touches.set(event.pointerId, local(event.clientX, event.clientY));
+    pieceDrag.current = { pointerId: event.pointerId, id: selectedPiece.id, mode: 'resize', corner: handle.corner, start, origin: { ...selectedPiece }, ...selectedPiece };
+    pieceActions.grab(selectedPiece.id);
+    setGrip('resizing');
+  };
+
   // Tile deletion belongs to the selected object's contextual toolbar.
   const pickTile = (p) => {
     const tile = [...live.current.tiles].sort((a, b) => b.z - a.z).find(tile => overTile(p, tile));
     return tile ? { tile } : null;
   };
 
-  // The selected piece's resize handles. Other actions are real HTML buttons below.
-  const pieceControl = (p) => {
-    if (!selectedPiece) return null;
-    if (!canResizeSelected) return null;
-    const handle = handlesOf(selectedPiece).find((hd) => Math.abs(p.x - hd.x) <= HANDLE && Math.abs(p.y - hd.y) <= HANDLE);
-    return handle ? { piece: selectedPiece, handle } : null;
-  };
   const pickPiece = (p) => (movable ? [...stackedPieces].reverse().find((piece) => overRect(p, piece)) || null : null);
-  const pieceGrip = (p) => {
-    const control = pieceControl(p);
-    if (control?.handle) return HANDLE_CURSOR[`${control.handle.hx},${control.handle.hy}`];
-    return pickPiece(p) ? 'grab' : null;
-  };
+  const pickNativePiece = (point, pointerType = 'mouse') => movable ? [...stackedPieces].reverse().find(piece => nativePieceHit(piece, point, layoutRef.current.scale, pointerType)) || null : null;
+  const pieceGrip = point => pickNativePiece(point) || pickPiece(point) ? 'grab' : null;
 
   // The hand under a point that this person may hold (the right one wins where they overlap):
   // the tutor can take either, even from the student; the student only one the tutor isn't holding.
@@ -454,30 +476,8 @@ export default function Stage({
     const { onPoint: point, onStroke: stroke, tileActions: tileOps } = live.current;
     const raw = toStage(event.clientX, event.clientY);
     if (!raw) return;
-    const control = pieceActions ? pieceControl(raw) : null;
-    if (control) {
-      const { piece } = control;
-      if (control.handle && !(piece.heldBy && piece.heldBy !== me)) {
-        capture(event);
-        const { hx, hy } = control.handle;
-        pieceDrag.current = {
-          pointerId: event.pointerId,
-          id: piece.id,
-          mode: 'resize',
-          hx,
-          hy,
-          crop: piece.crop,
-          ax: hx === 1 ? piece.x : hx === -1 ? piece.x + piece.w : piece.x + piece.w / 2,
-          ay: hy === 1 ? piece.y : hy === -1 ? piece.y + piece.h : piece.y + piece.h / 2,
-          x: piece.x,
-          y: piece.y,
-          w: piece.w,
-        };
-        pieceActions.grab(piece.id);
-      }
-      return;
-    }
-    const picked = tileOps ? pickTile(raw) : null;
+    const nativePiece = pieceActions ? pickNativePiece(raw, event.pointerType) : null;
+    const picked = tileOps && !nativePiece ? pickTile(raw) : null;
     if (picked) {
       const { tile } = picked;
       selectLetter(tile.id);
@@ -500,7 +500,7 @@ export default function Stage({
       if (tool !== 'none') point?.({ ...raw, letter: null });
       return;
     }
-    const piece = pieceActions ? pickPiece(raw) : null;
+    const piece = nativePiece || (pieceActions ? pickPiece(raw) : null);
     if (piece) {
       selectPiece(piece.id);
       if (piece.heldBy && piece.heldBy !== me) return; // the other person has it right now
@@ -587,7 +587,7 @@ export default function Stage({
       if (!raw) return;
       const pos = pictureDragPosition(pd, raw);
       Object.assign(pd, pos);
-      pieceActions?.move(pd.id, pos.x, pos.y, pd.mode === 'resize' ? pos.w : undefined);
+      pieceActions?.move(pd.id, pos.x, pos.y, pos.w);
       if (tool !== 'none') point?.({ ...raw, letter: null });
       return;
     }
@@ -704,8 +704,8 @@ export default function Stage({
   let cursor = tool === 'none' ? '' : 'cursor-none';
   if (grip === 'grab') cursor = 'cursor-grab';
   if (grip === 'grabbing') cursor = 'cursor-grabbing';
+  if (grip === 'resizing') cursor = 'cursor-nwse-resize';
   if (grip === 'remove') cursor = 'cursor-pointer';
-  if (PIECE_CURSORS[grip]) cursor = PIECE_CURSORS[grip];
   const picById = new Map(pictures.map((p) => [p.id, p]));
 
   const showSoundBoxes = () => {
@@ -755,19 +755,27 @@ export default function Stage({
   const clip = boardRect(strip);
   const stacked = [...tiles].sort((a, b) => a.z - b.z);
   const paperTop = Math.max(8, layout.top + clip.y * layout.scale + 8);
-  const reserved = []; // Resource controls share the existing footer, outside the paper.
+  const reserved = resizeHandle ? [{ x: resizeHandle.left, y: resizeHandle.top, w: 44, h: 44 }] : [];
   const zoomAroundCentre = (scale) => {
     const point = boardPoint({ x: size.width / 2, y: size.height / 2 });
     zoomTo(scale, point.x, point.y, size.width / 2, size.height / 2);
   };
   const zoomControl = 'inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-violet-100 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500';
+  const pieceLabel = selectedPiece?.content?.kind === 'breve' ? 'Breve' : selectedPiece?.content?.kind === 'text' ? 'Text' : 'Picture';
 
   return (
-    <div className='flex h-full w-full min-h-0 flex-col'>
+    <div className='flex h-full w-full min-h-0 flex-col' onKeyDown={event => {
+      if (event.defaultPrevented || layersOpen || !canEditPieces || !selectedPiece?.content || selectedPiece.heldBy && selectedPiece.heldBy !== me || event.target.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      const position = nativePieceNudge(selectedPiece, event.key, event.shiftKey);
+      if (!position) return;
+      event.preventDefault(); event.stopPropagation();
+      pieceActions?.grab(selectedPiece.id);
+      pieceActions?.drop(selectedPiece.id, position.x, position.y);
+    }}>
       <div ref={wrapRef} data-board-surface className='relative min-h-0 flex-1 select-none overflow-hidden'>
       <Backdrop pointed={letters.join('')} strip={strip} boxes={boxes} lines={lines} viewBox={viewBox} bar={Boolean(fillTop)} activeBox={activeBox} boxTaps={boxTaps} />
       <svg viewBox={viewBox} preserveAspectRatio='xMidYMid meet' className='pointer-events-none absolute inset-0 h-full w-full' aria-hidden='true'>
-        {stackedPieces.map((piece) => (
+        {stackedPieces.filter(piece => !piece.content).map((piece) => (
           <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} overlap={overlapState.get(piece.id)} />
         ))}
       </svg>
@@ -793,6 +801,7 @@ export default function Stage({
         {stacked.map((tile) => (
           <Tile key={tile.id} tile={tile} mine={me} selected={tile.id === selectedLetter?.id} />
         ))}
+        {stackedPieces.filter(piece => piece.content).map(piece => <PieceImage key={piece.id} piece={piece} pic={picById.get(piece.pic)} src={pictureSrc(piece.pic)} />)}
         {peerView && (peerView.w < STAGE.width - 10 || peerView.h < STAGE.height - 10) && (
           <g className='pointer-events-none'>
             <rect
@@ -829,12 +838,7 @@ export default function Stage({
           ))}
         {selectedPiece && (
           <g className='pointer-events-none'>
-            <rect x={selectedPiece.x} y={selectedPiece.y} width={selectedPiece.w} height={selectedPiece.h} fill='none' stroke='white' strokeWidth='6' vectorEffect='non-scaling-stroke' />
-            <rect x={selectedPiece.x} y={selectedPiece.y} width={selectedPiece.w} height={selectedPiece.h} fill='none' strokeWidth='2.5' vectorEffect='non-scaling-stroke' className='stroke-violet-600' />
-            {canResizeSelected && !(selectedPiece.heldBy && selectedPiece.heldBy !== me) &&
-              handlesOf(selectedPiece).map((hd) => (
-                <rect data-picture-resize-handle={`${hd.hx},${hd.hy}`} key={`${hd.hx},${hd.hy}`} x={hd.x - 11} y={hd.y - 11} width='22' height='22' rx='5' strokeWidth='4' className='fill-white stroke-violet-600' />
-              ))}
+            <rect data-piece-selection={selectedPiece.content?.kind || 'picture'} x={selectionOutline.x} y={selectionOutline.y} width={selectionOutline.w} height={selectionOutline.h} rx={6 / Math.max(0.01, layout.scale)} fill='none' strokeWidth='1.5' strokeDasharray='4 3' vectorEffect='non-scaling-stroke' className='stroke-violet-600' />
           </g>
         )}
         {/* With the alphabet in its own bar (phones, upright tablets), a hand pointing above the part
@@ -863,18 +867,41 @@ export default function Stage({
             style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}><span className='sr-only'>Sound {index + 1}</span></button>;
         })}
       </div>}
+      {resizeHandle && !layersOpen && (!pieceDrag.current || pieceDrag.current.mode === 'resize') && <button
+        type='button' data-piece-resize={selectedPiece.content?.kind || 'picture'} aria-label={`Resize ${pieceLabel.toLowerCase()}`} title='Drag to resize'
+        disabled={Boolean(selectedPiece.heldBy && selectedPiece.heldBy !== me)}
+        style={{ left: resizeHandle.left, top: resizeHandle.top, width: 44, height: 44 }}
+        className={`absolute z-20 touch-none rounded-lg disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600 ${resizeHandle.corner === 'se' || resizeHandle.corner === 'nw' ? 'cursor-nwse-resize' : 'cursor-nesw-resize'}`}
+        onPointerDown={startCornerResize} onPointerMove={onPointerMove} onPointerUp={pointers.end} onPointerCancel={pointers.end}
+        onLostPointerCapture={event => pointers.cancel(event.pointerId, 'capture-lost')}
+        onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+          event.preventDefault(); event.stopPropagation();
+          startSizeAdjustment();
+          changePieceSize(selectedPiece.w * (['ArrowLeft', 'ArrowDown'].includes(event.key) ? 1 / 1.03 : 1.03));
+          finishSizeAdjustment();
+        }}>
+        <span className={`absolute flex h-6 w-6 items-center justify-center rounded-md border border-violet-600 bg-white text-violet-700 shadow-sm ${resizeHandle.corner.includes('w') ? 'right-0' : 'left-0'} ${resizeHandle.corner.includes('n') ? 'bottom-0' : 'top-0'}`}>
+          <ResizeIcon corner={resizeHandle.corner} />
+        </span>
+      </button>}
       {movable && !layersOpen && !pieceDrag.current && !tileDrag.current && (selectedPiece || selectedLetter) && <ObjectToolbar
-        object={selectedPiece || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
-        kind={selectedPiece ? 'picture' : 'tile'}
-        label={selectedPiece ? picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}
+        key={(selectedPiece || selectedLetter).id}
+        object={selectionOutline || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
+        piece={selectedPiece}
+        kind={selectedPiece ? selectedPiece.content?.kind === 'breve' ? 'mark' : selectedPiece.content?.kind === 'text' ? 'text' : 'picture' : 'tile'}
+        label={selectedPiece ? selectedPiece.content?.kind === 'breve' ? 'Breve' : selectedPiece.content?.text || picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}
         layout={layout} viewport={size} topInset={paperTop} reserved={reserved}
         locked={Boolean((selectedPiece || selectedLetter).heldBy && (selectedPiece || selectedLetter).heldBy !== me)}
         resizeLocked={me === 'student' && selectedFace}
         placementNotice={selectedPiece ? placementNotice : ''}
-        onCrop={selectedPiece && me === 'tutor' && onCropPiece ? () => onCropPiece(selectedPiece) : null}
+        onCrop={selectedPiece && !selectedPiece.content && me === 'tutor' && onCropPiece ? () => onCropPiece(selectedPiece) : null}
         onDuplicate={selectedPiece ? canDuplicatePieces ? () => duplicatePiece(selectedPiece.id) : null : canManageTiles && tileActions?.duplicate ? () => { const copy = tileActions.duplicate(selectedLetter.id); if (copy) selectLetter(copy); } : null}
         onDelete={selectedPiece ? canDeletePieces ? () => { pieceActions.remove(selectedPiece.id); clearSelection(); } : null : canManageTiles ? () => { tileActions.remove(selectedLetter.id); clearSelection(); } : null}
         onPointerInput={() => pointers.cancelAll('object-toolbar')}
+        canResize={canResizeSelected}
+        resizeCorner={resizeHandle?.corner}
+        onSizeStart={startSizeAdjustment} onSizeChange={changePieceSize} onSizeEnd={finishSizeAdjustment}
         onClear={dismissSelection}
       />}
       </div>
@@ -893,11 +920,10 @@ export default function Stage({
             onOpenChange={setLayersOpen}
             onClear={clearPiece}
             onLayer={pieceActions.layer}
-            onResize={resizePiece}
+            onSizeStart={startSizeAdjustment} onSizeChange={changePieceSize} onSizeEnd={finishSizeAdjustment}
             canResize={canResizeSelected}
+            resizeCorner={resizeHandle?.corner}
             resizeLocked={me === 'student' && selectedFace}
-            canShrink={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 0.8).w < selectedPiece.w - 0.05}
-            canGrow={selectedPiece && pieceSize(selectedPiece.crop, selectedPiece.w * 1.25).w > selectedPiece.w + 0.05}
             height={size.height}
             overlapState={overlapState}
           />}

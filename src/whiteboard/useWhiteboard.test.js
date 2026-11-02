@@ -145,7 +145,54 @@ const microtasks = async () => { for (let i = 0; i < 15; i++) await Promise.reso
 const prepared = () => ({ blob: new Blob(['encoded image'], { type: 'image/png' }), w: 200, h: 200 });
 const room = { code: '6106', key: 'test-room-key' };
 
+describe('native teaching piece actions', () => {
+  it('preserves a small breve through move, duplicate and student offer without source-aspect distortion', () => {
+    const hook = mountBoard();
+    const mark = { ...piece, content: { kind: 'breve' }, w: 64, h: 28 };
+    hook.value.handle(snapshot('page-a', 0, { pieces: [mark], pictures: [image], pictureIds: [image.id] }));
+    hook.value.pieceActions.move(mark.id, 500, 500, 32);
+    expect(hook.value.pieces[0]).toMatchObject({ w: 32, h: 14, content: { kind: 'breve' } });
+    hook.value.pieceActions.duplicate(mark.id);
+    expect(hook.messages().at(-1)).toMatchObject({ t: 'piece:add', piece: { content: { kind: 'breve' }, w: 32 } });
+    hook.value.offerActions.give({ pic: image.id, crop: piece.crop, content: { kind: 'breve' } });
+    expect(hook.messages().at(-1)).toMatchObject({ t: 'offer:add', offer: { content: { kind: 'breve' } } });
+  });
+
+  it('adds a deliberately dropped single letter at the drop point and leaves typed groups in the tray', () => {
+    const hook = mountBoard();
+    hook.value.handle(snapshot('page-a', 0));
+    hook.value.addTiles('a', { at: { x: 462, y: 376 } });
+    expect(hook.messages().at(-1).tiles[0]).toMatchObject({ text: 'a', x: 420, y: 320 });
+    hook.value.addTiles('m a t', { at: { x: 462, y: 376 } });
+    expect(hook.messages().at(-1).tiles.every(tile => tile.x === undefined && tile.y === undefined)).toBe(true);
+  });
+});
+
 describe('board page authority and retained state', () => {
+  it('applies Clear board to all placed work and cancels pre-clear callbacks while retaining materials', () => {
+    for (const role of ['tutor', 'student']) {
+      const hook = mountBoard(role);
+      const offer = { id: 'offered-part', pic: image.id, crop: piece.crop, taken: true };
+      hook.value.handle(snapshot('page-a', 0, { tiles: [tile('tile-a')], pieces: [piece], pictures: [image], pictureIds: [image.id], offers: [offer], boxes: 3, boxTaps: [0], boxEpoch: 1, lines: 'small' }));
+      const previous = hook.value;
+      previous.stroke.start('pen', { x: 100, y: 300 });
+      previous.stroke.move([{ x: 140, y: 350 }]);
+      previous.tileActions.move('tile-a', 450, 450);
+      previous.pieceActions.move(piece.id, 500, 450);
+      const sent = hook.messages().length;
+      hook.value.handle(snapshot('page-a', 1, { reason: 'clear', pictures: [image], pictureIds: [image.id], offers: [offer], boxes: 3, boxTaps: [], boxEpoch: 2, lines: 'small' }));
+      vi.advanceTimersByTime(100);
+      previous.tileActions.move('tile-a', 800, 800);
+      previous.pieceActions.drop(piece.id, 800, 800);
+      hook.value.handle({ t: 'tile:add', pageId: 'page-a', pageEpoch: 0, tiles: [tile('late-tile')] });
+      expect(hook.messages()).toHaveLength(sent);
+      expect(hook.value.board.strokes).toEqual([]);
+      expect(hook.value.tiles).toEqual([]); expect(hook.value.pieces).toEqual([]);
+      expect(hook.value.pictures).toEqual([image]); expect(hook.value.offers).toEqual([offer]);
+      expect(hook.value).toMatchObject({ pageId: 'page-a', pageEpoch: 1, boxes: 3, boxTaps: [], boxEpoch: 2, lines: 'small' });
+    }
+  });
+
   it('rejects old activation events and callbacks after A to B to A', () => {
     const hook = mountBoard();
     hook.value.handle(snapshot('page-a', 0, { tiles: [tile('tile-a')], pictures: [image], pictureIds: [image.id] }));

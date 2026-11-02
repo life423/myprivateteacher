@@ -49,9 +49,9 @@ describe('tutor desktop guide reservation and tools', () => {
     window.innerWidth = 1024; window.innerHeight = 900;
     const tablet = mount({ ...props, guideOpen: true }).render(); expect(rail(tablet)).toBeUndefined(); expect(reservation(tablet)).toBeUndefined(); expect(fit(tablet)).toBeUndefined();
   });
-  it('offers a labelled 44px tool opener and retains its single rail while collapsed', () => {
+  it('offers a labelled tool-sized opener and retains its single rail while collapsed', () => {
     const onToggle = vi.fn(), tree = DesktopTools({ tools, open: false, onToggle });
-    const button = find(tree, item => item.type === 'button'); expect(button.props['aria-label']).toBe('Show tools'); expect(button.props.className).toContain('h-11'); expect(button.props.className).toContain('min-w-11'); button.props.onClick(); expect(onToggle).toHaveBeenCalledOnce();
+    const button = find(tree, item => item.type === 'button'); expect(button.props['aria-label']).toBe('Show tools'); expect(button.props.className).toContain('min-h-11'); expect(button.props.className).toContain('w-14'); button.props.onClick(); expect(onToggle).toHaveBeenCalledOnce();
     const body = find(tree, item => item.props?.inert === ''); expect(body.props.hidden).toBe(true); expect(body.props.children).toBe(tools);
   });
 });

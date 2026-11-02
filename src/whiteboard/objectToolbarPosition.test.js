@@ -18,4 +18,11 @@ describe('contextual board controls', () => {
     const at = objectToolbarPosition({ x: 100, y: 200, w: 100, h: 100 }, { left: -50, top: -100, scale: 2 }, viewport, toolbar, { reserved: [{ x: 8, y: 230, w: 150, h: 44 }] });
     expect(at.top).toBe(282);
   });
+  it('leaves the single resize handle usable when controls must sit below a small object', () => {
+    const handle = { x: 164, y: 110, w: 44, h: 44 };
+    for (const height of [54, 104]) {
+      const at = objectToolbarPosition({ x: 110, y: 60, w: 52, h: 44 }, layout, viewport, { width: 280, height }, { topInset: 90, reserved: [handle] });
+      expect(at.left + 280 <= handle.x || at.left >= handle.x + handle.w || at.top + height <= handle.y || at.top >= handle.y + handle.h).toBe(true);
+    }
+  });
 });

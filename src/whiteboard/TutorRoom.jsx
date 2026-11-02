@@ -1,6 +1,6 @@
 import LessonPanel from '../lessons/LessonPanel.jsx';
 import { lessonAssetUrl } from '../lessons/api.js';
-import { partsForTeachingImage } from '../lessons/teachingPieceParts.js';
+import { partsForTeachingImage, selectionPartsForTeachingImage } from '../lessons/teachingPieceParts.js';
 import TutorGuide from '../lessons/TutorGuide.jsx';
 import { useLessonRunner } from '../lessons/useLessonRunner.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -8,6 +8,7 @@ import { BookOpen, Crosshair, Eraser, Eye, EyeOff, LayoutGrid, MousePointer2, Pe
 import BridgeBoard from '../bridge/BridgeBoard.jsx';
 import TutorGamesPanel from './TutorGamesPanel.jsx';
 import MaterialsWorkspace from './MaterialsWorkspace.jsx';
+import SessionImageActions from './SessionImageActions.jsx';
 import PhonemeBoard from '../phoneme-pop/components/PhonemeBoard.jsx';
 import { usePhonemeTutor } from '../phoneme-pop/game/usePhonemeTutor.js';
 import { useTutorBridge } from '../bridge/useTutorBridge.js';
@@ -346,6 +347,7 @@ export default function TutorRoom() {
         const digest = await crypto.subtle.digest('SHA-256', await source.blob.arrayBuffer());
         const imageHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
         source.parts = partsForTeachingImage(imageHash, asset.w, asset.h);
+        source.selectionParts = selectionPartsForTeachingImage(imageHash, asset.w, asset.h);
         source.src = URL.createObjectURL(source.blob);
         return source;
       }).catch(error => { if (materialPreviews.get(asset.id) === source) materialPreviews.delete(asset.id); throw error; });
@@ -353,7 +355,7 @@ export default function TutorRoom() {
     }
     await source.promise;
     if (ticket !== materialRequest.current || !materialDestinationCurrent(destination)) throw new Error('The board changed. Choose the material again.');
-    const prepared = { ...destination, id: source.id, w: asset.w, h: asset.h, src: source.src, blob: source.blob, parts: source.parts, title: 'Lesson material' };
+    const prepared = { ...destination, id: source.id, w: asset.w, h: asset.h, src: source.src, blob: source.blob, parts: source.parts, selectionParts: source.selectionParts, title: 'Lesson material' };
     preparedMaterialRef.current = prepared;
     setPreparedMaterial(prepared); setPictureOpenRequest(null); setPicturePreviewOpen(true); setBrowsing(true);
   };
@@ -363,9 +365,9 @@ export default function TutorRoom() {
     if (preparedMaterialRef.current !== source || !materialDestinationCurrent(source)) return { error: 'The board changed. Choose the material again.' };
     return result;
   };
-  const addPreparedLetter = (letter, source) => {
+  const addPreparedLetter = (letter, source, options) => {
     if (preparedMaterialRef.current !== source || !materialDestinationCurrent(source)) return { added: 0, cancelled: true };
-    return materialContext.current.wb.addTiles(letter);
+    return materialContext.current.wb.addTiles(letter, options);
   };
   const addPreparedBoxes = (count, source) => {
     if (preparedMaterialRef.current !== source || !materialDestinationCurrent(source)) return false;
@@ -682,8 +684,8 @@ export default function TutorRoom() {
         id: 'materials', label: gamesOpen ? 'Games' : 'Materials', icon: LayoutGrid,
         content: <MaterialsWorkspace key={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} scope={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} tabs={[
           { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} boxTaps={wb.boxTaps} onResetSoundBoxes={wb.resetSoundBoxes} onShowSoundBoxes={!bridge.game && !phoneme.active ? () => stageApi.current?.showSoundBoxes() : null} /> },
-          { id: 'pictures', label: 'Pictures', content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
-          { id: 'worksheets', label: 'Worksheets', content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
+          { id: 'pictures', label: 'Pictures', actions: <SessionImageActions key={`${wb.pageId}:${wb.pageEpoch}:pictures`} count={wb.pictures.length} onClear={wb.clearPictures} label='Picture options' disabled={!pictureProps.uploadsReady} />, content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
+          { id: 'worksheets', label: 'Worksheets', actions: <SessionImageActions key={`${wb.pageId}:${wb.pageEpoch}:worksheets`} count={wb.pictures.length} onClear={wb.clearPictures} label='Worksheet options' disabled={!pictureProps.uploadsReady} />, content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
         ]} lesson={{ open: false, onOpen: () => setLessonOpen(true), title: 'Tutor guide', detail: lessonRunner.lesson ? `${lessonRunner.lesson.title}${lessonRunner.index >= 0 ? ` · ${lessonRunner.index + 1}/${lessonRunner.lesson.activities.length}` : ''}` : null, content: null }} activity={{
           open: gamesOpen,
           onOpen: () => setGamesOpen(true),

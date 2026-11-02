@@ -7,6 +7,14 @@ describe('direct picture placement', () => {
   const bounds = { x: 100, y: 200, w: 900, h: 600 };
   const centre = { x: 550, y: 500 };
 
+  it('places a small native spelling mark at its own aspect ratio instead of enlarging its source crop', () => {
+    const placed = picturePlacement({ id: 'sheet', w: 1600, h: 1700 }, centre, { bounds, crop: { x: 800, y: 400, w: 60, h: 60 }, content: { kind: 'breve' }, preferredWidth: 40 });
+    expect(placed.w).toBe(40);
+    expect(placed.x).toBe(530);
+    expect(placed.y).toBeCloseTo(491.3, 1);
+    expect(placed.placement).toEqual({ overlaps: 0, crowded: false, visible: true });
+  });
+
   it('adds the complete teaching card, even when it has one mouth region', () => {
     const picture = { id: 'card', w: 1200, h: 1200, regions: [{ x: 48, y: 300, w: 744, h: 852, r: 36 }] };
     expect(defaultPictureCrop(picture)).toEqual({ x: 0, y: 0, w: 1200, h: 1200, r: 0 });

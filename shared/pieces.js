@@ -13,6 +13,33 @@ export const MAX_PICTURE_BYTES = 1_500_000; // after the browser shrinks it, usu
 export const MAX_PICTURE_SIDE = 4096;
 export const PIECE_MIN = 48; // the short side of a piece never gets smaller than this
 
+// Only deliberately selected, known teaching content becomes native board ink.
+// Source/crop authorization is still required; this is never an OCR result.
+export function cleanPieceContent(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.kind === 'breve') return { kind: 'breve' };
+  if (value.kind !== 'text' || typeof value.text !== 'string' || value.text.length > 256) return null;
+  const text = value.text.normalize('NFC').trim();
+  if (!text || text.length > 128 || !/^[A-Za-zĀāĂăĒēĔĕĪīĬĭŌōŎŏŪūŬŭ .,!?;:'’"()\-]+$/.test(text)) return null;
+  return { kind: 'text', text };
+}
+
+// A common 64px teaching face, independent of each source image's typography.
+// These generous advances leave room for the inherited font and its accents.
+export function nativePieceMetrics(value) {
+  const content = cleanPieceContent(value);
+  if (!content) return null;
+  if (content.kind === 'breve') return { w: 64, h: 28 };
+  const advance = character => {
+    if (character === ' ') return 20;
+    if ('ilI.,!;:\'’'.includes(character)) return 20;
+    if ('tfjr()'.includes(character)) return 28;
+    if ('mwMW'.includes(character)) return 64;
+    return 42;
+  };
+  return { w: 16 + [...content.text].reduce((width, character) => width + advance(character), 0), h: 96 };
+}
+
 const round1 = (n) => Math.round(n * 10) / 10;
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
@@ -47,11 +74,15 @@ export function isFacePiece(piece, picture) {
 
 // A piece keeps its crop's shape: the width is chosen and the height follows. It stays
 // between PIECE_MIN on its short side and the size of the working area.
-export function pieceSize(crop, width) {
-  const ratio = crop.h / crop.w;
+export function pieceSize(crop, width, value) {
+  const content = cleanPieceContent(value);
+  const native = nativePieceMetrics(content);
+  const ratio = native ? native.h / native.w : crop.h / crop.w;
   const maxW = Math.min(WORK.right - WORK.left, (WORK.bottom - WORK.top) / ratio);
-  const minW = Math.min(maxW, Math.max(PIECE_MIN, PIECE_MIN / ratio));
-  const w = clamp(Number.isFinite(width) ? width : 320, minW, maxW);
+  // A floating spelling mark must fit above a letter. Its touch target is a
+  // separate interaction concern, not an opaque 48px-tall photo rectangle.
+  const minW = Math.min(maxW, content?.kind === 'breve' ? 24 : Math.max(PIECE_MIN, PIECE_MIN / ratio));
+  const w = clamp(Number.isFinite(width) ? width : native?.w ?? 320, minW, maxW);
   return { w: round1(w), h: round1(w * ratio) };
 }
 

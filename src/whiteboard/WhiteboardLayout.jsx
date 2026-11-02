@@ -303,11 +303,13 @@ function ExitFocus({ onClick, inline = false }) {
 }
 
 export function DesktopTools({ tools, open, onToggle }) {
-  return <div data-desktop-tools data-state={open ? 'open' : 'closed'} className='flex max-h-full shrink-0 flex-col items-center gap-2'>
-    <button type='button' aria-label={open ? 'Hide tools' : 'Show tools'} title={open ? 'Hide tools' : 'Show tools'} aria-expanded={open} onClick={onToggle} className='flex h-11 min-w-11 shrink-0 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-1 text-[10px] font-bold leading-3 text-slate-700 hover:bg-violet-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500'>
-      {open ? <ChevronLeft className='h-4 w-4' aria-hidden='true' /> : <ChevronRight className='h-4 w-4' aria-hidden='true' />}<span>Tools</span>
+  // Center the disclosure and rail as one group beside the board. Bound it to
+  // the available workspace so a short screen scrolls tools instead of clipping.
+  return <div data-desktop-tools data-state={open ? 'open' : 'closed'} className='flex min-h-0 max-h-full shrink-0 self-center flex-col items-center gap-2'>
+    <button type='button' aria-label={open ? 'Hide tools' : 'Show tools'} title={open ? 'Hide tools' : 'Show tools'} aria-expanded={open} onClick={onToggle} className='flex min-h-11 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-white px-1 py-2 text-[11px] font-semibold text-slate-700 ring-1 ring-inset ring-slate-200 transition-colors hover:bg-violet-50 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500'>
+      {open ? <ChevronLeft className='h-5 w-5' aria-hidden='true' /> : <ChevronRight className='h-5 w-5' aria-hidden='true' />}<span>Tools</span>
     </button>
-    <div hidden={!open} inert={!open ? '' : undefined} className={`${open ? '' : 'hidden'} min-h-0 overflow-y-auto rounded-2xl`}>{tools}</div>
+    <div hidden={!open} inert={!open ? '' : undefined} className={`${open ? '' : 'hidden'} min-h-0 overflow-y-auto rounded-2xl [&_nav]:gap-2`}>{tools}</div>
   </div>;
 }
 

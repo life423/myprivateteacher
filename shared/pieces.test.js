@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WORK } from './tiles.js';
-import { cleanCrop, clampPiece, isFacePiece, isPictureId, pieceSize, startingWidth } from './pieces.js';
+import { cleanCrop, cleanPieceContent, clampPiece, isFacePiece, isPictureId, nativePieceMetrics, pieceSize, startingWidth } from './pieces.js';
 
 const pic = { w: 976, h: 974 };
 
@@ -39,6 +39,30 @@ describe('picture pieces', () => {
     expect(isPictureId('0123456789abcdef0123456789abcdef')).toBe(true);
     expect(isPictureId('../../etc/passwd')).toBe(false);
     expect(isPictureId('0123456789ABCDEF0123456789ABCDEF')).toBe(false);
+  });
+});
+
+describe('native teaching pieces', () => {
+  const crop = { x: 200, y: 300, w: 275, h: 146 };
+  it('accepts bounded plain teaching text and marks without accepting markup or arbitrary object fields', () => {
+    expect(cleanPieceContent({ kind: 'text', text: '  ma\u0306t  ', font: 'untrusted', answer: 'private' })).toEqual({ kind: 'text', text: 'măt' });
+    expect(cleanPieceContent({ kind: 'breve', text: 'ignored' })).toEqual({ kind: 'breve' });
+    for (const value of [{ kind: 'text', text: '<script>' }, { kind: 'text', text: 'a\nb' }, { kind: 'text', text: 'a'.repeat(129) }, { kind: 'text', text: '' }, { kind: 'html', text: 'a' }, null]) expect(cleanPieceContent(value)).toBeNull();
+  });
+  it('gives identical native text geometry regardless of source crop font or proportions', () => {
+    const content = { kind: 'text', text: 'măt' };
+    const metrics = nativePieceMetrics(content);
+    expect(pieceSize(crop, metrics.w, content)).toEqual(metrics);
+    expect(pieceSize({ w: 1000, h: 900 }, metrics.w, content)).toEqual(metrics);
+    expect(pieceSize(crop, metrics.w / 2, content).h).toBe(48);
+  });
+  it('allows a native breve to fit over a letter without altering photo size limits', () => {
+    const content = { kind: 'breve' };
+    expect(pieceSize(crop, undefined, content)).toEqual({ w: 64, h: 28 });
+    expect(pieceSize(crop, 24, content)).toEqual({ w: 24, h: 10.5 });
+    expect(pieceSize(crop, 0, content)).toEqual({ w: 24, h: 10.5 });
+    expect(pieceSize(crop, 24).h).toBe(48);
+    expect(pieceSize(crop, 99999, content).w).toBeLessThanOrEqual(WORK.right - WORK.left);
   });
 });
 

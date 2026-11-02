@@ -3,7 +3,11 @@ import { ArrowLeft, BoxSelect, Check, ChevronDown, Eye, Gift, LayoutGrid, Plus, 
 import { mergePictureRegions, regionAt } from './regions.js';
 import { pictureRegions } from './pictures.js';
 import PdfWorksheetImport from './PdfWorksheetImport.jsx';
-import { isFacePiece, MAX_PICTURES, startingWidth } from '../../shared/pieces.js';
+import SessionImageActions from './SessionImageActions.jsx';
+import { isFacePiece, MAX_PICTURES, nativePieceMetrics, pieceSize, startingWidth } from '../../shared/pieces.js';
+import { TILE_HEIGHT, tileWidth } from '../../shared/tiles.js';
+import Tile from './Tile.jsx';
+import NativePieceContent from './NativePieceContent.jsx';
 import { defaultPictureCrop, picturePlacement } from './picturePlacement.js';
 import { catalogCollections, collectionLabel, filterLibraryCards } from './libraryCatalog.js';
 import './pictureLibrary.css';
@@ -20,6 +24,7 @@ const secondary =
 const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 const partOf = (r) => ({ x: r.x, y: r.y, w: r.w, h: r.h, r: r.r || 0 });
 const sameCrop = (a, b) => Boolean(a && b) && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+const teachingSelection = (picture, crop) => [...(picture?.selectionParts || []), ...(picture?.parts || [])].find(part => sameCrop(part, crop));
 const boxFrom = (a, b) => ({
   x: Math.round(Math.min(a.x, b.x)),
   y: Math.round(Math.min(a.y, b.y)),
@@ -33,6 +38,10 @@ const offerAt = (list, p) =>
 
 // The part being dragged to the board, drawn under the finger.
 function Ghost({ src, pic, crop, width }) {
+  const semantic = teachingSelection(pic, crop);
+  if (semantic?.letter) return <svg width={width} height={width * TILE_HEIGHT / tileWidth(semantic.letter)} viewBox={`0 0 ${tileWidth(semantic.letter) + 6} ${TILE_HEIGHT + 7}`}><Tile tile={{ id: 'preview', text: semantic.letter, kind: 'aeiou'.includes(semantic.letter.toLowerCase()) ? 'vowel' : 'consonant', x: 0, y: 0 }} /></svg>;
+  const metrics = nativePieceMetrics(semantic?.content);
+  if (metrics) return <NativePieceContent content={semantic.content} width={width} height={width * metrics.h / metrics.w} />;
   return (
     <svg
       width={width}
@@ -182,7 +191,6 @@ export default function PicturesPanel({
   const [ghost, setGhost] = useState(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
-  const [armed, setArmed] = useState(false);
   const [libraryNote, setLibraryNote] = useState(null);
   const [placedNote, setPlacedNote] = useState(null);
   const [localView, setLocalView] = useState(emptyPictureLibraryView);
@@ -247,6 +255,16 @@ export default function PicturesPanel({
   const size = pic ? `${pic.w}x${pic.h}` : '';
   const picOffers = sessionPic ? offers.filter((o) => o.pic === sessionPic.id) : [];
   const face = libraryFaceCrop(pic);
+  const selectedTeachingPart = teachingSelection(preparedPicture, selection);
+  const readyLetters = new Set((preparedPicture?.parts || []).map(part => part.letter).filter(Boolean));
+  const readyParts = [...(preparedPicture?.parts || []), ...(preparedPicture?.selectionParts || []).filter(part => {
+    if (!part.letter || readyLetters.has(part.letter)) return false;
+    readyLetters.add(part.letter);
+    return true;
+  })];
+  // Reviewed source glyphs are semantic hit targets. They take priority over
+  // the coarse image analysis, which deliberately groups nearby text blocks.
+  const selectableRegionAt = (point) => regionAt(preparedPicture?.selectionParts || [], point.x, point.y) || regionAt(regions, point.x, point.y);
   const cropMode = !student && Boolean(openPictureRequest?.pieceId && openPictureRequest.id === pic?.id);
   const guiding = Boolean(sessionPic && guidePic === sessionPic.id);
   useLayoutEffect(() => { onViewerChange?.(Boolean(pic)); }, [Boolean(pic), onViewerChange]);
@@ -349,7 +367,7 @@ export default function PicturesPanel({
     }
     stageApi?.current?.selectPiece?.(pieceId);
     stageApi?.current?.reportPlacement?.(status);
-    setPlacedNote({ id: picture.id, text: `${title} added to the board. Drag to move it, or use a corner to resize.` });
+    setPlacedNote({ id: picture.id, text: `${title} added to the board. Drag to move it; drag the corner or use Size to resize.` });
     backToCatalog();
     onPlaced?.({ keepOpen });
     return true;
@@ -483,17 +501,17 @@ export default function PicturesPanel({
     working(true);
     setNote(null);
     try {
-      const teachingPart = preparedPicture?.parts?.find(part => sameCrop(part, crop));
+      const teachingPart = teachingSelection(preparedPicture, crop);
       if (teachingPart?.boxes) {
         if (!onAddPreparedBoxes?.(teachingPart.boxes, preparedPicture)) throw new Error('The sound boxes could not be added. Reconnect and try again.');
         setSelection(null); setNote(`${teachingPart.boxes} sound boxes added to the board.`);
         return true;
       }
       if (teachingPart?.letter) {
-        const result = onAddPreparedLetter?.(teachingPart.letter, preparedPicture);
+        const result = onAddPreparedLetter?.(teachingPart.letter, preparedPicture, dropAt ? { at: dropAt } : undefined);
         if (!result?.added || result.skipped || result.full || result.cancelled) throw new Error('This letter tile could not be added. Reconnect or make space and try again.');
         setSelection(null);
-        setNote(`${teachingPart.letter} letter tile added to the tray. Drag it into a sound box or onto the board.`);
+        setNote(dropAt ? `${teachingPart.letter} letter tile added where you dropped it.` : `${teachingPart.letter} letter tile added to the tray. Drag it into a sound box or onto the board.`);
         return true;
       }
       const picture = await ensureSessionPicture(sourcePicture);
@@ -501,15 +519,17 @@ export default function PicturesPanel({
       const bounds = stageApi?.current?.bounds?.();
       if (preparedPicture && !bounds) throw new Error('Wait for the board to be ready, then add the piece again.');
       const scale = stageApi?.current?.scale || 1;
-      const preferredWidth = preparedPicture ? Math.min(bounds.w * 0.8, bounds.h * crop.w / crop.h * 0.8,
+      const content = teachingPart?.content;
+      const metrics = nativePieceMetrics(content);
+      const preferredWidth = metrics ? Math.min(content.kind === 'breve' ? 40 : metrics.w, bounds.w * 0.8, bounds.h * metrics.w / metrics.h * 0.8) : preparedPicture ? Math.min(bounds.w * 0.8, bounds.h * crop.w / crop.h * 0.8,
         teachingPart?.fontSize ? Math.max(120 / scale, 32 * crop.w / teachingPart.fontSize / scale) : 200 / scale * crop.w / Math.max(crop.w, crop.h)) : undefined;
-      let placement = picturePlacement(picture, centre, { bounds, crop, preferredWidth });
+      let placement = picturePlacement(picture, centre, { bounds, crop, preferredWidth, content });
       if (!placement) return false;
       if (!automatic) {
-        const w = startingWidth(crop);
-        placement = { pic: picture.id, crop, x: dropAt.x - w / 2, y: dropAt.y - w * crop.h / crop.w / 2, w };
+        const size = pieceSize(crop, metrics ? content.kind === 'breve' ? 40 : metrics.w : startingWidth(crop), content);
+        placement = { pic: picture.id, crop, x: dropAt.x - size.w / 2, y: dropAt.y - size.h / 2, w: size.w };
       }
-      const pieceId = onPlace({ ...placement, offer: offerId, region: regionId,
+      const pieceId = onPlace({ ...placement, ...(content ? { content } : {}), offer: offerId, region: regionId,
         ...(automatic ? { automatic: true, centre, bounds, preferredWidth } : {}) });
       const status = stageApi?.current?.placementStatus?.();
       if (!pieceId) {
@@ -520,7 +540,7 @@ export default function PicturesPanel({
       stageApi?.current?.reportPlacement?.(status);
       setNote(student && isFacePiece({ crop }, picture)
         ? 'Added to the board. Drag to move it. Your tutor controls its size.'
-        : 'Added to the board. Drag to move it, or use a corner to resize.');
+        : 'Added to the board. Drag to move it; drag the corner or use Size to resize.');
       if (preparedPicture) setSelection(null);
       else backToCatalog();
       onPlaced?.({ keepOpen: Boolean(preparedPicture || options.keepOpen) });
@@ -570,7 +590,7 @@ export default function PicturesPanel({
     }
     if (cropMode) {
       if (mode === 'magic') {
-        const region = regionAt(regions, p.x, p.y);
+        const region = selectableRegionAt(p);
         if (region) setSelection(partOf(region));
         return;
       }
@@ -584,7 +604,7 @@ export default function PicturesPanel({
       if (offer) part = offer.crop;
     }
     if (!part && mode === 'magic') {
-      const region = regionAt(regions, p.x, p.y);
+      const region = selectableRegionAt(p);
       if (region) part = { x: region.x, y: region.y, w: region.w, h: region.h, r: region.r };
     }
     if (part) {
@@ -602,7 +622,7 @@ export default function PicturesPanel({
       if (event.pointerType !== 'mouse') return;
       const p = toPic(event);
       if (student) setHover(offerAt(available, p)?.crop || null);
-      else if (mode === 'magic') setHover(regionAt(regions, p.x, p.y));
+      else if (mode === 'magic') setHover(selectableRegionAt(p));
       return;
     }
     if (current.kind === 'box') {
@@ -612,7 +632,10 @@ export default function PicturesPanel({
     if (!current.dragging && Math.hypot(event.clientX - current.sx, event.clientY - current.sy) < DRAG_START) return;
     current.dragging = true;
     const scale = stageApi?.current?.scale || 0.6;
-    setGhost({ x: event.clientX, y: event.clientY, width: startingWidth(current.part) * scale, part: current.part });
+    const semantic = teachingSelection(preparedPicture, current.part);
+    const metrics = semantic?.letter ? { w: tileWidth(semantic.letter), h: TILE_HEIGHT } : nativePieceMetrics(semantic?.content);
+    const width = (metrics ? semantic?.content?.kind === 'breve' ? 40 : metrics.w : startingWidth(current.part)) * scale;
+    setGhost({ x: event.clientX, y: event.clientY, width, height: width * (metrics ? metrics.h / metrics.w : current.part.h / current.part.w), part: current.part });
   };
 
   const onUp = async (event) => {
@@ -654,7 +677,7 @@ export default function PicturesPanel({
       else hint = 'Your tutor hasn’t given you a part of this picture yet.';
     }
     if (cropMode) hint = 'Choose the area to keep, then apply the crop to the selected picture.';
-    if (preparedPicture) hint = selection ? 'Add this piece, then choose another. The complete sheet is not placed on the board.' : 'Choose a word, letter or picture. Use Draw a box for any part Magic select misses.';
+    if (preparedPicture) hint = selectedTeachingPart?.content?.kind === 'breve' ? 'Breve selected. Adds a clean mark that you can place above a vowel.' : selectedTeachingPart?.letter ? `${selectedTeachingPart.letter} selected. Adds a letter tile in the board’s font and style.` : selectedTeachingPart?.content?.kind === 'text' ? `${selectedTeachingPart.label} selected. Adds board text with no image background.` : selection ? 'Add this piece, then choose another. The complete sheet is not placed on the board.' : 'Tap an individual letter or breve. Choose a word below, or draw a box around another picture.';
     const bright = [...available.map((o) => o.crop), ...takeable];
     const dim = `M0 0H${pic.w}V${pic.h}H0Z${bright.map((c) => `M${c.x} ${c.y}h${c.w}v${c.h}h${-c.w}Z`).join('')}`;
     return (
@@ -755,8 +778,8 @@ export default function PicturesPanel({
             ))}
           </div>
         )}
-        {preparedPicture?.parts?.length > 0 && <div data-editor-control role='group' aria-label='Ready teaching pieces' className='flex max-h-28 shrink-0 flex-wrap gap-1 overflow-y-auto rounded-lg border border-slate-200 p-1'>
-          {preparedPicture.parts.map(part => <button key={part.id} type='button' disabled={busy || !src} aria-pressed={Boolean(selection && sameCrop(part, selection))} onClick={() => { setSelection(partOf(part)); setHover(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 disabled:opacity-50 ${selection && sameCrop(part, selection) ? 'bg-violet-100 text-violet-900' : 'text-slate-700 hover:bg-slate-100'}`}>{part.label}</button>)}
+        {readyParts.length > 0 && <div data-editor-control role='group' aria-label='Ready teaching pieces' className='flex max-h-28 shrink-0 flex-wrap gap-1 overflow-y-auto rounded-lg border border-slate-200 p-1'>
+          {readyParts.map(part => <button key={part.id} type='button' disabled={busy || !src} aria-pressed={Boolean(selection && sameCrop(part, selection))} onClick={() => { setSelection(partOf(part)); setHover(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 disabled:opacity-50 ${selection && sameCrop(part, selection) ? 'bg-violet-100 text-violet-900' : 'text-slate-700 hover:bg-slate-100'}`}>{part.label}</button>)}
         </div>}
         <p data-editor-control className='shrink-0 text-xs text-slate-500'>{hint}</p>
         <div data-editor-control className='flex shrink-0 flex-wrap gap-2 [&>button]:min-h-11 [&>button]:flex-1'>
@@ -771,7 +794,7 @@ export default function PicturesPanel({
           </button>
         )}
         {!cropMode && !student && face && !preparedPicture && <button type='button' disabled={busy || !src} onClick={(event) => place(defaultPictureCrop(pic), undefined, undefined, undefined, undefined, { keepOpen: keepPictureLibraryOpen(event, view.keepOpen) })} className={secondary}>Add whole card</button>}
-        {!cropMode && !student && selection && !offered && (
+        {!cropMode && !student && !preparedPicture && selection && !offered && (
           <button type='button' disabled={busy || !src} onClick={giveSelection} className={secondary}>
             <Gift className='h-4 w-4' aria-hidden='true' />
             Give to student
@@ -795,8 +818,8 @@ export default function PicturesPanel({
         )}
         {ghost && (
           <div
-            className='pointer-events-none fixed z-50 opacity-90 drop-shadow-xl'
-            style={{ left: ghost.x - ghost.width / 2, top: ghost.y - (ghost.width * ghost.part.h) / ghost.part.w / 2 }}
+            className='pointer-events-none fixed z-50 opacity-90'
+            style={{ left: ghost.x - ghost.width / 2, top: ghost.y - ghost.height / 2 }}
           >
             <Ghost src={src} pic={pic} crop={ghost.part} width={ghost.width} />
           </div>
@@ -819,11 +842,12 @@ export default function PicturesPanel({
 
       <div className={`flex items-center justify-between ${browseOnly ? 'hidden' : ''}`}>
         <h2 className='text-sm font-bold text-slate-700'>{panelTitle}</h2>
-        {!student && (
+        {!student && <div className='flex items-center gap-2'>
           <span className='text-xs font-semibold text-slate-500'>
             {uploads}/{MAX_PICTURES} uploads
           </span>
-        )}
+          {!embedded && !browseOnly && <SessionImageActions count={pictures.length} onClear={onClear} label={worksheet ? 'Worksheet options' : 'Picture options'} disabled={busy || !uploadsReady} />}
+        </div>}
       </div>
       {!student && !worksheet && layout === 'side' && onBrowse && (
         <button type='button' onClick={onBrowse} className={secondary}>
@@ -1078,20 +1102,6 @@ export default function PicturesPanel({
             </li>
           ))}
         </ul>
-      )}
-      {canAdd && !browseOnly && pictures.length > 0 && (
-        <button
-          type='button'
-          onClick={() => {
-            if (!armed) return setArmed(true);
-            setArmed(false);
-            onClear();
-          }}
-          onBlur={() => setArmed(false)}
-          className={`rounded-full px-3 py-2 text-sm font-semibold ${armed ? 'bg-rose-600 text-white' : 'border border-slate-300 text-slate-700 hover:bg-slate-50'}`}
-        >
-          {armed ? 'Sure? All session images and their board pieces go' : 'Remove all session images'}
-        </button>
       )}
     </section>
   );

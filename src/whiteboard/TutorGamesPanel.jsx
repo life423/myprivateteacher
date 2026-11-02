@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import BridgeControls from '../bridge/BridgeControls.jsx';
+import GameStartButton from './GameStartButton.jsx';
 
 // One chooser owns both games. Active controls move first in DOM and keyboard
 // order; the other choices keep their usual order.
@@ -45,16 +46,15 @@ export default function TutorGamesPanel({ bridge, phoneme, startBridge, startPho
             <BridgeControls actionsFirst={Boolean(bridge.game)} bridge={{ ...bridge, start: (event) => start(event, startBridge, 'bridge') }} />
           ) : (
             <div className='flex flex-col items-start gap-3'>
+              {!phoneme.active && <p className='text-base text-slate-700'>Hear the word, split it into its sounds, and put them back in order.</p>}
               {phoneme.active && <div role='group' aria-label='Level' className='grid w-full grid-cols-2 gap-2'>
                 {phoneme.bank.levels.map((level) => <button key={level.level} type='button' aria-pressed={phoneme.state.level === level.level} onClick={() => phoneme.act({ type: 'chooseLevel', level: level.level })} className={`min-h-11 rounded-lg px-3 py-2 text-sm font-bold ${phoneme.state.level === level.level ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-violet-50'}`}>Level {level.level}</button>)}
               </div>}
               <div role='group' aria-label='Phoneme Pop actions' className='flex flex-wrap gap-2'>
                 {phoneme.active && <button key='next' type='button' onClick={() => phoneme.act({ type: 'showNext' })} disabled={phoneme.state.phase !== 'tiles'} className='min-h-11 rounded-full bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-40'>Show me the next sound</button>}
-                <button key='toggle' type='button' onClick={phoneme.active ? phoneme.stop : (event) => start(event, startPhoneme, 'phoneme')} className={`min-h-11 rounded-lg px-3 py-2 text-sm font-semibold ${phoneme.active ? 'border border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-violet-600 text-white hover:bg-violet-700'}`}>
-                  {phoneme.active ? 'Put Phoneme Pop away' : 'Start Phoneme Pop'}
-                </button>
+                {phoneme.active ? <button key='toggle' type='button' onClick={phoneme.stop} className='min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'>Put Phoneme Pop away</button>
+                  : <GameStartButton key='toggle' onClick={(event) => start(event, startPhoneme, 'phoneme')}>Start Phoneme Pop</GameStartButton>}
               </div>
-              {!phoneme.active && <p className='text-sm leading-relaxed text-slate-600'>Hear the word, split it into its sounds, and put them back in order.</p>}
             </div>
           )}
         </section>

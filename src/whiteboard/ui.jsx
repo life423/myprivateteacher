@@ -1,16 +1,20 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, ChevronDown, Copy, Maximize2, SlidersHorizontal, X } from 'lucide-react';
 import { Link } from '../router.jsx';
+import { lessonControlsPosition } from './lessonControlsPosition.js';
 
 // A stable, labelled entry keeps lesson controls discoverable at every width.
 // The floating surface scrolls independently without taking space from the board.
 export function TopBar({ back, title, children, menu, menuSummary, end }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [placement, setPlacement] = useState(null);
   const trigger = useRef(null), options = useRef(null), closeTimer = useRef(null);
   const optionsId = useId();
   const room = Boolean(menu || end);
   const expanded = open && !closing;
+  const positioned = placement !== null;
   const focusOptions = () => (options.current?.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || options.current)?.focus({ preventScroll: true });
   const showOptions = () => {
     clearTimeout(closeTimer.current);
@@ -30,6 +34,35 @@ export function TopBar({ back, title, children, menu, menuSummary, end }) {
     else if (options.current?.contains(document.activeElement)) document.activeElement?.blur();
   };
   useEffect(() => () => clearTimeout(closeTimer.current), []);
+  useLayoutEffect(() => {
+    if (!open || !trigger.current) return undefined;
+    const position = () => {
+      const viewport = window.visualViewport;
+      setPlacement(lessonControlsPosition(trigger.current.getBoundingClientRect(), {
+        left: viewport?.offsetLeft || 0, top: viewport?.offsetTop || 0,
+        width: viewport?.width ?? window.innerWidth, height: viewport?.height ?? window.innerHeight,
+      }));
+    };
+    position();
+    const observer = new ResizeObserver(position);
+    observer.observe(trigger.current);
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', position, true);
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', position);
+      window.removeEventListener('scroll', position, true);
+      window.visualViewport?.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('scroll', position);
+    };
+  }, [open]);
+  // The first portal commit is hidden until it has a viewport position. Focus
+  // only after that visible commit, and do not steal it again on repositioning.
+  useLayoutEffect(() => {
+    if (expanded && positioned) focusOptions();
+  }, [expanded, positioned]);
   useEffect(() => {
     if (!expanded) return undefined;
     const closeOutside = (event) => {
@@ -40,7 +73,6 @@ export function TopBar({ back, title, children, menu, menuSummary, end }) {
       event.preventDefault();
       closeOptions(true);
     };
-    focusOptions();
     document.addEventListener('pointerdown', closeOutside);
     document.addEventListener('focusin', closeOutside);
     document.addEventListener('keydown', closeOnEscape);
@@ -78,7 +110,9 @@ export function TopBar({ back, title, children, menu, menuSummary, end }) {
         </button>}
         {end && <div className={`shrink-0 [&_button]:min-h-11 ${menu ? 'max-sm:hidden' : ''}`}>{end}</div>}
       </div>
-      {menu && open && <div
+      {/* A body portal escapes the header/workspace stacking context. Command
+          controls sit above the nonmodal guide, without closing or resizing it. */}
+      {menu && open && createPortal(<div
         ref={options}
         id={optionsId}
         role='dialog'
@@ -88,7 +122,8 @@ export function TopBar({ back, title, children, menu, menuSummary, end }) {
         tabIndex={-1}
         data-lesson-controls
         data-state={closing ? 'closing' : 'open'}
-        className={`absolute right-2 top-full z-40 mt-2 flex max-h-[calc(100dvh-5rem)] w-80 max-w-[calc(100vw-1rem)] origin-top-right flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl outline-none ${closing ? 'lesson-controls-exit' : 'lesson-controls-enter'}`}
+        style={{ position: 'fixed', ...placement, visibility: placement ? 'visible' : 'hidden' }}
+        className={`z-[60] flex origin-top-right flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl outline-none ${closing ? 'lesson-controls-exit' : 'lesson-controls-enter'}`}
       >
         <div className='flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-2'>
           <h2 className='text-base font-bold text-slate-900'>Lesson controls</h2>
@@ -96,7 +131,7 @@ export function TopBar({ back, title, children, menu, menuSummary, end }) {
         </div>
         <div data-lesson-controls-body className='min-h-0 overflow-y-auto overscroll-contain p-4 [&_.hide-inline]:inline [&_button]:min-h-11 [&_[aria-label=Hands]]:w-auto [&_[aria-label=Hands]>div]:gap-2 [&_[aria-label=Hands]_button]:min-w-11'>{menu}</div>
         {end && <div className='shrink-0 border-t border-slate-200 px-4 py-3 sm:hidden [&_button]:min-h-11'>{end}</div>}
-      </div>}
+      </div>, document.body)}
     </header>
   );
 }
