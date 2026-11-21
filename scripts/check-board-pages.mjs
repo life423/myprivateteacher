@@ -12,18 +12,20 @@ import { WORD_BANK, WORD_LEVELS } from '../server/wordBank.js';
 
 // Real tutor/student components, HTTP image uploads, and room WebSockets. All
 // services and pictures are ephemeral fixtures; no running user app or cloud data.
-let dev = false, browserName = 'chrome', output;
+let dev = false, browserName = 'chrome', output, selectedViewport='all';
 for (let index = 2; index < process.argv.length; index += 1) {
   const arg = process.argv[index];
   if (arg === '--dev') dev = true;
   else if (arg === '--browser') browserName = process.argv[++index];
   else if (arg === '--output') output = process.argv[++index];
+  else if (arg === '--viewport') selectedViewport = process.argv[++index];
   else if (arg === '--help') {
-    console.log('Usage: node scripts/check-board-pages.mjs [--dev] [--browser chrome|chromium|webkit] [--output DIRECTORY]');
+    console.log('Usage: node scripts/check-board-pages.mjs [--dev] [--browser chrome|chromium|webkit] [--viewport all|desktop|phone] [--output DIRECTORY]');
     process.exit(0);
   } else throw new Error(`Unknown option: ${arg}`);
 }
 assert(['chrome', 'chromium', 'webkit'].includes(browserName), 'Unsupported browser');
+assert(['all','desktop','phone'].includes(selectedViewport),'Unsupported viewport');
 const root = fileURLToPath(new URL('../', import.meta.url));
 assert(dev || existsSync(join(root, 'dist/index.html')), 'Build first, or pass --dev.');
 const out = output ? resolve(output) : mkdtempSync(join(tmpdir(), 'mpt-board-pages-'));
@@ -44,6 +46,7 @@ function buildFingerprint(){
 if(!dev)report.build=buildFingerprint();
 const pageTrigger = page => page.getByRole('button', { name: /^Board pages, page \d+ of \d+$/ });
 const chooser = page => page.getByRole('dialog', { name: 'Board pages', exact: true });
+const deletion = page => page.getByRole('dialog', { name: /^Delete “.+”\?$/ });
 const latest = (page, type) => page.evaluate(t => window.pageReceived.filter(msg => msg.t === t).at(-1), type);
 const marker = page => page.evaluate(() => window.pageReceived.length);
 const authoritative = code => { const room = realtime.rooms.get(code); assert(room, 'Fixture lesson must exist'); return room; };
@@ -80,6 +83,8 @@ async function check(session, name, action) {
       geometry: [...document.querySelectorAll('button[aria-label^="Board pages"], button[aria-label="Show drawing tools"]')].map(node => {
         const r=node.getBoundingClientRect(); return { label:node.getAttribute('aria-label'), x:r.x,y:r.y,width:r.width,height:r.height,hit:node.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)) };
       }),
+      input:window.pageInput.slice(-40),
+      sheet:[...document.querySelectorAll('[data-panel-sheet] h2 button')].map(node=>({text:node.textContent,expanded:node.getAttribute('aria-expanded'),rect:node.getBoundingClientRect().toJSON()})),
     })).catch(() => null);
     const current=realtime.rooms.get(session.code);
     if(current)trace.server={pageId:current.pageId,restoring:current.restoring,pages:[...current.pages].map(([id,page])=>({id,...snapshot(page)})),assets:assets(session.code)};
@@ -93,7 +98,10 @@ async function check(session, name, action) {
 async function instrument(page) {
   page.on('pageerror', error => report.pageErrors.push(error.message));
   await page.addInitScript(() => {
-    window.pageSent = []; window.pageReceived = []; window.pageSockets = [];
+    window.pageSent = []; window.pageReceived = []; window.pageSockets = [];window.pageInput=[];
+    for(const type of ['pointerdown','pointerup','click','touchstart','touchend'])document.addEventListener(type,event=>{
+      const target=event.target.closest?.('button');const item={type,label:target?.getAttribute('aria-label')||target?.textContent.trim(),x:event.clientX,y:event.clientY,trusted:event.isTrusted,time:performance.now()};window.pageInput.push(item);queueMicrotask(()=>item.defaultPrevented=event.defaultPrevented);
+    },true);
     // These tests inspect game state, not speech synthesis or the host speakers.
     if (window.speechSynthesis) { window.speechSynthesis.speak = () => {}; window.speechSynthesis.cancel = () => {}; }
     const Native = window.WebSocket;
@@ -171,6 +179,14 @@ async function activate(room, locator) { if (room.cdp) await locator.tap(); else
 async function openPages(room) {
   if (!await chooser(room.tutor).isVisible()) await activate(room, pageTrigger(room.tutor));
   await chooser(room.tutor).waitFor({ state: 'visible' });
+  await chooser(room.tutor).evaluate(node=>Promise.all(node.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{}))));
+}
+async function confirmDeletePage(room) {
+  await openPages(room);
+  await activate(room, chooser(room.tutor).getByRole('button', { name: 'Delete page', exact: true }));
+  await deletion(room.tutor).waitFor({ state: 'visible' });
+  await deletion(room.tutor).evaluate(node=>Promise.all(node.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{}))));
+  await room.tutor.waitForFunction(() => document.activeElement?.textContent.trim() === 'Cancel');
 }
 async function waitPage(room, index) {
   const lesson = authoritative(room.code), id = [...lesson.pages.keys()][index];
@@ -196,10 +212,24 @@ async function addPage(room) {
 }
 async function closeMaterials(room) {
   const close = room.tutor.getByRole('button', { name: 'Close Materials', exact: true });
-  if (await close.isVisible()) await activate(room, close);
+  if (await close.isVisible()) {
+    await activate(room, close);
+    // The drawer restores its trigger in requestAnimationFrame. Wait for that
+    // handoff before the next keyboard action, so Enter cannot reopen it.
+    await room.tutor.waitForFunction(()=>{
+      const trigger=document.querySelector('[data-panel-sheet] h2 button[aria-expanded]');
+      return trigger?.getAttribute('aria-expanded')==='false'&&document.activeElement===trigger;
+    });
+    await room.tutor.locator('[data-panel-sheet-slot]').evaluate(node=>Promise.all(node.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{}))));
+  }
 }
 async function materials(room, tab) {
   const { tutor } = room;
+  const sheetToggle=tutor.locator('[data-panel-sheet] h2 button[aria-expanded]');
+  if(await sheetToggle.count()&&await sheetToggle.getAttribute('aria-expanded')==='false'){
+    await activate(room,sheetToggle);
+    await tutor.waitForFunction(()=>document.querySelector('[data-panel-sheet] h2 button[aria-expanded]')?.getAttribute('aria-expanded')==='true');
+  }
   const back = tutor.getByRole('button', { name: 'Return to materials', exact: true });
   if (await back.isVisible()) await activate(room, back);
   if (!await tutor.getByRole('tab', { name: tab, exact: true }).isVisible()) await activate(room, tutor.getByRole('button', { name: 'Materials', exact: true }));
@@ -226,7 +256,11 @@ async function ink(room) {
   const a = await point(tutor, 700, 650), b = await point(tutor, 900, 700);
   if (room.cdp) {
     await room.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...a, id: 1 }] });
-    for (let n = 1; n <= 5; n++) await room.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: a.x + (b.x-a.x)*n/5, y: a.y+(b.y-a.y)*n/5, id: 1 }] });
+    for (let n = 1; n <= 10; n++) {
+      await pause(30);
+      await room.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: a.x + (b.x-a.x)*n/10, y: a.y+(b.y-a.y)*n/10, id: 1 }] });
+    }
+    await pause(30);
     await room.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   } else { await tutor.mouse.move(a.x,a.y); await tutor.mouse.down(); await tutor.mouse.move(b.x,b.y,{steps:5}); await tutor.mouse.up(); }
   await condition(() => authoritative(room.code).board.strokes.length > 0 && authoritative(room.code).board.strokes.every(s => s.done), 'A completed actual input stroke must be stored');
@@ -294,8 +328,9 @@ async function run(base, mobile) {
     });
     await check(room,'Removing clone pictures does not delete an image still referenced by another board',async()=>{
       await materials(room,'Pictures');
+      await activate(room,tutor.getByRole('button',{name:'Picture options',exact:true}));
       await activate(room,tutor.getByRole('button',{name:'Remove all session images',exact:true}));
-      await activate(room,tutor.getByRole('button',{name:'Sure? All session images and their board pieces go',exact:true}));
+      await activate(room,tutor.getByRole('button',{name:'Remove images',exact:true}));
       await closeMaterials(room); await countBoth(room,'[data-picture-piece]',0);
       assert.deepEqual(assets(room.code),room.assets); assert.equal(authoritative(room.code).pages.get(room.originalId).pieces.size,1);
       await switchPage(room,0); await countBoth(room,'[data-picture-piece]',1); await imageWorks(room);
@@ -383,6 +418,102 @@ async function run(base, mobile) {
       await tutor.screenshot({path:join(out,`restored-deck-${mobile?'phone':'desktop'}.png`)});
       return {boards:room.deck.size,activeTiles:3,sharedAssets:assets(room.code),partialStudentSnapshots:0};
     });
+    await check(room,'Delete page is deliberate, names its target, and Cancel or Escape preserves all work',async()=>{
+      await switchPage(room,2);
+      const before=new Map([...authoritative(room.code).pages].map(([id,page])=>[id,snapshot(page)]));
+      await confirmDeletePage(room);
+      const title=authoritative(room.code).board.title;
+      assert.equal(await deletion(tutor).getAttribute('aria-label'),`Delete “${title}”?`);
+      await tutor.screenshot({path:join(out,`delete-page-confirm-${mobile?'phone':'desktop'}.png`)});
+      await activate(room,deletion(tutor).getByRole('button',{name:'Cancel',exact:true}));
+      await chooser(tutor).waitFor();
+      await tutor.waitForFunction(()=>document.activeElement?.textContent.trim()==='Delete page');
+      await confirmDeletePage(room);
+      await tutor.keyboard.press('Escape');
+      await chooser(tutor).waitFor();
+      await tutor.waitForFunction(()=>document.activeElement?.textContent.trim()==='Delete page');
+      assert.equal(authoritative(room.code).pages.size,before.size);
+      for(const[id,expected]of before)assert.deepEqual(snapshot(authoritative(room.code).pages.get(id)),expected);
+      await tutor.keyboard.press('Escape');
+      return {cancelDefaultFocus:true,escapeReturnsToChooser:true,boardsUnchanged:before.size};
+    });
+    await check(room,'Deleting the current page moves both participants to its neighbor and preserves every retained page',async()=>{
+      await switchPage(room,2);
+      const live=authoritative(room.code),target=live.pageId,before=new Map([...live.pages].map(([id,page])=>[id,snapshot(page)]));
+      const next=[...live.pages.keys()][3],count=live.pages.size;
+      await confirmDeletePage(room);
+      await activate(room,deletion(tutor).getByRole('button',{name:'Delete page',exact:true}));
+      await condition(()=>!live.pages.has(target)&&live.pages.size===count-1,'Confirmed page deletion must reach server');
+      await waitPage(room,2);
+      assert.equal(live.pageId,next);
+      for(const[id,expected]of before)if(id!==target)assert.deepEqual(snapshot(live.pages.get(id)),expected);
+      assert.deepEqual(assets(room.code),room.assets);
+      await tutor.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')?.startsWith('Board pages,'));
+      assert.equal(await chooser(tutor).count(),0);
+      assert.equal(await pageTrigger(student).count(),0);
+      return {deletedPage:target,retainedPages:live.pages.size,studentFollows:true,otherWorkUnchanged:true};
+    });
+    await check(room,'The last board cannot be deleted and the tutor keeps a usable page',async()=>{
+      const live=authoritative(room.code);
+      while(live.pages.size>1){
+        const count=live.pages.size,target=live.pageId;
+        await confirmDeletePage(room);
+        await activate(room,deletion(tutor).getByRole('button',{name:'Delete page',exact:true}));
+        await condition(()=>live.pages.size===count-1&&!live.pages.has(target),'Each confirmed deletion must remove only its target');
+        await waitPage(room,[...live.pages.keys()].indexOf(live.pageId));
+      }
+      await openPages(room);
+      const remove=chooser(tutor).getByRole('button',{name:'Delete page',exact:true});
+      assert.equal(await remove.isDisabled(),true);
+      await tutor.screenshot({path:join(out,`last-board-${mobile?'phone':'desktop'}.png`)});
+      await tutor.keyboard.press('Escape');
+      return {boards:live.pages.size,deleteDisabled:true,studentHasNoDelete:true};
+    });
+    if(!mobile)await check(room,'Delete controls stay reachable by keyboard on tablet and with 200% text enlargement',async()=>{
+      await addPage(room);
+      const sizes=[{width:768,height:1024,text:100},{width:1440,height:900,text:200},{width:393,height:852,text:200}],measurements=[];
+      for(const size of sizes){
+        await tutor.setViewportSize({width:size.width,height:size.height});
+        const style=await tutor.addStyleTag({content:`html { font-size: ${size.text}%; }`});
+        try{
+          await pageTrigger(tutor).focus();await tutor.keyboard.press('Enter');await chooser(tutor).waitFor();
+          await chooser(tutor).evaluate(node=>Promise.all(node.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{}))));
+          const menuGeometry=await chooser(tutor).evaluate(node=>{
+            const bounds=node.getBoundingClientRect();return {x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height,overflow:node.scrollWidth>node.clientWidth,
+              controls:[...node.querySelectorAll('button')].map(button=>{const r=button.getBoundingClientRect();return {label:button.getAttribute('aria-label')||button.textContent.trim(),x:r.x,y:r.y,width:r.width,height:r.height};})};
+          });
+          assert(!menuGeometry.overflow,'Chooser must not overflow horizontally with enlarged text');
+          for(const action of menuGeometry.controls){
+            assert(action.width>=44&&action.height>=44,'Chooser actions must keep comfortable targets');
+            assert(action.x>=menuGeometry.x&&action.x+action.width<=menuGeometry.x+menuGeometry.width+1,'Chooser actions must fit their panel');
+          }
+          await tutor.screenshot({path:join(out,`delete-chooser-${size.width}-text${size.text}.png`)});
+          await chooser(tutor).getByRole('button',{name:'Delete page',exact:true}).focus();await tutor.keyboard.press('Enter');
+          await deletion(tutor).waitFor();await tutor.waitForFunction(()=>document.activeElement?.textContent.trim()==='Cancel');
+          await deletion(tutor).evaluate(node=>Promise.all(node.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{}))));
+          const geometry=await deletion(tutor).evaluate(node=>{
+            const bounds=node.getBoundingClientRect();
+            return {x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height,overflow:node.scrollWidth>node.clientWidth,
+              controls:[...node.querySelectorAll('button')].map(button=>{const r=button.getBoundingClientRect();return {label:button.getAttribute('aria-label')||button.textContent.trim(),x:r.x,y:r.y,width:r.width,height:r.height,hit:button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})};
+          });
+          assert(geometry.x>=0&&geometry.y>=0&&geometry.x+geometry.width<=size.width+1&&geometry.y+geometry.height<=size.height+1,'Delete confirmation must fit its viewport');
+          assert(!geometry.overflow,'Delete confirmation must not overflow horizontally with enlarged text');
+          for(const action of geometry.controls){
+            assert(action.width>=44&&action.height>=44,'Confirmation actions need 44px targets');
+            assert(action.x>=geometry.x&&action.x+action.width<=geometry.x+geometry.width+1&&action.y>=geometry.y&&action.y+action.height<=geometry.y+geometry.height+1,`${action.label} must fit entirely inside confirmation`);
+            assert(action.hit,`${action.label} must remain reachable`);
+          }
+          await tutor.screenshot({path:join(out,`delete-page-${size.width}x${size.height}-text${size.text}.png`)});
+          await tutor.keyboard.press('Escape');await chooser(tutor).waitFor();
+          await tutor.waitForFunction(()=>document.activeElement?.textContent.trim()==='Delete page');
+          await tutor.keyboard.press('Escape');
+          await tutor.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')?.startsWith('Board pages,'));
+          measurements.push({viewport:size,chooser:menuGeometry,confirmation:geometry});
+        }finally{await style.evaluate(node=>node.remove());}
+      }
+      await tutor.setViewportSize({width:1440,height:900});
+      return {keyboard:true,textEnlargement:true,measurements};
+    });
     if(mobile)await check(room,'Page controls, student indicator and chooser remain reachable on narrow and landscape phones',async()=>{
       const sizes=[{width:320,height:852},{width:740,height:390}],measurements=[];
       for(const viewport of sizes){
@@ -417,7 +548,7 @@ async function run(base, mobile) {
     });
   } finally { await room.context.close(); }
 }
-try { const base=await start(); for(const mobile of[false,true])await run(base,mobile); }
+try { const base=await start(); for(const mobile of[false,true].filter(mobile=>selectedViewport==='all'||selectedViewport===(mobile?'phone':'desktop')))await run(base,mobile); }
 catch(error){report.fatal=error.stack;}
 finally {
   await browser?.close(); realtime?.close(); await vite?.close();

@@ -294,12 +294,18 @@ try {
       if (room.cdp) {
         const bounds = await scroll.boundingBox();
         assert(bounds && bounds.height >= 80, 'Material results need a usable touch-scroll area');
-        // Use Chromium's compositor gesture for native scrolling. The raw touch
-        // helper above tests app pointer handlers and has no paced native-pan clock.
-        await room.cdp.send('Input.synthesizeScrollGesture', {
-          x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2),
-          yDistance: -Math.min(100, (bounds.height - 32) / 2), gestureSourceType: 'touch', speed: 250, preventFling: true,
-        });
+        // Native panning needs an actual paced finger stream. The compositor
+        // synthesis command can complete without dispatching a pan in Chrome;
+        // retain the positive-scroll assertion to verify the user interaction.
+        const x = Math.round(bounds.x + bounds.width / 2), y = Math.round(bounds.y + bounds.height / 2);
+        const distance = Math.min(100, (bounds.height - 32) / 2);
+        room.scrollCheckpoint = 'trusted finger scroll in Materials';
+        await room.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+        for (let step = 1; step <= 10; step++) {
+          await pause(30);
+          await room.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - distance * step / 10, id: 1 }] });
+        }
+        await room.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await tutor.waitForFunction(() => document.querySelector('[data-materials-scroll]').scrollTop > 0);
         room.materialTouchScroll = await scroll.evaluate(async element => {
           let last = element.scrollTop, stable = 0;

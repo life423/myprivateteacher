@@ -244,6 +244,35 @@ Compare the current and revised layout with tutors through this sequence: start 
 
 Tutor-controlled board pages, saved lesson preparation and private tutor prompts have since been delivered. The current workflow and its verification are recorded above; the original sidebar change did not itself introduce those features.
 
+## Delete board page and teaching-flow checks — November 21, 2026
+
+The owner approved adding page deletion before testing the teaching experience. **Board pages → Delete page** is a quiet full-width action beneath Blank page and Duplicate. It applies to the current page; there are no permanent footer trash controls or per-row delete icons. A confirmation replaces the chooser contents, names the page, explains that its board work cannot be recovered through Undo, and makes Cancel the initial keyboard target. Saved lesson preparations remain intact. Reopening a deleted prepared activity explicitly creates a fresh live page; it does not restore deleted student work.
+
+Cancel and Escape return to the chooser's Delete action. Another Escape closes the chooser. The request is tied to the confirmed page ID, is disabled while pending or disconnected, and waits for server acknowledgement. Deleting the last page is disabled with a short explanation; the server independently enforces tutor authority and last-page protection. On success, both participants move to a neighboring page. Keyboard focus returns to the newly mounted page-counter control, including the Stage remount boundary. Failures remain visible and allow retry. The dialog follows the visual viewport and uses two equal confirmation-button columns so 200% text can wrap without clipping.
+
+The production build and final full unit suite pass (759 tests in 90 suites, with four workers). Production browser checks passed 132 cases across board pages (30), saved lessons (26), the starter lesson (10), illustrated teaching pieces (29), retained whiteboard workflows (19), and lesson controls (18). These use real tutor/student components, HTTP requests and WebSockets with isolated synthetic accounts and memory storage. They cover preparation, save/reload/reopen, private notes and dictation, explicit native/photo additions, page switching and deletion, student synchronization, retained work, games, Materials search/scroll/drafts, and reconnect/restart recovery. Deleting a prepared activity page leaves the saved lesson and six other live pages unchanged; explicitly starting it again produces a fresh page with no automatically deployed pictures.
+
+Rendered deletion controls were inspected on desktop 1440×900, tablet 768×1024, phone 393×852 and narrow/landscape phones 320×852 and 740×390. The chooser and confirmation keep controls at least 44px, within their panel and viewport. Keyboard Enter/Cancel/Escape, focus restoration and 200% root-text enlargement on desktop and phone were checked. Settled screenshots caught and led to correction of a clipped Cancel button at 200%; both confirmation actions now fit. Phone scripts use paced trusted touch gestures, with no retry or keyboard substitution for the post-drawing Materials tap. Old script expectations for automatic worksheets were updated to the already-released tutor-controlled additions; positive synchronization/privacy/scroll assertions remain.
+
+Known phone behavior: enabling sound boxes at the untouched screen-filling view may center that view on the boxes. Explicit teaching-piece additions themselves preserve the camera. These checks do not establish physical-device touch, screen-reader output, live WebRTC media quality or measured Core Web Vitals.
+
+The first real-account check was blocked by the Cosmos network firewall. In the owner's separately authorized follow-up, the current computer's single public IP was added while preserving the four existing rules. Both read-write keys were regenerated in sequence, and local `.env` plus the production `mongodb-uri` secret now use the replacement secondary key. The exposed primary key was regenerated after the consumer switch. No credentials belong in Git or this record.
+
+Production rolled to `phoneme-pop--dbrot-mwr1yk8p` using the unchanged `7dfd4df` image; the local Delete page work was not deployed. After Azure propagation, actual authenticated catalog reads succeeded with the replacement credential, and both local and production `/api/words` returned 200. Local Blob access returned all 28 library cards and a valid image. Real-account browser checks reused the existing disposable cat lesson: a temporary private review note was saved, reopened, then removed and saved again, restoring the original content. A library face was added in a live teaching room, the student joined and received the same three tiles/boxes/picture, and a student reload recovered that work. The teacher session remains available locally. Live camera/microphone quality and physical-device touch still require their separate checks.
+
+Conservative internal review heuristics, not measured product-quality scores:
+
+| Dimension | Score | Evidence or next check |
+| --- | --- | --- |
+| Hierarchy | 9/10 | One contextual Delete action; confirmation replaces the chooser. |
+| Usability | 9/10 | Named page, safe Cancel default, visible pending/error states and protected last page. |
+| Aesthetics | 9/10 | Existing spacing, type, surface and button styles; equal confirmation columns. |
+| Interaction | 9/10 | Keyboard cancellation, successful deletion focus, student follow and saved-lesson preservation checked. |
+| Responsiveness | 9/10 | Settled phone/tablet/desktop and 200% text inspected without clipped controls. |
+| Accessibility | 8/10 | Named dialog, keyboard focus and touch alternatives covered; screen-reader and physical-device review remain. |
+| Performance | 8/10 | No new dependency; production build passes. Core Web Vitals still need measurement. |
+| Product coherence | 9/10 | Fits existing page management and preserves teacher-controlled lesson preparation. |
+
 ## Key references
 
 - [NN/g Tabs, Used Right](https://www.nngroup.com/articles/tabs-used-right/)
