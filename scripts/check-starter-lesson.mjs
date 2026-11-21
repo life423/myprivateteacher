@@ -119,7 +119,7 @@ async function endButton(room){
   await button.waitFor();return button;
 }
 async function waitActive(room,index){
-  await panel(room.tutor).getByRole('button',{name:'Activity is on the board',exact:true}).waitFor();
+  await panel(room.tutor).getByRole('button',{name:'Activity page is open',exact:true}).waitFor();
   assert.equal(await panel(room.tutor).getByRole('combobox',{name:'Lesson activity',exact:true}).inputValue(),String(index));
   const live=realtime.rooms.get(room.code);assert(live);
   for(const page of[room.tutor,room.student])await page.waitForFunction(id=>window.lessonReceived.filter(msg=>msg.t==='board').at(-1)?.pageId===id,live.pageId);
@@ -135,14 +135,16 @@ async function privacy(room){
   assert.deepEqual(room.networkLeaks,[],'Private lesson content must not enter student HTTP responses or URLs');
   return{socketMessages:await room.student.evaluate(()=>window.lessonReceived.length),httpResponsesChecked:room.httpResponses,secretMarkersChecked:room.markers.length,leaks:0};
 }
-async function display(page){
-  return page.locator('[data-picture-piece] > svg').evaluate((element,{sourceFont,nativeWidth})=>{
+async function display(page,cropWidth){
+  // The nested SVG's client box can include its unclipped source image. Measure
+  // the outer frame, which is exactly the selected window shown on the board.
+  return page.locator('[data-picture-piece] > rect').evaluate((element,{sourceFont,nativeWidth})=>{
     const rect=element.getBoundingClientRect(),board=element.closest('[data-board-surface]').getBoundingClientRect();
     const left=Math.max(rect.left,board.left,0),right=Math.min(rect.right,board.right,innerWidth);
     const top=Math.max(rect.top,board.top,0),bottom=Math.min(rect.bottom,board.bottom,innerHeight);
     return{image:rect.toJSON(),board:board.toJSON(),estimatedFontCssPx:sourceFont*rect.width/nativeWidth,
       visibleFraction:Math.max(0,right-left)*Math.max(0,bottom-top)/(rect.width*rect.height),viewport:{width:innerWidth,height:innerHeight}};
-  },{sourceFont,nativeWidth:template.asset.w});
+  },{sourceFont,nativeWidth:cropWidth});
 }
 async function run(base,mobile){
   const context=await browser.newContext({viewport:mobile?{width:393,height:852}:{width:1440,height:900},hasTouch:mobile,isMobile:mobile});
@@ -216,20 +218,31 @@ async function run(base,mobile){
       await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,2);await bothCount(room,'[data-letter-tile]',0);assert.equal(realtime.rooms.get(room.code).board.boxes,3);
       return{reviewLetters:5,buildLetters:5,dictationAnswerTiles:0,...await privacy(room)};
     }))return;
-    await check(room,'The actual reading worksheet is shared without private prompts; its displayed text is measured',async()=>{
-      await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await bothCount(room,'[data-picture-piece]',1);
+    await check(room,'The tutor selects a reading sentence from the legacy source without sharing the whole sheet or changing zoom',async()=>{
+      await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,3);await bothCount(room,'[data-picture-piece]',0);
       assert.equal(await tutor.locator('section[aria-label="Prepared lesson"] select[aria-label="Lesson activity"]').inputValue(),'3');
       assert.equal(realtime.rooms.get(room.code).board.boxes,0);
-      await student.waitForFunction(()=>window.lessonReceived.some(message=>message.t==='focus'&&message.reading===true));
-      await closeGuide(room);
+      await activate(room,panel(tutor).getByRole('button',{name:/^Choose parts from /}).first());
+      await activate(room,tutor.getByRole('button',{name:'Draw a box',exact:true}));
+      const image=tutor.getByRole('img',{name:'Picture. Tap a part to select it, then drag it onto the board.',exact:true});
+      const rect=await image.boundingBox();assert(rect);
+      await tutor.mouse.move(rect.x+rect.width*.06,rect.y+rect.height*.16);await tutor.mouse.down();
+      await tutor.mouse.move(rect.x+rect.width*.52,rect.y+rect.height*.27,{steps:6});await tutor.mouse.up();
+      const camera=async page=>page.locator('[data-board-surface] > svg[viewBox]').first().getAttribute('viewBox');
+      const before={tutor:await camera(tutor),student:await camera(student)};
+      await activate(room,tutor.getByRole('button',{name:'Add selected part to board',exact:true}));await bothCount(room,'[data-picture-piece]',1);
+      assert.deepEqual({tutor:await camera(tutor),student:await camera(student)},before);
+      room.readPiece=[...realtime.rooms.get(room.code).board.pieces.values()][0];
+      assert(room.readPiece.crop.w<template.asset.w*.6&&room.readPiece.crop.h<template.asset.h*.2,'Only the teacher-selected sentence crop is shared');
+      await activate(room,tutor.getByRole('button',{name:'Back to tutor guide',exact:true}));await closeGuide(room);
       for(const page of[tutor,student])await page.waitForFunction(({font,nativeWidth})=>{
-        const element=document.querySelector('[data-picture-piece] > svg');
+        const element=document.querySelector('[data-picture-piece] > rect');
         return element&&font*element.getBoundingClientRect().width/nativeWidth>=20;
-      },{font:sourceFont,nativeWidth:template.asset.w});
-      room.readDisplay={tutor:await display(tutor),student:await display(student)};
+      },{font:sourceFont,nativeWidth:room.readPiece.crop.w});
+      room.readDisplay={tutor:await display(tutor,room.readPiece.crop.w),student:await display(student,room.readPiece.crop.w)};
       for(const [label,view]of Object.entries(room.readDisplay)){
-        assert(view.visibleFraction>=0.95,`${label} should see the entire reading sheet without first finding it by panning`);
-        assert(view.estimatedFontCssPx>=20,`${label} should receive at least20px nominal text for this starter reading sheet`);
+        assert(view.visibleFraction>=0.95,`${label} should see the selected sentence without first finding it by panning`);
+        assert(view.estimatedFontCssPx>=20,`${label} should receive at least20px nominal text for this selected sentence`);
       }
       room.readPiece=[...realtime.rooms.get(room.code).board.pieces.values()][0];
       for(const [label,page]of[['tutor',tutor],['student',student]])await page.screenshot({path:join(out,`starter-read-${mobile?'phone':'desktop'}-${label}.png`)});

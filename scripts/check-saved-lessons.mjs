@@ -114,20 +114,27 @@ async function waitActive(room,index){
     // Reading intentionally closes the phone sheet. Confirm the runner's real
     // completed state in its mounted private panel, not visible sheet chrome.
     const mounted=room.tutor.locator('section[aria-label="Prepared lesson"]');
-    await mounted.getByRole('button',{name:'Activity is on the board',exact:true,includeHidden:true}).waitFor({state:'attached'});
+    await mounted.getByRole('button',{name:'Activity page is open',exact:true,includeHidden:true}).waitFor({state:'attached'});
     assert.equal(await mounted.locator('select[aria-label="Lesson activity"]').inputValue(),String(index));
   }else{
-    await panel(room.tutor).getByRole('button',{name:'Activity is on the board',exact:true}).waitFor();
+    await panel(room.tutor).getByRole('button',{name:'Activity page is open',exact:true}).waitFor();
     assert.equal(await panel(room.tutor).getByRole('combobox',{name:'Lesson activity',exact:true}).inputValue(),String(index));
   }
   const live=realtime.rooms.get(room.code);assert(live);
   for(const page of[room.tutor,room.student])await page.waitForFunction(id=>window.lessonReceived.filter(msg=>msg.t==='board').at(-1)?.pageId===id,live.pageId);
-  if(reading){
-    const scope={pageId:live.pageId,pageEpoch:live.pageEpoch};
-    await room.tutor.waitForFunction(scope=>window.lessonSent.some(msg=>msg.t==='focus'&&msg.reading===true&&msg.pageId===scope.pageId&&msg.pageEpoch===scope.pageEpoch),scope);
-    await room.student.waitForFunction(scope=>window.lessonReceived.some(msg=>msg.t==='focus'&&msg.reading===true&&msg.pageId===scope.pageId&&msg.pageEpoch===scope.pageEpoch),scope);
-  }
   return live.board;
+}
+async function addPreparedCrop(room){
+  await openLesson(room);
+  await activate(room,panel(room.tutor).getByRole('button',{name:/^Choose parts from /}).first());
+  await activate(room,room.tutor.getByRole('button',{name:'Draw a box',exact:true}));
+  const image=room.tutor.getByRole('img',{name:'Picture. Tap a part to select it, then drag it onto the board.',exact:true});
+  const rect=await image.boundingBox();assert(rect);
+  await room.tutor.mouse.move(rect.x+rect.width*.2,rect.y+rect.height*.2);await room.tutor.mouse.down();
+  await room.tutor.mouse.move(rect.x+rect.width*.7,rect.y+rect.height*.7,{steps:6});await room.tutor.mouse.up();
+  await activate(room,room.tutor.getByRole('button',{name:'Add selected part to board',exact:true}));
+  await bothCount(room,'[data-picture-piece]',1);
+  await activate(room,room.tutor.getByRole('button',{name:'Back to tutor guide',exact:true}));
 }
 async function chooseActivity(room,index){await openLesson(room);await panel(room.tutor).getByRole('combobox',{name:'Lesson activity',exact:true}).selectOption(String(index));return waitActive(room,index);}
 async function bothCount(room,selector,count){for(const page of[room.tutor,room.student])await page.waitForFunction(({selector,count})=>document.querySelectorAll(selector).length===count,{selector,count});}
@@ -231,9 +238,9 @@ async function run(base,mobile){
       // without another click. Do not call openLesson here: that would hide a
       // regression in automatic discovery on the phone sheet.
       await panel(tutor).waitFor({state:'visible'});await waitActive(room,0);
-      await bothCount(room,'[data-letter-tile]',2);await bothCount(room,'[data-picture-piece]',1);
-      assert.equal(realtime.rooms.get(room.code).pages.size,1);assert.equal(realtime.rooms.get(room.code).pictures.size,1,'Only the opened Review card may enter the room; later private worksheets must remain unloaded');
-      assert(await panel(tutor).getByRole('button',{name:'Activity is on the board',exact:true}).isDisabled());
+      await bothCount(room,'[data-letter-tile]',2);await bothCount(room,'[data-picture-piece]',0);
+      assert.equal(realtime.rooms.get(room.code).pages.size,1);assert.equal(realtime.rooms.get(room.code).pictures.size,0,'Review suggestions and later worksheets remain private until explicitly added');
+      assert(await panel(tutor).getByRole('button',{name:'Activity page is open',exact:true}).isDisabled());
       const guide=tutor.getByRole('complementary',{name:'Tutor guide',exact:true}),surface=tutor.locator('[data-board-surface]');
       const geometry=async(page=tutor)=>({bounds:await page.locator('[data-board-surface]').boundingBox(),zoom:await page.getByRole('button',{name:'Zoom to 100%',exact:true}).innerText()});
       const docked=await guide.getAttribute('data-docked')==='true';
@@ -259,16 +266,16 @@ async function run(base,mobile){
       assert.equal(await tutor.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Tutor guide','Escape returns focus to the visible launcher');await openLesson(room);
       return{automaticFirstActivity:true,privatePanelOpened:true,laterMaterialsUnloaded:true,guideWidth:guideBounds.width,guideDocked:docked,tutorBoardFitsBesideGuide:docked,overlayGeometryUnchanged:!docked,studentViewUnchanged:true,closeAndEscapeFocusReturn:true,...await privacy(room)};
     }))return;
-    await check(room,'Review opens only its chosen letters/card; Next provides a blank private-dictation page',async()=>{
+    await check(room,'Review opens its chosen letters without automatic pictures; Next provides a blank private-dictation page',async()=>{
       await waitActive(room,0);
-      assert(await panel(tutor).getByRole('button',{name:'Activity is on the board',exact:true}).isDisabled());
-      await bothCount(room,'[data-letter-tile]',2);await bothCount(room,'[data-picture-piece]',1);
+      assert(await panel(tutor).getByRole('button',{name:'Activity page is open',exact:true}).isDisabled());
+      await bothCount(room,'[data-letter-tile]',2);await bothCount(room,'[data-picture-piece]',0);
       room.reviewPage=realtime.rooms.get(room.code).pageId;
       await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,1);
       await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',0);
       assert(await panel(tutor).getByText(dictationTarget,{exact:true}).isVisible());assert.equal(realtime.rooms.get(room.code).board.boxes,0);
       room.dictationPage=realtime.rooms.get(room.code).pageId;
-      return{reviewTiles:2,reviewCards:1,dictationBlank:true,...await privacy(room)};
+      return{reviewTiles:2,reviewCards:0,dictationBlank:true,...await privacy(room)};
     });
     await check(room,'Build words and Read use separate pages; Previous retains the learner’s work',async()=>{
       await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,2);
@@ -280,9 +287,10 @@ async function run(base,mobile){
       await tutor.getByRole('textbox',{name:'Add tiles',exact:true}).fill('x');await activate(room,tutor.getByRole('button',{name:'Add',exact:true}));await bothCount(room,'[data-letter-tile]',4);
       const ids=[...realtime.rooms.get(room.code).board.tiles.keys()];
       await openLesson(room);await activate(room,panel(tutor).getByRole('button',{name:'Next activity',exact:true}));await waitActive(room,3);
-      await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',1);
+      await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',0);
       room.readPage=realtime.rooms.get(room.code).pageId;
-      const picture=[...realtime.rooms.get(room.code).board.pieces.values()][0];assert.equal(realtime.rooms.get(room.code).pictures.get(picture.pic).title,'Lesson worksheet');
+      await addPreparedCrop(room);
+      const picture=[...realtime.rooms.get(room.code).board.pieces.values()][0];assert.equal(realtime.rooms.get(room.code).pictures.get(picture.pic).title,'Lesson material');
       const source=await student.locator('[data-picture-piece] image').getAttribute('href');const res=await studentContext.request.get(new URL(source,base).href);assert.equal(res.status(),200);
       await openLesson(room);await activate(room,panel(tutor).getByRole('button',{name:'Previous activity',exact:true}));await waitActive(room,2);await bothCount(room,'[data-letter-tile]',4);
       assert.deepEqual([...realtime.rooms.get(room.code).board.tiles.keys()],ids);assert.equal(realtime.rooms.get(room.code).pageId,room.buildPage);assert.equal(realtime.rooms.get(room.code).pages.size,4);

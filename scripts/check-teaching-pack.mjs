@@ -51,7 +51,7 @@ assert.equal(new Set([...assetBytes.values()].map(hash)).size,4,'All four teachi
 for(const activity of template.activities)assert(/^[a-z ]*$/.test(activity.letters),'Board tiles remain ordinary ASCII spellings');
 assert(!template.readingLines.join(' ').includes('Sam'),'This pack passage uses Pat only');
 report.template={id:template.id,previousId:legacy.id,assets:[...assets.values()].map(({id,w,h,font})=>({id,w,h,minTargetSourceFontPx:font}))};
-report.limitations.push('Nominal font estimates use reviewed SVG target-font metadata scaled by raster display width;20px is a local portrait-fixture regression requirement, not a clinical or universal threshold. Header and teaching-label text is not scored as a learner decoding target.');
+report.limitations.push('Reviewed source typography is checked from SVG metadata. The live lesson exercises native text and selected image parts; it does not measure clinical readability. Enabling sound boxes retains the established horizontal centering at phone Fill scale.');
 const templateFixture=memoryLessonTemplates(),templates=templateFixture.templates;
 await templates.publish(legacy,legacyBytes);
 const owners=new Set(),legacyCopies=new Map(),customCopies=new Map();
@@ -146,27 +146,14 @@ async function privacy(room){
   assert.deepEqual(room.networkLeaks,[],'Private lesson content must not enter student HTTP responses or URLs');
   return{socketMessages:await room.student.evaluate(()=>window.lessonReceived.length),httpResponsesChecked:room.httpResponses,secretMarkersChecked:room.markers.length,leaks:0};
 }
-async function display(page,asset){
-  return page.locator('[data-picture-piece] > svg').evaluate((element,{font,nativeWidth})=>{
-    const rect=element.getBoundingClientRect(),board=element.closest('[data-board-surface]').getBoundingClientRect();
-    const left=Math.max(rect.left,board.left,0),right=Math.min(rect.right,board.right,innerWidth);
-    const top=Math.max(rect.top,board.top,0),bottom=Math.min(rect.bottom,board.bottom,innerHeight);
-    return{image:rect.toJSON(),board:board.toJSON(),minTargetNominalCssPx:font*rect.width/nativeWidth,
-      visibleFraction:Math.max(0,right-left)*Math.max(0,bottom-top)/(rect.width*rect.height),viewport:{width:innerWidth,height:innerHeight}};
-  },{font:asset.font,nativeWidth:asset.w});
-}
 async function confirmActivity(room,index){
-  const activity=template.activities[index],mounted=room.tutor.locator('section[aria-label="Prepared lesson"]');
-  await mounted.getByRole('button',{name:'Activity is on the board',exact:true,includeHidden:true}).waitFor({state:'attached'});
+  const mounted=room.tutor.locator('section[aria-label="Prepared lesson"]');
+  await mounted.getByRole('button',{name:'Activity page is open',exact:true,includeHidden:true}).waitFor({state:'attached'});
   assert.equal(await mounted.locator('select[aria-label="Lesson activity"]').inputValue(),String(index));
   const live=realtime.rooms.get(room.code),scope={pageId:live.pageId,pageEpoch:live.pageEpoch};
   for(const page of[room.tutor,room.student])await page.waitForFunction(scope=>{
     const board=window.lessonReceived.filter(message=>message.t==='board').at(-1);return board?.pageId===scope.pageId&&board?.pageEpoch===scope.pageEpoch;
   },scope);
-  if(activity.type==='read'){
-    await room.tutor.waitForFunction(scope=>window.lessonSent.some(message=>message.t==='focus'&&message.reading===true&&message.pageId===scope.pageId&&message.pageEpoch===scope.pageEpoch),scope);
-    await room.student.waitForFunction(scope=>window.lessonReceived.some(message=>message.t==='focus'&&message.reading===true&&message.pageId===scope.pageId&&message.pageEpoch===scope.pageEpoch),scope);
-  }
   return live;
 }
 async function choose(room,index){
@@ -175,26 +162,46 @@ async function choose(room,index){
 }
 async function sheet(room,index){
   const activity=template.activities[index],asset=assets.get(activity.assetIds[0]);assert(asset);
-  const live=await choose(room,index);await closeGuide(room);
-  // A reconnect intentionally replays the five-second pointing hint. Dismiss it
-  // with the real close control before taking unobstructed worksheet screenshots.
-  for(const page of[room.tutor,room.student])for(const close of await page.getByRole('button',{name:'Close this message',exact:true}).all())if(await close.isVisible())await activate(room,close);
-  await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',1);assert.equal(live.board.boxes,0);
-  const piece=[...live.board.pieces.values()][0],picture=live.pictures.get(piece.pic);
-  assert.equal(hash(picture.bytes),hash(assetBytes.get(asset.id)),'The shared page uses the reviewed sheet bytes');
-  assert.equal(picture.title,'Lesson worksheet');
+  const live=await choose(room,index);
+  await bothCount(room,'[data-letter-tile]',0);await bothCount(room,'[data-picture-piece]',0);assert.equal(live.board.boxes,0);
+  assert(!live.pictures.size||![...live.board.pieces.values()].length,'Activity navigation never deploys the source sheet');
   assert(!room.pages.has(live.pageId),'Each new sheet must have its own board page');room.pages.add(live.pageId);
-  room.sheetPages.set(asset.id,{pageId:live.pageId,pieceId:piece.id,pic:piece.pic});
-  for(const page of[room.tutor,room.student])await page.waitForFunction(({font,nativeWidth})=>{
-    const element=document.querySelector('[data-picture-piece] > svg');return element&&font*element.getBoundingClientRect().width/nativeWidth>=20;
-  },{font:asset.font,nativeWidth:asset.w});
-  const views={tutor:await display(room.tutor,asset),student:await display(room.student,asset)};
-  for(const[label,view]of Object.entries(views)){
-    assert(view.visibleFraction>=0.95,`${asset.id} must fit ${label}'s board without panning`);
-    assert(view.minTargetNominalCssPx>=20,`${asset.id} learner target text must be readable at the reviewed local scale`);
-    await room[label].screenshot({path:join(out,`${asset.id}-${room.mobile?'phone':'desktop'}-${label}.png`)});
+  await openLesson(room);await activate(room,panel(room.tutor).getByRole('button',{name:/^Choose parts from /}).first());
+  const selections={
+    'sound-cue':[['Short a','letter'],['Apple picture','image'],['Mouth photo','image'],['Open jaw.','text']],
+    'word-work':[['a','letter'],['Breve','breve'],['măt (model)','text'],['3 sound boxes','boxes']],
+    reading:[['Pat sat.','text',0],['Tap, Pat, tap!','text'],['Pat sat.','text',1],['Tap, tap, tap!','text']],
+    meaning:[['Mat picture','image'],['mat','text'],['Map picture','image'],['map','text']],
+  }[asset.id];
+  const baseline=await boardGeometry(room.tutor),studentBefore=await boardGeometry(room.student);
+  let pieceCount=0,tileCount=0;
+  for(const[label,kind,n=0]of selections){
+    await activate(room,room.tutor.getByRole('group',{name:'Ready teaching pieces',exact:true}).getByRole('button',{name:label,exact:true}).nth(n));
+    await activate(room,room.tutor.getByRole('button',{name:'Add selected part to board',exact:true}));
+    if(kind==='letter')await bothCount(room,'[data-letter-tile]',++tileCount);
+    else if(kind==='boxes'){await until(()=>live.board.boxes===3,'Sound boxes should be shared');}
+    else await bothCount(room,'[data-picture-piece]',++pieceCount);
+    if(kind==='boxes'){
+      // Phone Fill intentionally centers newly enabled sound boxes horizontally.
+      // The explicit box action preserves scale and vertical position.
+      for(const[page,prior]of[[room.tutor,baseline],[room.student,studentBefore]]){
+        const current=await boardGeometry(page);assert.deepEqual(current.rect,prior.rect);assert.equal(current.zoom,prior.zoom);
+        assert.deepEqual(current.viewBoxes.map(value=>value.split(' ').slice(1)),prior.viewBoxes.map(value=>value.split(' ').slice(1)));
+      }
+    }else{
+      assert.deepEqual(await boardGeometry(room.tutor),baseline,'Adding a teaching piece must not move or zoom the tutor board');
+      assert.deepEqual(await boardGeometry(room.student),studentBefore,'Adding a teaching piece must not move or zoom the student board');
+    }
   }
-  return{asset:asset.id,pageId:live.pageId,imagesOnPage:1,views,...await privacy(room)};
+  const pieces=[...live.board.pieces.values()],picture=live.pictures.get(pieces[0].pic);
+  assert.equal(hash(picture.bytes),hash(assetBytes.get(asset.id)),'Selected pieces retain the reviewed source bytes');
+  assert.equal(picture.title,'Lesson material');
+  assert.deepEqual(pieces.map(piece=>piece.content?.kind||'image').sort(),selections.map(([,kind])=>kind).filter(kind=>!['letter','boxes'].includes(kind)).sort());
+  for(const piece of pieces)if(piece.content)for(const page of[room.tutor,room.student])assert.equal(await page.locator(`[data-picture-piece="${piece.id}"] image`).count(),0,'Native teaching text and marks have no photograph background');
+  room.sheetPages.set(asset.id,{pageId:live.pageId,pieceIds:pieces.map(piece=>piece.id),pic:picture.id});
+  await activate(room,room.tutor.getByRole('button',{name:'Back to tutor guide',exact:true}));await closeGuide(room);
+  for(const[label,page]of[['tutor',room.tutor],['student',room.student]])await page.screenshot({path:join(out,`${asset.id}-${room.mobile?'phone':'desktop'}-${label}.png`)});
+  return{asset:asset.id,pageId:live.pageId,pieces:pieceCount,tiles:tileCount,sourceSheetDeployed:false,pieceCameraUnchanged:true,explicitBoxesMayCenterOnPhone:selections.some(([,kind])=>kind==='boxes'),...await privacy(room)};
 }
 async function boardGeometry(page){
   return page.locator('[data-board-surface]').evaluate(node=>{const rect=node.getBoundingClientRect();return{rect:Object.fromEntries(['x','y','width','height'].map(key=>[key,Math.round(rect[key]*100)/100])),viewBoxes:[...node.querySelectorAll(':scope > svg[viewBox]')].map(svg=>svg.getAttribute('viewBox')),zoom:document.querySelector('[data-board-zoom]')?.textContent};});
@@ -348,8 +355,8 @@ async function run(base,mobile){
       const failures=sweep.filter(sample=>sample.documentWidth>sample.width+1||sample.buttons.some(button=>button.rect.left<0||button.rect.right>sample.width+1||!button.hit));
       assert.deepEqual(failures,[],'Every displayed header action must fit and remain clickable');return{widths:sweep.map(sample=>sample.width),allActionsFit:true};
     });
-    if(!await check(room,'The sound cue opens alone with the large short-a target visible',()=>sheet(room,1)))return;
-    if(!await check(room,'The marked-word sheet opens alone without changing board tile spellings',()=>sheet(room,2)))return;
+    if(!await check(room,'The tutor chooses the sound-cue letter, pictures and native instruction without deploying a sheet',()=>sheet(room,1)))return;
+    if(!await check(room,'The tutor chooses an individual letter, clean breve, native word and sound boxes',()=>sheet(room,2)))return;
     if(!await check(room,'Build words uses five ASCII tiles and three boxes on its own page',async()=>{
       const live=await choose(room,3);await bothCount(room,'[data-letter-tile]',5);await bothCount(room,'[data-picture-piece]',0);assert.equal(live.board.boxes,3);
       assert.deepEqual([...live.board.tiles.values()].map(tile=>tile.text),['m','a','t','p','s']);assert(!room.pages.has(live.pageId));room.pages.add(live.pageId);
@@ -360,12 +367,29 @@ async function run(base,mobile){
       assert.deepEqual(await panel(tutor).getByRole('list',{name:'Private practice words or sentences',exact:true}).getByRole('listitem').allTextContents(),room.privateDictationTargets.split('\n'));
       return{answerTiles:0,soundBoxes:3,...await privacy(room)};
     }))return;
-    if(!await check(room,'The plain Pat reading sheet opens alone at a readable focused size',()=>sheet(room,5)))return;
-    if(!await check(room,'The meaning sheet is revealed after reading on its own focused page',()=>sheet(room,6)))return;
-    await check(room,'Revisiting a sheet preserves its page and reuses all four shared sources',async()=>{
-      const prior=room.sheetPages.get('word-work'),live=await choose(room,2);await bothCount(room,'[data-picture-piece]',1);
-      assert.equal(live.pages.size,7);assert.equal(live.pageId,prior.pageId);assert.equal([...live.board.pieces.values()][0].id,prior.pieceId);assert.equal(live.pictures.size,4);
-      return{pages:7,sharedRoomSources:4,noStackedSheets:true,...await privacy(room)};
+    if(!await check(room,'Reading sentences are added individually as native board text',()=>sheet(room,5)))return;
+    if(!await check(room,'Meaning pictures and matching words are selected after reading',()=>sheet(room,6)))return;
+    await check(room,'Revisiting teaching pieces preserves their page and reuses all four shared sources',async()=>{
+      const prior=room.sheetPages.get('word-work'),live=await choose(room,2);await bothCount(room,'[data-picture-piece]',prior.pieceIds.length);
+      assert.equal(live.pages.size,7);assert.equal(live.pageId,prior.pageId);assert.deepEqual([...live.board.pieces.keys()],prior.pieceIds);assert.equal(live.pictures.size,4);
+      return{pages:7,sharedRoomSources:4,noSourceSheetDeployed:true,...await privacy(room)};
+    });
+    await check(room,'Deleting a prepared activity page preserves the saved lesson and reopens a fresh teacher-controlled board',async()=>{
+      const saved=await documentFor(room),live=realtime.rooms.get(room.code),deletedId=live.pageId;
+      const otherIds=[...live.pages.keys()].filter(id=>id!==deletedId);
+      await closeGuide(room);await activate(room,tutor.getByRole('button',{name:/^Board pages, page /}));
+      await activate(room,tutor.getByRole('dialog',{name:'Board pages',exact:true}).getByRole('button',{name:'Delete page',exact:true}));
+      const confirmation=tutor.getByRole('dialog',{name:/^Delete “/});
+      assert.equal(await confirmation.getByRole('button',{name:'Cancel',exact:true}).evaluate(node=>node===document.activeElement),true);
+      await activate(room,confirmation.getByRole('button',{name:'Delete page',exact:true}));
+      await until(()=>!live.pages.has(deletedId),'Deleted live activity page must disappear');
+      for(const page of[tutor,student])await page.waitForFunction(id=>window.lessonReceived.filter(message=>message.t==='board').at(-1)?.pageId===id,live.pageId);
+      assert.deepEqual([...live.pages.keys()],otherIds);assert.deepEqual(await documentFor(room),saved);
+      await openLesson(room);await activate(room,panel(tutor).getByRole('button',{name:'Start activity',exact:true}));
+      await confirmActivity(room,2);assert.notEqual(live.pageId,deletedId);assert.equal(live.pages.size,7);
+      await bothCount(room,'[data-picture-piece]',0);await bothCount(room,'[data-letter-tile]',0);assert.equal(live.board.boxes,0);
+      assert.deepEqual(await documentFor(room),saved);assert(otherIds.every(id=>live.pages.has(id)));
+      return{savedLessonUnchanged:true,otherPagesRetained:6,freshActivityPieces:0,explicitRestart:true,...await privacy(room)};
     });
     await check(room,'Removing the v2 private copy preserves v1, v2 and every other owner source',async()=>{
       const current=await documentFor(room);assert.equal((await request(context,base,`/${room.id}`,'DELETE',{revision:current.revision})).status,204);
