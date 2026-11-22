@@ -70,15 +70,15 @@ jobs:
           tenant-id: ${{ secrets.PHONEMEPOP_AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.PHONEMEPOP_AZURE_SUBSCRIPTION_ID }}
 
-      # Whiteboard rooms live in memory, so the app runs as exactly one replica
-      # (which also ends cold starts). Pulls use the Docker Hub credentials.
+      # Whiteboard rooms live in memory, so cap the app at one replica. Allow scale
+      # to zero while idle; the first request after idle may cold-start the app.
       - name: Deploy the new image
         env:
           REGISTRY_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           az containerapp registry set -n "$APP_NAME" -g "$RESOURCE_GROUP" --server docker.io --username "$REGISTRY_USERNAME" --password "$REGISTRY_PASSWORD" --output none
-          az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --image "$IMAGE:$GITHUB_SHA" --min-replicas 1 --max-replicas 1 --cpu 0.25 --memory 0.5Gi --output none
+          az containerapp update -n "$APP_NAME" -g "$RESOURCE_GROUP" --image "$IMAGE:$GITHUB_SHA" --min-replicas 0 --max-replicas 1 --cpu 0.25 --memory 0.5Gi --output none
 
       # The old container can keep answering for a while, so wait for this exact commit.
       - name: Check the new version is live
