@@ -358,7 +358,7 @@ try {
       assert.equal(await tutor.getByRole('tab', { name: 'Pictures', exact: true }).getAttribute('aria-selected'), 'true');
       assert.equal(await tutor.getByRole('searchbox', { name: 'Search pictures', exact: true }).inputValue(), 'Smoke card');
       await tutor.waitForFunction(expected => Math.abs(document.querySelector('[data-materials-scroll]').scrollTop - expected) <= 1, room.pictureScroll);
-      const reopen = tutor.getByRole('button', { name: 'Game controls', exact: true });
+      const reopen = tutor.getByRole('button', { name: 'Games', exact: true });
       await reopen.waitFor();
       assert.equal(await reopen.evaluate(element => document.activeElement === element), true, 'Return should restore focus to the game launcher');
       await activate(room, reopen);

@@ -102,7 +102,7 @@ async function bothCount(room, count) {
 }
 async function documentFor(room) { const response = await room.context.request.get(`${room.base}/api/lessons/${room.id}`); assert.equal(response.status(), 200); return (await response.json()).lesson; }
 async function openGuide(room) {
-  if (!await panel(room.tutor).isVisible()) await activate(room, room.tutor.getByRole('button', { name: 'Tutor guide', exact: true }));
+  if (!await panel(room.tutor).isVisible()) await activate(room, room.tutor.locator('[data-whiteboard-topbar]').getByRole('button', { name: 'Tutor guide', exact: true }));
   await panel(room.tutor).waitFor({ state: 'visible' });
 }
 async function closeGuide(room) {

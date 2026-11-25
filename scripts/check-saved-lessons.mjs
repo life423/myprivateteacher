@@ -95,9 +95,9 @@ const prep=page=>page.getByRole('region',{name:'Activity editor',exact:true});
 const panel=page=>page.getByRole('region',{name:'Prepared lesson',exact:true});
 async function openLesson(room){
   if(await panel(room.tutor).isVisible())return;
-  const direct=room.tutor.getByRole('button',{name:'Tutor guide',exact:true});
+  const direct=room.tutor.locator('[data-whiteboard-topbar]').getByRole('button',{name:'Tutor guide',exact:true});
   if(await direct.isVisible()){await activate(room,direct);await panel(room.tutor).waitFor({state:'visible'});return;}
-  const open=room.tutor.getByRole('button',{name:'Lesson',exact:true});
+  const open=room.tutor.getByRole('region',{name:'Lesson shortcuts',exact:true}).getByRole('button',{name:'Tutor guide',exact:true});
   if(!await open.isVisible())await activate(room,room.tutor.getByRole('button',{name:'Materials',exact:true}));
   await activate(room,open);await panel(room.tutor).waitFor({state:'visible'});
 }

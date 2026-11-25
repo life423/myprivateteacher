@@ -304,6 +304,31 @@ A real-account follow-up caught a compatibility gap that newly published fixture
 
 The reported old-layout/reconnecting local screen was served by the retired `phoneme-pop` checkout without an API listening on port 8080. The correct `my-private-teacher` checkout was verified with the real signed-in account and a clean native breve after starting its API and Vite. The combined development runner now reads optional `.env` settings only into the backend at startup and bounds Windows/macOS backend watching to `server` and `shared`; dependency changes cannot restart the classroom. Changing `.env` requires restarting development. Nine focused Windows regressions verify dependency stability, source reloads, environment precedence, missing-file startup and owned-process shutdown.
 
+## Sidebar shortcuts — November 25, 2026
+
+The owner flagged the clipped **Tutor g…** label and cramped pair of cards at the bottom of Materials. Tutor guide and Games now share one quiet footer surface with equal actions, matching focus styles and at least 44px targets. Removing the redundant trailing chevrons restores room for the complete primary labels without adding another row: the idle footer remains 46px high. Keep these primary labels readable at ordinary sidebar widths; do not reintroduce ellipsis to make them fit.
+
+**Games** remains the navigation label while an activity is running. The current game and level move into its secondary line, so the destination does not change names mid-lesson. Long secondary lesson/game text can truncate visually; `aria-describedby` retains its complete accessible context. At enlarged text sizes, icons can move above the label and primary words wrap intact. Secondary text does not determine the row's intrinsic width. Active Next sound/Next gap controls retain their separate space inside the footer.
+
+The production build, 11 focused Materials/layout unit tests and 20 isolated Chrome browser states passed. Rendered checks used 1440×900, 768×1024, 393×852 and 320×852 for idle Materials, a prepared lesson with a long title, active Phoneme Pop, active Alphabet Bridge, and Bridge at 200% root text. Footer labels were checked for clipping and fragmented words; all visible footer actions were hit-tested and measured at least 44px. Keyboard Enter, 2px focus outlines, guide Escape from its close control and Games focus return were verified. There were no page errors. Screenshots and the nonsecret report are retained locally in `C:/Users/aiand/.codex/visualizations/2026/11/25/mpt-sidebar-footer/`, including `desktop-footer-closeup.png`. These fixtures use memory services and synthetic accounts, not live teaching or payment data.
+
+The retained production whiteboard browser suite also passed all 19 cases with no page errors, including inline Games, level changes synchronized to the student, search/scroll and unsent tile preservation, mobile close/focus, trusted touch and short-landscape reachability. Existing browser fixtures now scope the header Tutor guide trigger explicitly, because its matching footer label is also accessible, and use the stable Games name when reopening active controls.
+
+The enlarged desktop check separately observes horizontal overflow in the existing whiteboard topbar; the footer itself fits and remains reachable. That broader header layout needs its own responsive follow-up and is not represented as fixed here. Physical-device, screen-reader and production performance checks remain outstanding.
+
+Conservative internal review heuristics, not measured product-quality scores:
+
+| Dimension | Score | Evidence or next action |
+| --- | --- | --- |
+| Hierarchy | 9/10 | One quiet footer surface; teaching materials remain dominant. |
+| Usability | 9/10 | Complete primary names and stable Games destination; context stays secondary. |
+| Aesthetics | 9/10 | Existing type, color, radii, spacing and shared alignment; no extra decoration. |
+| Interaction | 9/10 | Keyboard activation, matching focus styles, Games focus return and active quick actions checked. |
+| Responsiveness | 9/10 | Footer fits the four tested widths, including complete words at 200%; broader topbar overflow is a separate follow-up. |
+| Accessibility | 8/10 | Named controls, full accessible secondary context and targets checked; next verify screen-reader output and physical touch. |
+| Performance | 8/10 | No new dependency or observer; next measure production Core Web Vitals rather than infer them from a build. |
+| Product coherence | 9/10 | Same teacher navigation throughout idle and active lessons; no new persistent instruction or control. |
+
 ## Key references
 
 - [NN/g Tabs, Used Right](https://www.nngroup.com/articles/tabs-used-right/)
