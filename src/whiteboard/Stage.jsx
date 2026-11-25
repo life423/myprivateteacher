@@ -13,6 +13,7 @@ import { INK, STUDENT_LAYER, TUTOR_LAYER, insideBoard } from './board.js';
 import { BOARD, CELL_WIDTH, LETTERS, STAGE, STRIP, boardRect, clamp, letterAt } from './stage.js';
 import { TILE_HEIGHT, clampTile, snapTile, soundBoxTarget, soundBoxes, tileWidth } from '../../shared/tiles.js';
 import { isFacePiece } from '../../shared/pieces.js';
+import { getTeachingMark } from '../../shared/teachingMarks.js';
 import { Minus, Plus, Scan } from 'lucide-react';
 import ResizeIcon from './ResizeIcon.jsx';
 import { BELOW_STRIP, BoardFit, fillView, frame, viewAt, viewBoxOf } from './viewport.js';
@@ -243,6 +244,14 @@ export default function Stage({
   const selectionOutline = selectedPiece && pieceSelectionOutline(selectedPiece, layout.scale);
   const resizeHandle = selectedPiece && canResizeSelected && pieceResizeHandle(selectedPiece, layout, size, pieceDrag.current?.mode === 'resize' ? pieceDrag.current.corner : null);
   const selectPiece = (id, { preserveView = false } = {}) => {
+    // An explicit addition uses the view the tutor can see. Do not let a later
+    // sheet resize initiate the tablet's first fill and crop away that work.
+    if (preserveView) {
+      filled.current = true; autoFill.current = false;
+      // Commit this exact view to the guide lease without zooming or panning.
+      // Closing the guide must not restore a view that hides the new work.
+      setView(view);
+    }
     setSelectedPieceId(id);
     setLocalTileId(null);
     tileActions?.select?.(null);
@@ -273,7 +282,7 @@ export default function Stage({
     const copy = pieceActions.duplicate(id, { bounds, centre });
     reportPlacement(pieceActions.placementStatus?.());
     if (!copy) return;
-    selectPiece(copy);
+    selectPiece(copy, { preserveView: true });
   };
   const finishSizeAdjustment = () => {
     const adjustment = sizeAdjustment.current;
@@ -761,11 +770,11 @@ export default function Stage({
     zoomTo(scale, point.x, point.y, size.width / 2, size.height / 2);
   };
   const zoomControl = 'inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-violet-100 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500';
-  const pieceLabel = selectedPiece?.content?.kind === 'breve' ? 'Breve' : selectedPiece?.content?.kind === 'text' ? 'Text' : 'Picture';
+  const pieceLabel = selectedPiece?.content?.kind === 'mark' ? getTeachingMark(selectedPiece.content.mark)?.label || 'Mark' : selectedPiece?.content?.kind === 'breve' ? 'Breve' : selectedPiece?.content?.kind === 'text' ? 'Text' : 'Picture';
 
   return (
     <div className='flex h-full w-full min-h-0 flex-col' onKeyDown={event => {
-      if (event.defaultPrevented || layersOpen || !canEditPieces || !selectedPiece?.content || selectedPiece.heldBy && selectedPiece.heldBy !== me || event.target.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (event.defaultPrevented || layersOpen || !pieceActions || !selectedPiece?.content || selectedPiece.heldBy && selectedPiece.heldBy !== me || event.target.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
       const position = nativePieceNudge(selectedPiece, event.key, event.shiftKey);
       if (!position) return;
       event.preventDefault(); event.stopPropagation();
@@ -889,8 +898,8 @@ export default function Stage({
         key={(selectedPiece || selectedLetter).id}
         object={selectionOutline || { ...selectedLetter, w: tileWidth(selectedLetter.text), h: TILE_HEIGHT }}
         piece={selectedPiece}
-        kind={selectedPiece ? selectedPiece.content?.kind === 'breve' ? 'mark' : selectedPiece.content?.kind === 'text' ? 'text' : 'picture' : 'tile'}
-        label={selectedPiece ? selectedPiece.content?.kind === 'breve' ? 'Breve' : selectedPiece.content?.text || picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}
+        kind={selectedPiece ? ['breve', 'mark'].includes(selectedPiece.content?.kind) ? 'mark' : selectedPiece.content?.kind === 'text' ? 'text' : 'picture' : 'tile'}
+        label={selectedPiece ? selectedPiece.content?.kind === 'mark' ? getTeachingMark(selectedPiece.content.mark)?.label || 'Mark' : selectedPiece.content?.kind === 'breve' ? 'Breve' : selectedPiece.content?.text || picById.get(selectedPiece.pic)?.title || 'Picture' : `Letter ${selectedLetter.text}`}
         layout={layout} viewport={size} topInset={paperTop} reserved={reserved}
         locked={Boolean((selectedPiece || selectedLetter).heldBy && (selectedPiece || selectedLetter).heldBy !== me)}
         resizeLocked={me === 'student' && selectedFace}

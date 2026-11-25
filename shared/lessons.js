@@ -1,4 +1,5 @@
 import { BOX_COUNTS, MAX_TILES, cleanTileText } from './tiles.js';
+import { TEACHING_MARKS, getTeachingMark } from './teachingMarks.js';
 
 export const MAX_LESSON_ACTIVITIES = 24;
 export const MAX_LESSON_ASSETS = 8;
@@ -14,6 +15,11 @@ function text(value, limit, label) {
 function ids(value, limit, label) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > limit || value.some(id => !isLessonId(id)) || new Set(value).size !== value.length) invalid(`Choose valid ${label}.`);
+  return [...value];
+}
+function teachingMarks(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > TEACHING_MARKS.length || value.some(id => !getTeachingMark(id)) || new Set(value).size !== value.length) invalid('Choose valid teaching marks.');
   return [...value];
 }
 export function cleanLessonInput(value) {
@@ -35,6 +41,7 @@ export function cleanLessonInput(value) {
       directions: text(activity.directions, 2000, 'Tutor directions'),
       targets: text(activity.targets, 10000, 'Practice targets'),
       letters: tokens.join(' '), cardIds: ids(activity.cardIds, 32, 'cards'), assetIds: ids(activity.assetIds, MAX_LESSON_ASSETS, 'worksheet pages'),
+      marks: teachingMarks(activity.marks),
       boxes: activity.boxes ?? 0, reviewNextTime: activity.reviewNextTime === true,
       reviewNote: text(activity.reviewNote, 1000, 'Review note'),
     };

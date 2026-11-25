@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const hooks = vi.hoisted(() => ({ current: null, guards: [] }));
 vi.mock('react', () => ({ useState: value => hooks.current.useState(value), useRef: value => hooks.current.useRef(value), useEffect: setup => hooks.current.useEffect(setup) }));
 vi.mock('../router.jsx', () => ({ Link: () => null, useNavigationGuard: enabled => hooks.guards.push(enabled) }));
+vi.mock('../whiteboard/TeachingMarks.jsx', () => ({ default: function TeachingMarks() { return null; } }));
 import LessonPanel, { directionBlocks } from './LessonPanel.jsx';
 import LessonMaterials, { teachingMaterials } from './LessonMaterials.jsx';
+import TeachingMarks from '../whiteboard/TeachingMarks.jsx';
 function mount(Component, initialProps) {
   const slots = []; let index = 0, props = initialProps;
   const runtime = {
@@ -101,6 +103,32 @@ describe('private teaching-piece selection', () => {
     expect(find(offline, 'button').props.disabled).toBe(true);
     await find(offline, 'button').props.onClick();
     expect(onOpenMaterial).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('prepared teaching marks', () => {
+  const plan = { id: 'lesson-a', title: 'Plan', activities: [{ ...activity, marks: ['breve', 'syllable-scoop'] }] };
+  it('keeps marks as explicit tutor choices and forwards only a chosen mark', () => {
+    const onAddMark = vi.fn();
+    const tree = mount(LessonPanel, { runner: runner({ lesson: plan, index: 0 }), onAddMark }).render();
+    const marks = find(tree, TeachingMarks);
+    expect(marks.props).toMatchObject({ label: 'Prepared teaching marks', marks: ['breve', 'syllable-scoop'], disabled: false });
+    expect(onAddMark).not.toHaveBeenCalled();
+    marks.props.onAdd('breve');
+    expect(onAddMark).toHaveBeenCalledExactlyOnceWith('breve');
+  });
+  it('does not offer additions until the chosen activity is open and connected', () => {
+    for (const state of [{ index: -1 }, { busy: true }, { loading: true }, { ready: false }]) {
+      const tree = mount(LessonPanel, { runner: runner({ lesson: plan, index: 0, ...state }), onAddMark: vi.fn() }).render();
+      expect(find(tree, TeachingMarks).props.disabled).toBe(true);
+    }
+  });
+  it('disables prepared marks while the teaching surface is unavailable for a game', () => {
+    const tree = mount(LessonPanel, { runner: runner({ lesson: plan, index: 0 }), onAddMark: vi.fn(), marksDisabled: true }).render();
+    expect(find(tree, TeachingMarks).props.disabled).toBe(true);
+  });
+  it('does not add an empty mark section to earlier lessons', () => {
+    expect(find(mount(LessonPanel, { runner: runner() }).render(), TeachingMarks)).toBeUndefined();
   });
 });
 

@@ -30,9 +30,27 @@ describe('private preparation draft lifetime', () => {
     expect(attachAsset(current, 'read-a', { id: 'image-a' })).toBe(current);
   });
   it('moves ordered activities without losing private directions or review notes', () => {
-    const items = make().activities; items[0].directions = 'Private prompt'; items[0].reviewNote = 'Review blending'; items[0].reviewNextTime = true;
+    const items = make().activities; items[0].directions = 'Private prompt'; items[0].reviewNote = 'Review blending'; items[0].reviewNextTime = true; items[0].marks = ['breve', 'syllable-scoop'];
     const next = moveActivity(items, 'build-a', 1);
-    expect(next.map(item => item.id)).toEqual(['read-a', 'build-a']); expect(next[1]).toMatchObject({ directions: 'Private prompt', reviewNote: 'Review blending', reviewNextTime: true }); expect(items[0].id).toBe('build-a');
+    expect(next.map(item => item.id)).toEqual(['read-a', 'build-a']); expect(next[1]).toMatchObject({ directions: 'Private prompt', reviewNote: 'Review blending', reviewNextTime: true, marks: ['breve', 'syllable-scoop'] }); expect(items[0].id).toBe('build-a');
     expect(moveActivity(next, 'build-a', 1)).toBe(next);
+  });
+  it('starts older preparation without a dirty migration and saves newly chosen marks', () => {
+    const legacy = make(); delete legacy.activities[0].marks;
+    const initial = loadedEditor(legacy);
+    expect(initial.draft.activities[0].marks).toEqual([]); expect(isDirty(initial)).toBe(false);
+    const selected = editDraft(initial, draft => ({ ...draft, activities: draft.activities.map(item => ({ ...item, marks: ['breve', 'underline'] })) }));
+    expect(isDirty(selected)).toBe(true);
+    const saved = acknowledgeSave(selected, { version: selected.version, draft: selected.draft }, { ...legacy, ...selected.draft, revision: 2 });
+    expect(isDirty(saved)).toBe(false); expect(saved.draft.activities[0].marks).toEqual(['breve', 'underline']);
+    saved.draft.activities[0].marks.push('schwa');
+    expect(saved.lesson.activities[0].marks).toEqual(['breve', 'underline']);
+  });
+  it('retains newer mark selections while an earlier lesson save is in flight', () => {
+    const first = editDraft(loadedEditor(make()), draft => ({ ...draft, activities: draft.activities.map(item => ({ ...item, marks: ['breve'] })) }));
+    const sent = { version: first.version, draft: structuredClone(first.draft) };
+    const newer = editDraft(first, draft => ({ ...draft, activities: draft.activities.map(item => ({ ...item, marks: ['breve', 'macron'] })) }));
+    const result = acknowledgeSave(newer, sent, { ...make(), ...sent.draft, revision: 2 });
+    expect(result.draft.activities[0].marks).toEqual(['breve', 'macron']); expect(isDirty(result)).toBe(true);
   });
 });

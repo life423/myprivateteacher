@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { matchingLetters } from './materials.js';
 import { BOX_COUNTS, MAX_TILES } from '../../shared/tiles.js';
+import TeachingMarks from './TeachingMarks.jsx';
+import { TEACHING_MARKS } from '../../shared/teachingMarks.js';
 
 // The tutor's tile controls, a card in the side column: add tiles, change a selected one,
 // send them all home, clear them, and set the sound boxes.
-export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, onReset, onClear, boxes, onBoxes, boxTaps = [], onResetSoundBoxes, onShowSoundBoxes, query = '', embedded = false, canAdd = true, tiles = [], toolsOn = false }) {
+export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, onReset, onClear, boxes, onBoxes, boxTaps = [], onResetSoundBoxes, onShowSoundBoxes, onAddMark, marksDisabled = false, query = '', embedded = false, canAdd = true, tiles = [], toolsOn = false }) {
   const [text, setText] = useState('');
   const [note, setNote] = useState(null);
   const [armed, setArmed] = useState(false);
@@ -118,6 +120,10 @@ export default function TileBar({ count, selected, onAdd, onEdit, onCancelEdit, 
           'Spaces between tiles. Click a tile to change it.'
         )}
       </p>
+      {onAddMark && <details open={query.trim() && TEACHING_MARKS.some(mark => `${mark.label} ${mark.id}`.toLowerCase().includes(query.trim().toLowerCase())) ? true : undefined} className='rounded-xl border border-slate-200 bg-slate-50/60 px-3'>
+        <summary className='min-h-11 cursor-pointer py-3 text-sm font-semibold text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500'>Teaching marks</summary>
+        <div className='pb-3'><TeachingMarks onAdd={onAddMark} disabled={marksDisabled} query={query} /></div>
+      </details>}
       <div>
         <p className='mb-2 text-xs font-semibold text-slate-600'>Choose a letter or sound</p>
         <div aria-label='Letter choices' className='grid grid-cols-5 gap-1.5'>

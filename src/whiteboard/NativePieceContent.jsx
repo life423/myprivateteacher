@@ -1,4 +1,5 @@
 import { cleanPieceContent, nativePieceMetrics } from '../../shared/pieces.js';
+import TeachingMarkGlyph from './TeachingMarkGlyph.jsx';
 
 // Native teaching ink has no photograph, paper, frame or shadow. The same
 // inherited font, size, weight and ink color are used by the board's letter tiles.
@@ -6,6 +7,7 @@ export default function NativePieceContent({ content: value, x = 0, y = 0, width
   const content = cleanPieceContent(value);
   const metrics = nativePieceMetrics(content);
   if (!metrics) return null;
+  if (content.kind === 'mark') return <TeachingMarkGlyph mark={content.mark} data-native-piece='mark' x={x} y={y} width={width ?? metrics.w} height={height ?? metrics.h} preserveAspectRatio='none' />;
   return <svg data-native-piece={content.kind} x={x} y={y} width={width ?? metrics.w} height={height ?? metrics.h} viewBox={`0 0 ${metrics.w} ${metrics.h}`} preserveAspectRatio='none' overflow='visible' aria-hidden='true'>
     {content.kind === 'breve'
       ? <path d='M8 6 Q32 32 56 6' fill='none' stroke='#1e293b' strokeWidth='7' strokeLinecap='round' />

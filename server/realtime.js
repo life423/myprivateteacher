@@ -5,7 +5,7 @@ import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { DEFAULT_LINES, isLineSize } from '../shared/lines.js';
 import { BOX_COUNTS, MAX_TILES, clampTile, cleanTileText, duplicateTilePosition, nextHome, snapTile, tileKind } from '../shared/tiles.js';
 import { cleanBoxTap, cleanBoxTaps, cleanSoundBoxState, nextBoxEpoch } from '../shared/soundBoxes.js';
-import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, cleanPieceContent, isFacePiece, isPictureId, pieceSize, startingWidth } from '../shared/pieces.js';
+import { MAX_OFFERS, MAX_PICTURES, MAX_PICTURE_SIDE, MAX_PIECES, clampPiece, cleanCrop, cleanPieceContent, isFacePiece, isPictureId, nativePieceMetrics, pieceSize, startingWidth } from '../shared/pieces.js';
 import { cleanAct } from '../shared/bridge.js';
 import { cleanIntent } from '../shared/phoneme.js';
 
@@ -116,7 +116,7 @@ const cachedPage = page => ({
   strokes: page.strokes.map(({ id, by, tool, pts, seq }) => ({ id, by, tool, pts, seq })),
   tiles: [...page.tiles.values()], pieces: [...page.pieces.values()], offers: [...page.offers.values()], pictureIds: [...pagePictureIds(page)], game: page.game,
 });
-const pagePictureIds = (page) => new Set([...page.pictureIds, ...[...page.pieces.values()].map(piece => piece.pic), ...[...page.offers.values()].map(offer => offer.pic)]);
+const pagePictureIds = (page) => new Set([...page.pictureIds, ...[...page.pieces.values()].map(piece => piece.pic), ...[...page.offers.values()].map(offer => offer.pic)].filter(isPictureId));
 // Existing handlers address the active board through these aliases. A staged restore
 // temporarily supplies its private target; incomplete pages are never exposed to peers.
 function initializePages(room) {
@@ -419,16 +419,20 @@ export function attachRealtime(server, options = {}) {
   // A new piece from a client's description, checked and fitted to the board, or null.
   const makePiece = (room, p) => {
     if (!p || !isStrokeId(p.id) || room.pieces.has(p.id) || room.pieces.size >= MAX_PIECES) return null;
-    const pic = room.pictures.get(p.pic);
-    const crop = cleanCrop(p.crop, pic);
-    if (!crop) return null;
     const content = cleanPieceContent(p.content);
     if (p.content !== undefined && !content) return null;
+    // Catalog marks are board ink, independent of uploads or image slots. Their
+    // geometry comes from our allowlist, never an arbitrary client crop/glyph.
+    const standalone = p.pic == null && content?.kind === 'mark';
+    const metrics = standalone && nativePieceMetrics(content);
+    const pic = standalone ? null : room.pictures.get(p.pic);
+    const crop = metrics ? { x: 0, y: 0, w: metrics.w, h: metrics.h, r: 0 } : cleanCrop(p.crop, pic);
+    if (!crop) return null;
     const size = pieceSize(crop, Number.isFinite(p.w) ? p.w : content ? undefined : startingWidth(crop), content);
     const pos = clampPiece(size, p.x, p.y);
     if (!pos) return null;
     room.zTop += 1;
-    return { id: p.id, pic: pic.id, crop, ...(content && { content }), ...pos, ...size, z: room.zTop, heldBy: null };
+    return { id: p.id, pic: pic?.id ?? null, crop, ...(content && { content }), ...pos, ...size, z: room.zTop, heldBy: null };
   };
 
   // A part of a picture the tutor gives the student, checked, or null.
@@ -1196,12 +1200,13 @@ export function attachRealtime(server, options = {}) {
       ws.room.pieces.delete(msg.id);
       broadcast(ws.room, { t: 'piece:delete', id: msg.id });
     },
-    // Tutor only: every piece off the board, and the pictures forgotten.
+    // Tutor only: remove this page's session images and their pieces. Native
+    // catalog marks have no image to remove, and remain on the board.
     'pieces:clear'(ws) {
       if (!isTutor(ws)) return;
       const room = ws.room;
       const removed = pagePictureIds(room.board);
-      room.pieces.clear();
+      for (const [id, piece] of room.pieces) if (piece.pic) room.pieces.delete(id);
       room.offers.clear();
       room.pictureIds.clear();
       room.pictureGeneration++;
@@ -1212,15 +1217,16 @@ export function attachRealtime(server, options = {}) {
         pictureBytes -= picture.bytes.length;
         room.pictures.delete(id);
       }
-      send(room.tutor, { t: 'pieces', pieces: [], pictures: [...room.pictures.values()].map(sharedPicture), offers: [] });
-      send(room.student, { t: 'pieces', pieces: [], pictures: [], offers: [] });
+      const pieces = [...room.pieces.values()];
+      send(room.tutor, { t: 'pieces', pieces, pictures: [...room.pictures.values()].map(sharedPicture), pictureIds: [], offers: [] });
+      send(room.student, { t: 'pieces', pieces, pictures: [], pictureIds: [], offers: [] });
     },
     // Tutor only, right after a restart: one piece of the board they kept (its picture goes up first).
     'rs-piece'(ws, msg) {
       const room = ws.room;
       if (!isTutor(ws) || !room.restoring) return;
       const piece = makePiece(room, msg.piece);
-      if (piece) { room.pieces.set(piece.id, piece); room.pictureIds.add(piece.pic); }
+      if (piece) { room.pieces.set(piece.id, piece); if (piece.pic) room.pictureIds.add(piece.pic); }
     },
     // Video calls. The server only introduces the two browsers; the audio and video go
     // directly between them (or through the TURN relay), never through this server.

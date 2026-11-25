@@ -34,7 +34,13 @@ const contentOf = doc => ({
   ...(doc.schemaVersion === 2 ? { familyId: doc.familyId, edition: doc.edition, supersedes: doc.supersedes } : {}),
   title: doc.title, description: doc.description, knownLetters: doc.knownLetters,
   wordChain: doc.wordChain, readingLines: doc.readingLines,
-  activities: cleanLessonInput(doc).activities,
+  // Published v1/v2 hashes predate teaching marks. An empty editor selection
+  // adds no source content and must retain their original canonical bytes.
+  // Nonempty marks remain in the hash, so reviewed sources stay immutable.
+  activities: cleanLessonInput(doc).activities.map(activity => {
+    if (activity.marks.length === 0) delete activity.marks;
+    return activity;
+  }),
   assets: doc.assets.map(({ id, w, h, type, bytes, sha256, purpose, renderHash }) => ({ id, w, h, type, bytes, sha256, ...(doc.schemaVersion === 2 ? { purpose, renderHash } : {}) })),
 });
 const checkedContent = doc => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nativePieceHit, nativePieceNudge, pieceCenteredResize, pieceCornerResize, pieceResizeHandle, pieceSelectionOutline, pictureOverlapState, rectangleIntersection, rectangleUnionArea } from './pictureGeometry.js';
+import { TEACHING_MARKS } from '../../shared/teachingMarks.js';
+import { pieceSize } from '../../shared/pieces.js';
 
 describe('native spelling mark interaction', () => {
   const mark = { id: 'breve', x: 100, y: 200, w: 40, h: 17.5, content: { kind: 'breve' } };
@@ -34,6 +36,27 @@ describe('native spelling mark interaction', () => {
     ]);
     for (const state of states.values()) expect(state).toEqual({ above: [], below: [], coverage: 0, covered: false });
   });
+
+  it('keeps a 44-screen-pixel touch and pen target around every minimum-sized catalog mark', () => {
+    for (const definition of TEACHING_MARKS) for (const scale of [0.25, 0.5, 1, 3]) {
+      const content = { kind: 'mark', mark: definition.id };
+      const piece = { id: definition.id, x: 400, y: 300, content, ...pieceSize(null, 0, content) };
+      const original = { ...piece };
+      const centre = { x: piece.x + piece.w / 2, y: piece.y + piece.h / 2 };
+      const halfWidth = Math.max(piece.w * scale, 44) / scale / 2;
+      const halfHeight = Math.max(piece.h * scale, 44) / scale / 2;
+      for (const pointer of ['touch', 'pen']) {
+        expect(nativePieceHit(piece, { x: centre.x + halfWidth - 0.001, y: centre.y }, scale, pointer)).toBe(true);
+        expect(nativePieceHit(piece, { x: centre.x, y: centre.y - halfHeight + 0.001 }, scale, pointer)).toBe(true);
+        expect(nativePieceHit(piece, { x: centre.x + halfWidth + 0.001, y: centre.y }, scale, pointer)).toBe(false);
+        expect(nativePieceHit(piece, { x: centre.x, y: centre.y - halfHeight - 0.001 }, scale, pointer)).toBe(false);
+      }
+      const outline = pieceSelectionOutline(piece, scale);
+      expect(outline.w * scale).toBeGreaterThanOrEqual(44 - 0.001);
+      expect(outline.h * scale).toBeGreaterThanOrEqual(44 - 0.001);
+      expect(piece).toEqual(original); // interaction chrome never enlarges the visible ink
+    }
+  });
 });
 
 describe('continuous proportional resizing', () => {
@@ -66,6 +89,21 @@ describe('continuous proportional resizing', () => {
     }
     const edge = pieceResizeHandle({ ...mark, x: 400, y: 400 }, { left: 0, top: 0, scale: 1 }, { width: 450, height: 450 });
     expect(edge.corner).toBe('nw'); expect(edge.left).toBeGreaterThanOrEqual(4); expect(edge.top).toBeGreaterThanOrEqual(4);
+  });
+
+  it('uses the same external corner and proportional resize rules for tiny catalog marks', () => {
+    for (const definition of TEACHING_MARKS) {
+      const content = { kind: 'mark', mark: definition.id };
+      const mark = { id: definition.id, x: 300, y: 300, crop: null, content, ...pieceSize(null, 0, content) };
+      const smaller = pieceCornerResize(mark, { x: 0, y: 0 }, { x: -300, y: -300 });
+      expect(smaller.w).toBe(definition.minWidth); expect(smaller.h).toBe(mark.h);
+      for (const scale of [0.4, 1, 3]) {
+        const handle = pieceResizeHandle(mark, { left: 0, top: 0, scale }, { width: 2000, height: 1500 });
+        expect(handle.left).toBeGreaterThan((mark.x + mark.w) * scale);
+        expect(handle.top).toBeGreaterThan((mark.y + mark.h) * scale);
+        expect(handle.left + 44).toBeLessThan(2000); expect(handle.top + 44).toBeLessThan(1500);
+      }
+    }
   });
 });
 
