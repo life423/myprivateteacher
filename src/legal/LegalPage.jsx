@@ -21,7 +21,9 @@ export const Mail = () => (
 );
 
 export default function LegalPage({ title, summary, children }) {
-  useEffect(() => window.scrollTo(0, 0), []);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
   return (
     <div className='min-h-dvh bg-white'>
       <header className='border-b border-slate-200'>

@@ -84,7 +84,7 @@ export default function SiteFooter() {
         </div>
         <div className='mt-6 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-slate-200 pt-4 text-sm text-slate-500 sm:mt-10 sm:pt-6'>
           <p className='text-xs sm:text-sm'>
-            © {new Date().getFullYear()} {LEGAL.service}
+            © {new Date().getFullYear()} {LEGAL.operator}. All rights reserved.
           </p>
           <button
             type='button'
