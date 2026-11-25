@@ -1,0 +1,20 @@
+.invoice-paper { overflow-wrap: anywhere; }
+.invoice-print-only { display: none; }
+.invoice-paper table { width: 100%; border-collapse: collapse; }
+.invoice-paper th, .invoice-paper td { padding: 12px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid #e2e8f0; }
+.invoice-paper th { color: #475569; font-size: 12px; font-weight: 600; }
+.invoice-paper th:last-child, .invoice-paper td:last-child { text-align: right; }
+.invoice-paper td:not(:first-child) { white-space: nowrap; }
+@media (max-width: 480px) {
+  .invoice-paper th, .invoice-paper td { padding: 12px 4px; font-size: 12px; }
+}
+@media print {
+  .invoice-print-only { display: block; }
+  body { background: white !important; }
+  .invoice-no-print { display: none !important; }
+  .invoice-print-shell { padding: 0 !important; margin: 0 !important; max-width: none !important; background: white !important; }
+  .invoice-paper { box-shadow: none !important; border: none !important; border-radius: 0 !important; width: 100% !important; padding: 8mm !important; color: #0f172a !important; }
+  .invoice-paper tr { break-inside: avoid; }
+  .invoice-paper h1, .invoice-paper h2, .invoice-paper h3 { break-after: avoid; }
+  @page { margin: 12mm; size: auto; }
+}

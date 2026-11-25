@@ -3,6 +3,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, BookOpen, ChevronDown, Lock, Plus, Save,
 import { Link, navigate, useNavigationGuard } from '../router.jsx';
 import { useAccount } from '../account/account.js';
 import GoogleButton from '../account/GoogleButton.jsx';
+import TeacherNav from '../account/TeacherNav.jsx';
 import PdfWorksheetImport from '../whiteboard/PdfWorksheetImport.jsx';
 import TeachingMarks from '../whiteboard/TeachingMarks.jsx';
 import { newPictureId, shrinkPicture } from '../whiteboard/pictures.js';
@@ -25,6 +26,7 @@ function Shell({ children, title = 'Prepare lesson' }) {
         <Link to='/' className='flex min-h-11 items-center gap-2 text-sm font-bold sm:text-base'><span className='flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 text-white'><BookOpen className='h-5 w-5' aria-hidden='true' /></span>My Private Teacher</Link>
         <Link to='/account' className={secondary}>My account</Link>
       </div>
+      <TeacherNav active='lessons' />
     </header>
     <div className='mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8'>
       <h1 className='text-2xl font-extrabold tracking-tight sm:text-3xl'>{title}</h1>

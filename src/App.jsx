@@ -12,6 +12,9 @@ const SITE = 'My Private Teacher';
 const ActivityChooser = lazyPage(() => import('./landing/ActivityChooser.jsx'));
 const LoginPage = lazyPage(() => import('./account/LoginPage.jsx'));
 const PreparationPage = lazyPage(() => import('./lessons/PreparationPage.jsx'));
+const CalendarPage = lazyPage(() => import('./scheduling/CalendarPage.jsx'));
+const ScheduledStart = lazyPage(() => import('./scheduling/ScheduledStart.jsx'));
+const InvoicesPage = lazyPage(() => import('./invoices/InvoicesPage.jsx'));
 const TrialPage = lazyPage(() => import('./account/TrialPage.jsx'));
 const BillingDonePage = lazyPage(() => import('./account/BillingDonePage.jsx'));
 const TeachGate = lazyPage(() => import('./account/TeachGate.jsx'));
@@ -42,6 +45,8 @@ function page(path) {
   if (path === '/dev/articulation-cards') return one('Articulation cards', ArticulationCardsGallery);
   if (path === '/dev/articulation') return one('Articulation gallery', ArticulationGallery);
   if (path === '/lessons') return one('Prepare lesson', PreparationPage);
+  if (path === '/calendar') return one('Calendar', CalendarPage);
+  if (path === '/invoices' || path === '/invoices/new' || (path.startsWith('/invoices/') && isLessonId(path.slice('/invoices/'.length)))) return one('Invoices', InvoicesPage, { id: path === '/invoices' ? null : path.slice('/invoices/'.length) });
   if (path.startsWith('/lessons/') && isLessonId(path.slice('/lessons/'.length))) return one('Prepare lesson', PreparationPage, { id: path.slice('/lessons/'.length) });
   if (path === '/login') return one('Sign in', LoginPage);
   if (path === '/admin') return one('Admin', AdminPage);
@@ -59,10 +64,10 @@ function page(path) {
   if (path === '/whiteboard/teach') {
     return {
       title: 'Alphabet Whiteboard',
-      needs: [TeachGate, TutorRoom],
+      needs: [TeachGate, ScheduledStart, TutorRoom],
       element: (
         <TeachGate>
-          <TutorRoom />
+          <ScheduledStart><TutorRoom /></ScheduledStart>
         </TeachGate>
       ),
     };

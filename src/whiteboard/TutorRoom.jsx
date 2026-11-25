@@ -32,17 +32,14 @@ import { LessonGate } from '../account/TeachGate.jsx';
 import { useVideoCall } from './useVideoCall.js';
 import { CopyButton, FocusButton, MessageScreen, StatusPill, TopBar } from './ui.jsx';
 import { clearStudentJoinHistory, StudentJoinHint, StudentJoinInstructions, useStudentJoinHelp } from './StudentJoinHelp.jsx';
+import { loadTeachingSession, saveTeachingSession, TEACHING_SESSION_KEY } from './teachingSession.js';
 
-const SAVED = 'wb-tutor';
+const SAVED = TEACHING_SESSION_KEY;
 const round4 = (n) => Math.round(n * 10000) / 10000;
 const ACTIVITY = { pen: 'Student is writing', eraser: 'Student is erasing' };
 
 function loadSaved() {
-  try {
-    return JSON.parse(sessionStorage.getItem(SAVED)) || {};
-  } catch {
-    return {};
-  }
+  return loadTeachingSession(sessionStorage, window.location.search);
 }
 
 const LINES_KEY = 'mpt.writingLines';
@@ -274,9 +271,8 @@ export default function TutorRoom() {
       if (msg.t === 'view') return setStudentView({ x: msg.x, y: msg.y, w: msg.w, h: msg.h });
       if (msg.t === 'room') {
         const isNew = !roomRef.current.code;
-        const saved = { code: msg.code, key: msg.key };
+        const saved = saveTeachingSession(sessionStorage, { code: msg.code, key: msg.key }, window.location.search);
         roomRef.current = saved;
-        sessionStorage.setItem(SAVED, JSON.stringify(saved));
         setRoom(saved);
         setConfirmedRoom(saved);
         // The server restarted and forgot this room: hand it our copy of the board.

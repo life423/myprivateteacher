@@ -8,9 +8,10 @@ export default function PrivacyPage() {
       title='Privacy Policy'
       summary={
         <>
-          <strong>The short version:</strong> we collect as little as we can. Students don’t have accounts. Lessons aren’t
-          recorded. Live board work is temporary; tutors can choose to save lesson plans, worksheets and private review notes. Card details go to Stripe, not to us. We don’t
-          sell personal information, show ads, or track you across other websites.
+          <strong>The short version:</strong> students don’t need accounts and we don’t record calls. Live board work is
+          temporary. Saved lesson plans, calendar appointments and invoices stay in the teacher’s account; these can
+          include student names and billing contacts. Card details go to Stripe, not to us. We don’t sell personal
+          information, show ads, or track you across other websites.
         </>
       }
     >
@@ -27,6 +28,10 @@ export default function PrivacyPage() {
         <li>
           <strong>Students</strong>, who join a tutor’s lesson with a four-digit code. Students don’t create accounts.
         </li>
+        <li>
+          <strong>Parents, guardians and other invoice recipients</strong>, whose details a tutor enters for lesson billing
+          or who pay a lesson invoice.
+        </li>
       </List>
 
       <H2 id='collect'>What we collect</H2>
@@ -35,7 +40,7 @@ export default function PrivacyPage() {
         and Google account ID. We keep a sign-in session for up to 30 days, with a cookie that keeps you signed in.
       </P>
       <P>
-        <strong>Billing.</strong> Payments are handled by Stripe. We never see or store your full card number. We store
+        <strong>Subscription billing.</strong> Payments are handled by Stripe. We don’t store full card numbers. We store
         your Stripe customer ID and your plan’s status, such as your trial and renewal dates.
       </P>
       <P>
@@ -51,14 +56,34 @@ export default function PrivacyPage() {
         drawing, answers or calls. Private prompts and notes are not sent to the student.
       </P>
       <P>
+        <strong>Calendar appointments.</strong> We store the student name a tutor enters, lesson dates and times, time zone,
+        duration, any selected saved preparation, and repeat settings. For weekly lessons, we also store individual
+        changes and cancellations. These records stay under the tutor’s account and are not shown on the student’s board.
+      </P>
+      <P>
+        <strong>Lesson invoices.</strong> We store the sender and recipient details a tutor enters, optional contact and
+        address information, student name, lesson descriptions, amounts, currency, dates and notes. We also keep invoice
+        status and payment records, including manual entries and corrections, online payment references, credits, refunds
+        and dispute status where applicable. A tutor can print an invoice or share its payment link; the recipient then
+        sees the details included on that invoice. The app does not automatically email invoices or calendar reminders.
+      </P>
+      <P>
+        <strong>Online lesson payments.</strong> When a tutor connects a payment account, we send their name and email to
+        Stripe. Stripe collects additional verification and payout information through its own onboarding. We store the
+        connected-account ID and setup status. When an online invoice is issued, we send Stripe the recipient’s contact
+        details and the invoice information needed to collect payment. Stripe sends payment, refund and dispute updates
+        back to us. The service operator can review payment-dispute information to manage those disputes.
+      </P>
+      <P>
         <strong>Video and audio.</strong> When someone starts video, the camera and microphone connect directly between the
         two browsers. When a direct connection isn’t possible, a relay server we operate passes the encrypted stream along.
         We don’t record, store or listen to calls.
       </P>
       <P>
-        <strong>Students.</strong> We don’t ask students for their name, email address or age. What a student does in a
-        lesson, including video if it’s switched on, is shared with their tutor as it happens. Live student board work and
-        calls are not retained after the lesson. A tutor may separately save their own private review observations.
+        <strong>Students.</strong> The student joining flow does not ask for a name, email address or age. What a student
+        does in a lesson, including video if it’s switched on, is shared with their tutor as it happens. Live student
+        board work and calls are not retained after the lesson. Separately, a tutor may enter a student’s name in the
+        calendar or an invoice, or include information in saved preparation and private review notes.
       </P>
       <P>
         <strong>Technical information.</strong> Like most websites, our servers see IP addresses and basic browser details.
@@ -75,6 +100,8 @@ export default function PrivacyPage() {
       <List>
         <li>To run lessons and keep both screens in step.</li>
         <li>To sign tutors in and manage their trial and subscription.</li>
+        <li>To save teaching preparation and manage the appointments and invoices a tutor creates.</li>
+        <li>To connect lesson payments, keep payment records up to date, and handle refunds and payment disputes.</li>
         <li>To keep the service secure and prevent abuse.</li>
         <li>To answer you when you contact us.</li>
         <li>To meet legal obligations, such as keeping billing records.</li>
@@ -94,7 +121,9 @@ export default function PrivacyPage() {
           <strong>Google</strong> provides sign-in.
         </li>
         <li>
-          <strong>Stripe</strong> processes payments and subscriptions.
+          <strong>Stripe</strong> processes subscriptions and online lesson payments, provides payment-account onboarding,
+          and handles payment, refund and dispute information. Its own handling of that information is described in the{' '}
+          <a href='https://stripe.com/privacy' className='font-semibold text-violet-700 underline underline-offset-2'>Stripe Privacy Policy</a>.
         </li>
       </List>
       <P>
@@ -105,24 +134,35 @@ export default function PrivacyPage() {
       <H2 id='children'>Children</H2>
       <P>
         {LEGAL.service} is for tutors, who must be adults. Students, who may be children, use it only in lessons their tutor
-        sets up, without an account. We don’t knowingly collect personal information from children beyond what a lesson
-        needs as it happens. Tutors may save private review observations and are responsible for including only what their teaching needs.
+        sets up, without an account. Tutors may enter student names and other personal information in appointments,
+        invoices, saved preparation and private review notes. These saved records are separate from temporary live board
+        work. Tutors should include only the information needed for teaching, scheduling and billing.
       </P>
       <P>
         Tutors who teach children are responsible for having a parent’s or guardian’s permission for online lessons,
-        including video. Parents and guardians can contact us at <Mail /> with any question, or to ask us to delete
-        information.
+        including video, and for making sure they have the permission needed to provide a child’s information for saved
+        preparation, scheduling and billing. Parents and guardians can contact us at <Mail /> with any question, or to ask
+        us to correct or delete information.
       </P>
 
       <H2 id='keep'>How long we keep it</H2>
       <List>
         <li>Tutor accounts: until you ask us to delete yours.</li>
         <li>Sign-in sessions: 30 days, or until you log out.</li>
-        <li>Billing records: as long as the law requires. Stripe keeps its own records under its privacy policy.</li>
+        <li>Subscription and online payment records at Stripe: Stripe keeps its own financial records under its privacy policy.</li>
         <li>Live board content: deleted shortly after the lesson ends.</li>
         <li>Saved lesson plans, worksheet images and private review notes: until the tutor deletes them or their account is deleted.</li>
+        <li>Calendar records: until the tutor’s account is deleted. Cancelling an appointment removes it from the active calendar but retains its stored record.</li>
+        <li>Invoice drafts: until the tutor deletes them or their account is deleted. Issued invoices and payment entries remain in the account; corrections keep the original entry.</li>
         <li>Server logs: about 30 days.</li>
       </List>
+      <P>
+        Before account deletion finishes, unpaid online invoices must be closed. A partly paid online invoice with a
+        remaining balance needs to be resolved first. Completed account deletion removes the app’s saved preparation,
+        calendar and invoice records. Limited payment-provider references and reconciliation records remain, with
+        duplicate contact details and notes removed. Deleting an account does not automatically refund payments or delete
+        the tutor’s Stripe account, and Stripe retains its own records.
+      </P>
 
       <H2 id='rights'>Your choices and rights</H2>
       <P>
