@@ -25,20 +25,20 @@ export default function LegalPage({ title, summary, children }) {
     window.scrollTo(0, 0);
   }, []);
   return (
-    <div className='min-h-dvh bg-white'>
+    <div className='min-h-dvh bg-white [overflow-wrap:anywhere]'>
       <header className='border-b border-slate-200'>
-        <div className='mx-auto flex max-w-3xl items-center gap-3 px-4 py-4 sm:px-6'>
-          <Link to='/' className='inline-flex items-center gap-2.5 font-bold text-slate-900'>
-            <span className='flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 text-white'>
+        <div className='mx-auto flex max-w-3xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4 sm:px-6'>
+          <Link to='/' className='inline-flex min-h-11 min-w-0 max-w-full items-center gap-2.5 rounded font-bold text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600'>
+            <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white'>
               <BookOpen className='h-5 w-5' aria-hidden='true' />
             </span>
-            {LEGAL.service}
+            <span className='min-w-0 [overflow-wrap:anywhere]'>{LEGAL.service}</span>
           </Link>
-          <nav className='ml-auto flex gap-4 text-sm font-semibold text-slate-600'>
-            <Link to='/terms' className='hover:text-violet-700'>
+          <nav className='ml-auto flex max-w-full flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-slate-600'>
+            <Link to='/terms' className='inline-flex min-h-11 min-w-11 items-center rounded hover:text-violet-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600'>
               Terms
             </Link>
-            <Link to='/privacy' className='hover:text-violet-700'>
+            <Link to='/privacy' className='inline-flex min-h-11 min-w-11 items-center rounded hover:text-violet-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600'>
               Privacy
             </Link>
           </nav>

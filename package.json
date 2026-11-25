@@ -28,7 +28,7 @@
     "google-auth-library": "^11.1.0",
     "mongodb": "^6.21.0",
     "pdfjs-dist": "6.4.299",
-    "stripe": "^23.0.1",
+    "stripe": "^23.2.0",
     "ws": "^8.22.0"
   },
   "devDependencies": {

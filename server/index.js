@@ -15,6 +15,12 @@ import { closeDatabases, warmDatabase } from './db.js';
 import { connectLessons } from './lessons.js';
 import { lessonRoutes } from './lessonRoutes.js';
 import { connectLessonTemplates, templateRoutes } from './lessonTemplates.js';
+import { connectScheduling } from './scheduling.js';
+import { schedulingRoutes } from './schedulingRoutes.js';
+import { connectInvoices } from './invoices.js';
+import { invoiceRoutes } from './invoiceRoutes.js';
+import { connectInvoicePayments } from './invoicePayments.js';
+import { installInvoicePaymentRoutes } from './invoicePaymentRoutes.js';
 
 const PORT = Number(process.env.PORT) || 8080;
 const CANONICAL_HOST = process.env.CANONICAL_HOST || 'myprivateteacher.com';
@@ -99,7 +105,7 @@ function sameSite(req) {
   }
 }
 
-export function createApp({ pictures, library, accounts, billing, liveLessons, words, lessons, templates } = {}) {
+export function createApp({ pictures, library, accounts, billing, liveLessons, words, lessons, templates, scheduling, invoices, invoicePayments } = {}) {
   const gate = lessonGate({ accounts, billing });
   const app = express();
   app.disable('x-powered-by');
@@ -210,6 +216,9 @@ export function createApp({ pictures, library, accounts, billing, liveLessons, w
   const currentTutor = async (req) => (accounts ? accounts.tutorFor(cookieValue(req, SESSION_COOKIE)).catch(() => null) : null);
   app.use('/api/lesson-templates', templateRoutes({ templates, currentTutor }));
   app.use('/api/lessons', lessonRoutes({ lessons, templates, currentTutor, sameSite, library, imageType }));
+  app.use('/api/schedule', schedulingRoutes({ scheduling, currentTutor, sameSite }));
+  app.use('/api/invoices', invoiceRoutes({ invoices, currentTutor, sameSite }));
+  installInvoicePaymentRoutes({ app, payments: invoicePayments, invoices, currentTutor, sameSite });
   // Phoneme Pop's words, by level. Anyone may read them; the game falls back to its own if this fails.
   if (words) {
     app.get('/api/words', async (req, res) => {
@@ -362,9 +371,18 @@ export function start(port = PORT) {
   warmDatabase(process.env.MONGODB_URI); // connect now, not on the first visitor's request
   const library = connectLibrary();
   const templates = connectLessonTemplates();
-  let lessons = null;
-  const accounts = connectAccounts({ beforeDelete: id => lessons?.deleteOwner(id) });
+  let lessons = null, scheduling = null, invoices = null;
+  const accounts = connectAccounts({ beforeDelete: async id => {
+    // Close payable links before removing the private records they belong to.
+    await invoices?.deleteOwner(id);
+    await scheduling?.deleteOwner(id);
+    await lessons?.deleteOwner(id);
+    await invoicePayments?.scrubOwner(id);
+  } });
   if (accounts) lessons = connectLessons({ templates, ownerExists: id => accounts.isActive(id) });
+  if (accounts) scheduling = connectScheduling({ lessons, ownerExists: id => accounts.isActive(id) });
+  const invoicePayments = connectInvoicePayments({ accounts });
+  if (accounts) invoices = connectInvoices({ scheduling, payments: invoicePayments, ownerExists: id => accounts.isActive(id) });
   if (accounts) console.log('Tutor sign-in connected');
   const words = connectWords();
   if (words) console.log('Word bank connected');
@@ -374,7 +392,7 @@ export function start(port = PORT) {
   if (lessons) console.log('Saved lesson storage configured');
   // Lessons running now, for the admin panel (the realtime server starts just below).
   const liveLessons = () => (realtime ? { lessons: realtime.rooms.size, withStudent: [...realtime.rooms.values()].filter((r) => r.student).length } : null);
-  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons, words, lessons, templates }));
+  const server = http.createServer(createApp({ pictures, library, accounts, billing, liveLessons, words, lessons, templates, scheduling, invoices, invoicePayments }));
   realtime = attachRealtime(server, {
     allowedOrigins: ALLOWED_ORIGINS,
     turn: { host: process.env.TURN_HOST, secret: process.env.TURN_SECRET, tls: process.env.TURN_TLS === 'true' },

@@ -9,13 +9,14 @@ export default function TermsPage() {
       summary={
         <>
           <strong>The short version:</strong> tutors get a {LEGAL.trialDays}-day free trial with no card needed, then{' '}
-          {LEGAL.price}/month, and can cancel anytime. Your lesson materials stay yours. Please use the service kindly and
-          lawfully, and if you teach children, have their parent’s or guardian’s permission.
+          {LEGAL.price}/month, and can cancel anytime. Lesson invoices are separate from that subscription. Your lesson
+          materials stay yours. Please use the service kindly and lawfully, and if you teach children, have their parent’s
+          or guardian’s permission.
         </>
       }
     >
       <P>
-        These terms are an agreement between you and {LEGAL.operator} (“we”, “us”), which runs {LEGAL.service} at{' '}
+        These terms are an agreement between you and {LEGAL.operator} (“we”, “us”), who runs {LEGAL.service} at{' '}
         {LEGAL.site}. By using {LEGAL.service}, you agree to them. If you use it for an organisation, you agree on its
         behalf.
       </P>
@@ -23,8 +24,9 @@ export default function TermsPage() {
       <H2 id='service'>The service</H2>
       <P>
         {LEGAL.service} is a live lesson workspace for structured literacy tutoring: a shared whiteboard, video, letter
-        tiles, picture cards, pointing hands and reading activities. Tutors sign in to run lessons; students join a
-        tutor’s lesson with a code and don’t need an account.
+        tiles, picture cards, pointing hands and reading activities. Tutors can also save lesson preparation, schedule
+        appointments and create lesson invoices. Tutors sign in to run lessons; students join a tutor’s lesson with a
+        code and don’t need an account.
       </P>
 
       <H2 id='accounts'>Tutor accounts</H2>
@@ -58,6 +60,39 @@ export default function TermsPage() {
         <li>If we change the price, we’ll email you at least 30 days before it applies to you.</li>
       </List>
 
+      <H2 id='scheduling'>Scheduling lessons</H2>
+      <P>
+        The calendar keeps the appointments you create, including one-time and weekly lessons. You choose the student
+        name, date, time zone and preparation. Scheduling a lesson does not start a classroom. The app does not
+        automatically send invitations or reminders; share lesson information with your student or their parent yourself.
+        Cancelling or rescheduling an appointment does not automatically change an issued invoice or refund a payment.
+      </P>
+
+      <H2 id='invoices'>Lesson invoices and payments</H2>
+      <P>
+        Lesson invoices are for the tutoring fees you enter and are separate from your {LEGAL.service} subscription.
+        Review the recipient, items, amount and due date before issuing an invoice. The app does not automatically email
+        it; you choose when to print it or share its payment link. The current invoice form does not calculate tax
+        automatically.
+      </P>
+      <List>
+        <li>
+          Where online payments are available, you must complete the Stripe payment-account setup before receiving lesson
+          payments. Families pay through a Stripe-hosted invoice page. {LEGAL.service} collects the payment through Stripe
+          and transfers the proceeds to your connected payment account, less a {LEGAL.invoiceFeePercent}% platform fee.
+          Stripe processing fees come out of our {LEGAL.invoiceFeePercent}% share.
+        </li>
+        <li>
+          Recording a payment received outside the app, or correcting that record, updates the invoice record only. It
+          does not charge someone, transfer money or return money to them.
+        </li>
+        <li>
+          An online refund is a separate payment action. A requested or pending refund is not a completed refund; the app
+          updates its status from Stripe. Cancelling your subscription does not automatically void lesson invoices or
+          refund lesson payments.
+        </li>
+      </List>
+
       <H2 id='use'>Acceptable use</H2>
       <P>Please don’t use {LEGAL.service} to:</P>
       <List>
@@ -72,7 +107,9 @@ export default function TermsPage() {
       <H2 id='content'>Your content</H2>
       <P>
         Pictures, worksheets and anything else you bring to a lesson stay yours. You give us permission to host, send and
-        display them only to run your lessons. Lesson content isn’t kept after a lesson ends; see the{' '}
+        display them to provide your lessons and the preparation you choose to save. Live board work is temporary;
+        saved lesson plans, worksheets and private notes remain under your account until deleted. Calendar and invoice
+        records are also stored separately from live board work. See the{' '}
         <Link to='/privacy' className='font-semibold text-violet-700 underline underline-offset-2'>
           Privacy Policy
         </Link>

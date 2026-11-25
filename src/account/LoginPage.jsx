@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, CreditCard, LogOut, PlayCircle, ShieldCheck, Sparkles } from 'lucide-react';
+import { BookOpen, CalendarDays, CreditCard, LogOut, PlayCircle, Receipt, ShieldCheck, Sparkles } from 'lucide-react';
 import { Link, navigate } from '../router.jsx';
 import { Avatar } from './AccountMenu.jsx';
 import GoogleButton from './GoogleButton.jsx';
@@ -47,6 +47,10 @@ export default function LoginPage() {
               <Link to='/lessons' className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 px-4 py-3 font-semibold text-violet-700 hover:bg-violet-50'>
                 <BookOpen className='h-5 w-5' aria-hidden='true' />Prepare lesson
               </Link>
+              <div className='grid grid-cols-2 gap-2'>
+                <Link to='/calendar' className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50'><CalendarDays className='h-4 w-4' aria-hidden='true' />Calendar</Link>
+                <Link to='/invoices' className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50'><Receipt className='h-4 w-4' aria-hidden='true' />Invoices</Link>
+              </div>
               <Link to='/whiteboard/teach' className='inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white hover:bg-violet-700'>
                 <PlayCircle className='h-5 w-5' aria-hidden='true' />
                 Start teaching

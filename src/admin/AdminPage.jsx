@@ -9,6 +9,7 @@ import { Badge, Message, Shell } from './ui.jsx';
 import TutorPanel from './TutorPanel.jsx';
 import Invites from './Invites.jsx';
 import Activity from './Activity.jsx';
+import InvoiceDisputes from './InvoiceDisputes.jsx';
 
 // The owner's admin panel: tutors and their access, free access (with an end date or none),
 // free extensions, invites for people who haven't signed in yet, and a record of every action.
@@ -79,12 +80,13 @@ export default function AdminPage() {
     ['tutors', 'Tutors'],
     ['invites', `Invites${grants.length ? ` (${grants.length})` : ''}`],
     ['activity', 'Activity'],
+    ['lesson-payments', 'Lesson payments'],
   ];
 
   return (
     <div className='min-h-dvh bg-slate-50'>
       <header className='border-b border-slate-200 bg-white'>
-        <div className='mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6'>
+        <div className='mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-4 sm:px-6'>
           <Link to='/' className='inline-flex items-center gap-2.5 font-bold text-slate-900'>
             <span className='flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 text-white'>
               <BookOpen className='h-5 w-5' aria-hidden='true' />
@@ -92,7 +94,7 @@ export default function AdminPage() {
             <span className='max-sm:hidden'>My Private Teacher</span>
           </Link>
           <span className='rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-800'>Admin</span>
-          <Link to='/' className='ml-auto inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-violet-700'>
+          <Link to='/' className='ml-auto inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-slate-600 hover:text-violet-700'>
             <ArrowLeft className='h-4 w-4' aria-hidden='true' />
             Back to site
           </Link>
@@ -101,7 +103,7 @@ export default function AdminPage() {
       <main className='mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-6 px-4 py-8 sm:px-6'>
         <h1 className='text-2xl font-extrabold text-slate-900 sm:text-3xl'>Admin</h1>
         {error && <Message note={{ error: true, text: error }} />}
-        <dl className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
+        {tab !== 'lesson-payments' && <dl className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
           {stats.map(([label, value, sub]) => (
             <div key={label} className='rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200'>
               <dt className='text-sm text-slate-500'>{label}</dt>
@@ -109,15 +111,15 @@ export default function AdminPage() {
               {sub && <p className='mt-1 text-xs text-slate-500'>{sub}</p>}
             </div>
           ))}
-        </dl>
-        <nav aria-label='Admin sections' className='flex gap-1 overflow-x-auto rounded-2xl bg-slate-200/60 p-1'>
+        </dl>}
+        <nav aria-label='Admin sections' className='grid grid-cols-2 gap-1 rounded-2xl bg-slate-200/60 p-1 sm:flex'>
           {tabs.map(([id, label]) => (
             <button
               key={id}
               type='button'
               aria-current={tab === id ? 'page' : undefined}
               onClick={() => setTab(id)}
-              className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold ${tab === id ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`min-h-11 min-w-0 flex-1 rounded-xl px-4 py-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${tab === id ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'}`}
             >
               {label}
             </button>
@@ -186,6 +188,7 @@ export default function AdminPage() {
         )}
         {tab === 'invites' && <Invites grants={grants} onChanged={load} />}
         {tab === 'activity' && <Activity entries={activity} />}
+        {tab === 'lesson-payments' && <InvoiceDisputes />}
       </main>
       {open && (
         <TutorPanel
