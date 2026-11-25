@@ -102,7 +102,7 @@ async function activityList(room){
 const prep=page=>page.getByRole('region',{name:'Activity editor',exact:true});
 const panel=page=>page.getByRole('region',{name:'Prepared lesson',exact:true});
 async function openLesson(room){
-  if(!await panel(room.tutor).isVisible())await activate(room,room.tutor.getByRole('button',{name:'Tutor guide',exact:true}));
+  if(!await panel(room.tutor).isVisible())await activate(room,room.tutor.locator('[data-whiteboard-topbar]').getByRole('button',{name:'Tutor guide',exact:true}));
   await panel(room.tutor).waitFor({state:'visible'});
   await room.tutor.waitForFunction(()=>{const node=document.querySelector('[data-tutor-guide]');if(!node)return false;const style=getComputedStyle(node),rect=node.getBoundingClientRect();return style.visibility==='visible'&&Number(style.opacity)===1&&rect.left>=0&&rect.right<=innerWidth+1;});
 }
