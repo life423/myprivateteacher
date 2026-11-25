@@ -12,6 +12,20 @@ let lessons, collection, assets;
 beforeEach(() => ({ lessons, collection, assets } = memoryLessons()));
 
 describe('owner-scoped saved lesson persistence', () => {
+  it('saves and reopens native mark selections in the existing private lesson store', async () => {
+    const initial = await lessons.create(owner, { ...blank(), activities: [{ id: 'build', type: 'build', letters: 'm a t', marks: ['breve', 'syllable-scoop'] }] });
+    initial.activities[0].marks.push('macron');
+    const reopened = await lessons.get(owner, initial.id);
+    expect(reopened.activities[0].marks).toEqual(['breve', 'syllable-scoop']);
+    const saved = await lessons.save(owner, initial.id, { ...reopened, activities: [{ ...reopened.activities[0], marks: ['macron', 'schwa'] }] });
+    expect((await lessons.get(owner, initial.id)).activities[0].marks).toEqual(['macron', 'schwa']);
+    expect(saved.revision).toBe(2); expect(collection.records.size).toBe(1); expect(assets.records.size).toBe(0);
+    await expect(lessons.get(other, initial.id)).rejects.toMatchObject({ status: 404 });
+    await expect(lessons.save(other, initial.id, { ...saved })).rejects.toMatchObject({ status: 404 });
+    await expect(lessons.save(owner, initial.id, { ...saved, revision: 1 })).rejects.toMatchObject({ status: 409 });
+    await expect(lessons.save(owner, initial.id, { ...saved, activities: [{ ...saved.activities[0], marks: ['invented'] }] })).rejects.toMatchObject({ status: 400 });
+    expect((await lessons.get(owner, initial.id)).activities[0].marks).toEqual(['macron', 'schwa']);
+  });
   it('makes retried creates idempotent without allowing another owner to take over the id', async () => {
     const original = await lessons.create(owner, blank());
     expect(await lessons.create(owner, { ...blank(), title: 'Retry must not overwrite' })).toEqual(original);
@@ -162,6 +176,7 @@ describe('same-lesson immutable edition upgrades', () => {
     ['directions', input => { input.activities[0].directions += ' with my additional prompt'; }],
     ['targets', input => { input.activities[1].targets = 'map'; }],
     ['letters', input => { input.activities[0].letters = 'm s'; }],
+    ['teaching marks', input => { input.activities[0].marks = ['breve', 'underline']; }],
     ['activity order', input => { input.activities.reverse(); }],
     ['extra activity', input => { input.activities.push({ id: 'my-extra', type: 'review', letters: 'a' }); }],
     ['worksheet choice', input => { input.activities[3].assetIds = []; }],

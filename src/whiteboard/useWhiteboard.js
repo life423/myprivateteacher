@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Board, MAX_STROKE_NUMBERS } from './board.js';
 import { BOX_COUNTS, MAX_TILES, TILE_HEIGHT, clampTile, cleanTileText, tileWidth } from '../../shared/tiles.js';
 import { cleanBoxTap, cleanSoundBoxState } from '../../shared/soundBoxes.js';
-import { MAX_PIECES, cleanCrop, cleanPieceContent, clampPiece, pieceSize } from '../../shared/pieces.js';
+import { MAX_PIECES, cleanCrop, cleanPieceContent, clampPiece, isPictureId, nativePieceMetrics, pieceSize } from '../../shared/pieces.js';
+import { getTeachingMark } from '../../shared/teachingMarks.js';
 import { findPicturePlacement, picturePlacement, picturePlacementObstacles, PICTURE_RESERVATION_MS } from './picturePlacement.js';
 import { newPictureId, pictureUrl, shrinkPicture } from './pictures.js';
 import { createPictureUploads, uploadPicture } from './pictureUploads.js';
@@ -335,33 +336,45 @@ export function useWhiteboard(role, send) {
     () => {
       const allowed = () => pageSession.current.ready && pageSession.current.current(actionScope);
       const sendBound = message => sendPageMessage(message, actionScope);
+      const add = ({ offer, region, pic, crop, content: suppliedContent, x, y, w, automatic = false, centre, bounds, preferredWidth }) => {
+        if (!allowed()) return null;
+        const obstacles = picturePlacementObstacles([...pieces.current.values()], pendingPieces.current);
+        if (obstacles.length >= MAX_PIECES) {
+          lastPlacement.current = { error: `Up to ${MAX_PIECES} pictures, parts or marks fit on this board. Remove one before adding another.` };
+          return null;
+        }
+        const content = cleanPieceContent(suppliedContent);
+        const standalone = pic == null && content?.kind === 'mark';
+        if (standalone && role !== 'tutor') return null;
+        const metrics = standalone && nativePieceMetrics(content);
+        const picture = standalone ? null : pictures.current.get(pic);
+        const chosen = metrics ? { x: 0, y: 0, w: metrics.w, h: metrics.h, r: 0 } : cleanCrop(crop, picture);
+        if (!chosen) {
+          lastPlacement.current = { error: 'This picture is not available in the lesson yet. Please try again.' };
+          return null;
+        }
+        const size = pieceSize(chosen, w, content);
+        let placed;
+        if (!automatic) placed = clampPiece(size, x, y);
+        else if (standalone) {
+          const at = findPicturePlacement(size, centre, { pieces: obstacles, bounds });
+          placed = at && { ...at, w: size.w, placement: at };
+        } else placed = picturePlacement(picture, centre, { pieces: obstacles, bounds, crop: chosen, preferredWidth, content });
+        if (!placed) return null;
+        const id = makeId('piece');
+        const piece = { id, offer, region, pic: standalone ? null : pic, crop: chosen, ...(content && { content }), x: placed.x, y: placed.y, w: automatic ? placed.w : size.w };
+        const reserved = { ...piece, h: pieceSize(chosen, piece.w, content).h };
+        pendingPieces.current.set(id, { piece: reserved, expiresAt: Date.now() + PICTURE_RESERVATION_MS });
+        lastPlacement.current = placed.placement || { crowded: false, visible: true, overlaps: 0 };
+        sendBound({ t: 'piece:add', piece });
+        return id;
+      };
       return {
-        add({ offer, region, pic, crop, content: suppliedContent, x, y, w, automatic = false, centre, bounds, preferredWidth }) {
-          if (!allowed()) return null;
-          const obstacles = picturePlacementObstacles([...pieces.current.values()], pendingPieces.current);
-          if (obstacles.length >= MAX_PIECES) {
-            lastPlacement.current = { error: `Up to ${MAX_PIECES} pictures or parts fit on this board. Remove one before adding another.` };
-            return null;
-          }
-          const picture = pictures.current.get(pic);
-          const chosen = cleanCrop(crop, picture);
-          if (!chosen) {
-            lastPlacement.current = { error: 'This picture is not available in the lesson yet. Please try again.' };
-            return null;
-          }
-          const content = cleanPieceContent(suppliedContent);
-          const size = pieceSize(chosen, w, content);
-          const placed = automatic
-            ? picturePlacement(picture, centre, { pieces: obstacles, bounds, crop: chosen, preferredWidth, content })
-            : clampPiece(size, x, y);
-          if (!placed) return null;
-          const id = makeId('piece');
-          const piece = { id, offer, region, pic, crop: chosen, ...(content && { content }), x: placed.x, y: placed.y, w: automatic ? placed.w : size.w };
-          const reserved = { ...piece, h: pieceSize(chosen, piece.w, content).h };
-          pendingPieces.current.set(id, { piece: reserved, expiresAt: Date.now() + PICTURE_RESERVATION_MS });
-          lastPlacement.current = placed.placement || { crowded: false, visible: true, overlaps: 0 };
-          sendBound({ t: 'piece:add', piece });
-          return id;
+        add,
+        addMark(mark, options = {}) {
+          const definition = getTeachingMark(mark);
+          if (!definition || role !== 'tutor') return null;
+          return add({ ...options, pic: null, content: { kind: 'mark', mark }, w: definition.defaultWidth, automatic: true });
         },
         duplicate(id, { bounds, centre } = {}) {
           if (!allowed()) return null;
@@ -598,7 +611,7 @@ export function useWhiteboard(role, send) {
     const snapshot = pageSession.current.restoreSnapshot();
     if (!snapshot.complete) { setPageError('Some board pages have not finished loading. Reconnect to load the complete lesson before restoring.'); return false; }
     for (const picture of pictures.current.values()) if (picture.library && !kept.current.has(picture.id)) kept.current.set(picture.id, { library: picture.library });
-    const required = new Set(snapshot.boards.flatMap(page => [...(page.pictureIds || []), ...(page.pieces || []).map(piece => piece.pic), ...(page.offers || []).map(offer => offer.pic)]));
+    const required = new Set(snapshot.boards.flatMap(page => [...(page.pictureIds || []), ...(page.pieces || []).map(piece => piece.pic), ...(page.offers || []).map(offer => offer.pic)]).filter(isPictureId));
     if ([...required].some(id => !kept.current.has(id))) { setPageError('Some lesson pictures have not finished loading. Keep this lesson open and retry restoring.'); return false; }
     const retained = [...kept.current.entries()].filter(([id]) => required.has(id));
     setPageError(null);

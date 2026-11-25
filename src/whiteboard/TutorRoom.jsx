@@ -497,6 +497,17 @@ export default function TutorRoom() {
   const markers = [studentMarker && { key: 'student', ...studentMarker }, myMarker && { key: 'me', ...myMarker }].filter(Boolean);
 
   // The Pictures panel's settings, shared by the side column (or sheet) and the slide-out.
+  const addTeachingMark = (mark) => {
+    if (status !== 'open' || !wb.pageReady || wb.pagePending || bridge.game || phoneme.active) return null;
+    const surface = stageApi.current;
+    const id = wb.pieceActions.addMark(mark, { bounds: surface?.bounds(), centre: surface?.centre() });
+    if (id) {
+      chooseTool('none'); setSelectedTileId(null);
+      surface?.selectPiece(id, { preserveView: true });
+      surface?.reportPlacement(wb.pieceActions.placementStatus());
+    }
+    return id;
+  };
   const pictureProps = {
     pictures: wb.pictures,
     srcFor: (id) => pictureUrl(room.code, id),
@@ -683,7 +694,7 @@ export default function TutorRoom() {
       panels={[{
         id: 'materials', label: gamesOpen ? 'Games' : 'Materials', icon: LayoutGrid,
         content: <MaterialsWorkspace key={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} scope={`tutor-${room.code || 'new'}-${room.key || 'pending'}`} tabs={[
-          { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} boxTaps={wb.boxTaps} onResetSoundBoxes={wb.resetSoundBoxes} onShowSoundBoxes={!bridge.game && !phoneme.active ? () => stageApi.current?.showSoundBoxes() : null} /> },
+          { id: 'letters', label: 'Letters', content: (query) => <TileBar embedded query={query} count={wb.tiles.length} selected={wb.tiles.find((tile) => tile.id === selectedTileId) || null} onAdd={wb.addTiles} onAddMark={addTeachingMark} marksDisabled={status !== 'open' || !wb.pageReady || wb.pagePending || Boolean(bridge.game) || phoneme.active} onEdit={(text) => { const ok = wb.editTile(selectedTileId, text); if (ok) setSelectedTileId(null); return ok; }} onCancelEdit={() => setSelectedTileId(null)} onReset={wb.resetTiles} onClear={wb.clearTiles} boxes={wb.boxes} onBoxes={wb.setBoxes} boxTaps={wb.boxTaps} onResetSoundBoxes={wb.resetSoundBoxes} onShowSoundBoxes={!bridge.game && !phoneme.active ? () => stageApi.current?.showSoundBoxes() : null} /> },
           { id: 'pictures', label: 'Pictures', actions: <SessionImageActions key={`${wb.pageId}:${wb.pageEpoch}:pictures`} count={wb.pictures.length} onClear={wb.clearPictures} label='Picture options' disabled={!pictureProps.uploadsReady} />, content: (query) => <PicturesPanel {...pictureProps} embedded searchQuery={query} showLibrary onViewPicture={openPicture} onBrowse={() => setBrowsing(true)} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
           { id: 'worksheets', label: 'Worksheets', actions: <SessionImageActions key={`${wb.pageId}:${wb.pageEpoch}:worksheets`} count={wb.pictures.length} onClear={wb.clearPictures} label='Worksheet options' disabled={!pictureProps.uploadsReady} />, content: (query) => <PicturesPanel {...pictureProps} embedded material='worksheet' searchQuery={query} onViewPicture={openPicture} onShow={() => layout.current?.show('materials')} onPlaced={(options) => { if (!options?.keepOpen) layout.current?.closeSheet(); }} /> },
         ]} lesson={{ open: false, onOpen: () => setLessonOpen(true), title: 'Tutor guide', detail: lessonRunner.lesson ? `${lessonRunner.lesson.title}${lessonRunner.index >= 0 ? ` · ${lessonRunner.index + 1}/${lessonRunner.lesson.activities.length}` : ''}` : null, content: null }} activity={{
@@ -699,7 +710,7 @@ export default function TutorRoom() {
 
     />
     <TutorGuide open={lessonOpen} onClose={() => setLessonOpen(false)} returnFocusRef={guideTrigger} actions={room.code && lessonRunner.lesson ? <span className='min-[360px]:hidden'><CopyButton compact text={`${window.location.origin}/whiteboard/${room.code}`} label='Copy lesson link' /></span> : null}>
-      <LessonPanel runner={lessonRunner} library={library} loadLibraryImage={loadLibraryImage} onOpenMaterial={openLessonMaterial} />
+      <LessonPanel runner={lessonRunner} library={library} loadLibraryImage={loadLibraryImage} onOpenMaterial={openLessonMaterial} onAddMark={addTeachingMark} marksDisabled={status !== 'open' || Boolean(bridge.game) || phoneme.active} />
     </TutorGuide>
     <PictureDrawer id='tutor-picture-library' title={preparedMaterial ? 'Choose teaching pieces' : 'Picture library'} open={browsing} onClose={closePictureLibrary} previewOpen={picturePreviewOpen} catalogReady={libraryState.status === 'ready'} catalogScrollTop={pictureLibraryView.scrollTop} onCatalogScroll={(scrollTop) => updatePictureLibraryView({ scrollTop })}>
       <PicturesPanel

@@ -7,7 +7,7 @@ import { deflateSync } from 'node:zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { memoryLessonTemplates, memoryLessons } from '../server/lessonFixtures.js';
 import { MAX_PICTURE_BYTES } from '../shared/pieces.js';
-import { cleanLessonInput, studentProjection } from '../shared/lessons.js';
+import { studentProjection } from '../shared/lessons.js';
 import { preparedPng, validateStarterTemplate } from '../server/starterLesson.js';
 import { loadTemplateSources, parsePublisherArguments, publishOriginalTemplate } from './publish-lesson-template.mjs';
 
@@ -184,9 +184,13 @@ describe('four-sheet original teaching pack', () => {
   });
   it('preserves the exact immutable v1 canonical digest and asset contract', async () => {
     await publish();
-    const clean = cleanLessonInput(original), legacy = { id: original.id, schemaVersion: 1, title: clean.title, description: original.description.trim(), knownLetters: original.knownLetters, wordChain: original.wordChain, readingLines: original.readingLines, activities: clean.activities, assets: [{ id: 'reading', w: 1600, h: 1700, type: 'image/png', bytes: pngBytes.length, sha256: digest(pngBytes) }] };
+    // Anchor the legacy contract to reviewed pre-marks metadata, not the same
+    // evolving normalizer used by the publisher being checked.
+    const legacy = JSON.parse(readFileSync(new URL('../server/fixtures/lesson-templates-before-teaching-marks.json', import.meta.url))).templates.find(template => template._id === original.id);
     const stored = await templates.get(original.id);
-    expect(stored.sourceHash).toBe(digest(JSON.stringify(legacy)));
+    expect(stored.sourceHash).toBe(legacy.sourceHash);
+    expect(stored.activities).toEqual(legacy.activities);
+    expect(stored.assets).toEqual(legacy.assets);
     expect(Object.keys(stored.assets[0]).sort()).toEqual(['bytes', 'h', 'id', 'sha256', 'type', 'w']);
   });
   it('publishes each exact source, hides only the superseded catalog entry, and leaves old copies/notes/images intact', async () => {

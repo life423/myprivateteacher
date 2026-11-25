@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { WORK } from './tiles.js';
 import { cleanCrop, cleanPieceContent, clampPiece, isFacePiece, isPictureId, nativePieceMetrics, pieceSize, startingWidth } from './pieces.js';
+import { TEACHING_MARKS, getTeachingMark } from './teachingMarks.js';
 
 const pic = { w: 976, h: 974 };
 
@@ -63,6 +64,43 @@ describe('native teaching pieces', () => {
     expect(pieceSize(crop, 0, content)).toEqual({ w: 24, h: 10.5 });
     expect(pieceSize(crop, 24).h).toBe(48);
     expect(pieceSize(crop, 99999, content).w).toBeLessThanOrEqual(WORK.right - WORK.left);
+  });
+});
+
+describe('reusable teaching marks', () => {
+  it('exposes a fixed, immutable catalog without accepting inherited property names', () => {
+    expect(TEACHING_MARKS.map(mark => mark.id)).toEqual(['breve', 'macron', 'schwa', 'stress', 'cedilla', 'dot', 'circumflex', 'diaeresis', 'silent-letter', 'underline', 'syllable-scoop']);
+    expect(new Set(TEACHING_MARKS.map(mark => mark.id)).size).toBe(11);
+    expect(Object.isFrozen(TEACHING_MARKS)).toBe(true);
+    for (const mark of TEACHING_MARKS) {
+      expect(getTeachingMark(mark.id)).toBe(mark);
+      expect(Object.isFrozen(mark)).toBe(true);
+      expect(mark.defaultWidth).toBeGreaterThanOrEqual(mark.minWidth);
+    }
+    for (const id of ['__proto__', 'constructor', 'toString', '<path/>', '', {}, null]) expect(getTeachingMark(id)).toBeNull();
+  });
+
+  it('accepts only catalog identifiers and strips arbitrary styling or source fields', () => {
+    for (const mark of TEACHING_MARKS) expect(cleanPieceContent({ kind: 'mark', mark: mark.id, html: '<script>', color: 'red', text: 'private' })).toEqual({ kind: 'mark', mark: mark.id });
+    for (const content of [{ kind: 'mark', mark: 'custom-path' }, { kind: 'mark', mark: ['breve'] }, { kind: 'mark', mark: '__proto__' }, { kind: 'mark' }, { kind: 'svg', mark: 'breve' }]) expect(cleanPieceContent(content)).toBeNull();
+  });
+
+  it('uses each mark’s native proportions and small-ink limit without a source crop', () => {
+    for (const mark of TEACHING_MARKS) {
+      const content = { kind: 'mark', mark: mark.id };
+      expect(nativePieceMetrics(content)).toEqual({ w: mark.w, h: mark.h });
+      const minimum = pieceSize(null, 0, content);
+      expect(minimum.w).toBe(mark.minWidth);
+      expect(minimum.h).toBeCloseTo(mark.minWidth * mark.h / mark.w, 0);
+      const normal = pieceSize(null, mark.defaultWidth, content);
+      expect(normal.w).toBe(mark.defaultWidth);
+      expect(normal.h).toBeCloseTo(mark.defaultWidth * mark.h / mark.w, 0);
+      const maximum = pieceSize(null, 1e9, content);
+      expect(maximum.w).toBeLessThanOrEqual(WORK.right - WORK.left);
+      expect(maximum.h).toBeLessThanOrEqual(WORK.bottom - WORK.top);
+    }
+    expect(pieceSize(null, 0, { kind: 'mark', mark: 'dot' })).toEqual({ w: 8, h: 8 });
+    expect(pieceSize({ w: 20, h: 20 }, 0)).toEqual({ w: 48, h: 48 });
   });
 });
 

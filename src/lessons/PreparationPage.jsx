@@ -4,6 +4,7 @@ import { Link, navigate, useNavigationGuard } from '../router.jsx';
 import { useAccount } from '../account/account.js';
 import GoogleButton from '../account/GoogleButton.jsx';
 import PdfWorksheetImport from '../whiteboard/PdfWorksheetImport.jsx';
+import TeachingMarks from '../whiteboard/TeachingMarks.jsx';
 import { newPictureId, shrinkPicture } from '../whiteboard/pictures.js';
 import { catalogCollections, collectionLabel, filterLibraryCards } from '../whiteboard/libraryCatalog.js';
 import { MAX_PICTURE_BYTES } from '../../shared/pieces.js';
@@ -323,6 +324,14 @@ function LessonEditor({ id, clientId }) {
               return <div key={asset.id} className={`overflow-hidden rounded-xl border ${used ? 'border-violet-400 ring-1 ring-violet-400' : 'border-slate-200'}`}><label className='block cursor-pointer'><img src={lessonAssetUrl(id, asset.id)} alt='' className='aspect-[3/4] w-full bg-slate-100 object-contain' /><span className='flex min-h-11 items-center gap-2 p-2 text-xs font-semibold'><input type='checkbox' className='h-5 w-5 accent-violet-600' checked={used} onChange={(event) => editActivity(current.id, { assetIds: event.target.checked ? [...current.assetIds, asset.id] : current.assetIds.filter((value) => value !== asset.id) })} />Worksheet {index + 1}</span></label>{!anyUse && <button type='button' disabled={savedUse || busy} onClick={() => discardAsset(asset)} className={`${button} w-full rounded-none border-t border-slate-100 px-2 text-xs text-slate-600`}>{savedUse ? 'Save to remove selection first' : 'Delete unused image'}</button>}</div>;
             })}</div>}
           </div>}
+          <div>
+            <h3 className={label}>Teaching marks</h3>
+            <TeachingMarks selected={current.marks || []} disabled={busy} onToggle={id => {
+              const marks = current.marks || [];
+              editActivity(current.id, { marks: marks.includes(id) ? marks.filter(mark => mark !== id) : [...marks, id] });
+            }} />
+            <p className='mt-2 text-xs leading-5 text-slate-500'>Keep marks ready for this activity. You choose when to add them during teaching.</p>
+          </div>
           <label className='block'><span className={label}>Directions for you <span className='font-normal text-slate-500'>(private)</span></span><textarea value={current.directions} maxLength={2000} rows={3} onChange={(event) => editActivity(current.id, { directions: event.target.value })} placeholder='Reminders, prompts, or teaching directions' className={`${input} resize-y`} /></label>
           <div className='rounded-xl border border-amber-200 bg-amber-50/60 p-3'><label className='flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800'><input type='checkbox' checked={current.reviewNextTime} onChange={(event) => editActivity(current.id, { reviewNextTime: event.target.checked })} className='h-5 w-5 shrink-0 accent-violet-600' />Review next time</label><label className='mt-1 block'><span className={label}>Review note <span className='font-normal text-slate-500'>(private)</span></span><textarea value={current.reviewNote} maxLength={1000} rows={2} onChange={(event) => editActivity(current.id, { reviewNote: event.target.value })} placeholder='What would you like to revisit?' className={`${input} resize-y`} /></label></div>
         </div>}

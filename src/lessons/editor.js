@@ -9,9 +9,9 @@ export const MAX_ACTIVITIES = MAX_LESSON_ACTIVITIES;
 export const MAX_ASSETS = MAX_LESSON_ASSETS;
 const copy = (value) => JSON.parse(JSON.stringify(value));
 export function activity(type, id = crypto.randomUUID()) {
-  return { id, type, title: ACTIVITY_TYPES[type].title, directions: '', targets: '', letters: '', cardIds: [], assetIds: [], boxes: 0, reviewNextTime: false, reviewNote: '' };
+  return { id, type, title: ACTIVITY_TYPES[type].title, directions: '', targets: '', letters: '', cardIds: [], assetIds: [], marks: [], boxes: 0, reviewNextTime: false, reviewNote: '' };
 }
-export const editableLesson = (lesson) => ({ title: lesson.title, activities: copy(lesson.activities || []) });
+export const editableLesson = (lesson) => ({ title: lesson.title, activities: copy(lesson.activities || []).map(item => ({ ...item, marks: item.marks || [] })) });
 export const fingerprint = (document) => JSON.stringify(editableLesson(document));
 export function loadedEditor(lesson) {
   const draft = editableLesson(lesson);

@@ -230,7 +230,7 @@ Conservative internal review, not measured product-quality scores:
 | Performance | 8/10 | Build passes without a dependency; measure LCP, INP and CLS rather than assuming. |
 | Product coherence | 9/10 | Shared controls preserve teacher pacing, permissions and lesson storage. |
 
-Proposed teaching-marks palette and saved-lesson integration are tracked in [issue #67](https://github.com/life423/myprivateteacher/issues/67). This is backlog work, not an implemented palette or a validated curriculum standard.
+Teaching-marks palette and saved-lesson integration are tracked in [issue #67](https://github.com/life423/myprivateteacher/issues/67). The local implementation and verification are recorded in the November 24 entry below; this does not establish a universal curriculum coding standard.
 
 ## Keep existing teaching behavior
 
@@ -272,6 +272,37 @@ Conservative internal review heuristics, not measured product-quality scores:
 | Accessibility | 8/10 | Named dialog, keyboard focus and touch alternatives covered; screen-reader and physical-device review remain. |
 | Performance | 8/10 | No new dependency; production build passes. Core Web Vitals still need measurement. |
 | Product coherence | 9/10 | Fits existing page management and preserves teacher-controlled lesson preparation. |
+
+## Teaching marks — November 24, 2026
+
+The owner approved teaching marks that tutors can add explicitly during teaching and select while preparing saved lessons. The local feature implementation offers eleven named native marks: breve, macron, schwa, stress mark, cedilla, dot above, circumflex, two dots, silent-letter slash, underline and syllable scoop. **Materials → Letters → Teaching marks** progressively discloses the full palette; the Tutor guide offers only the current activity's prepared choices. Marks never deploy automatically. Their names and glyphs remain consistent across preparation and live teaching. Tutors choose their own instructional conventions; the app does not label these as a particular program's coding system.
+
+Catalog marks are allowlisted native ink, with no image background, shadow, upload or image-slot requirement. They reuse the shared proportional resize handle, continuous Size control, duplication, deletion, ordering and comfortable hit targets. Existing extracted breves and native text remain supported. Only tutors create, duplicate or delete marks. Students can move shared marks with Select or arrow keys, and can resize them when Student tools permits it; another participant's held object stays protected. Prepared mark IDs remain private and persist with the saved activity; live positions are session/page work, not saved board compositions. Removing the current page's session images preserves source-free catalog marks, while Clear board clears placed marks and retains saved preparation and other pages.
+
+Review caught two ways closing a panel could hide newly added work. On an upright tablet, the first automatic fill after closing Materials could zoom from the whole board to its left half. A docked desktop guide could restore an older left-side zoom after adding a mark to the temporarily fitted board. Explicit addition now commits the exact visible view without moving the camera, preventing either later restoration from hiding that work. Ordinary guide open/close still restores a prior view when no new content/view choice was made; untouched tablet filling and manual Zoom/Fit still work. The prepared palette is keyed by activity so an earlier addition's transient feedback does not carry into the next activity. Layers now describes **Objects on the board** and names native marks accurately.
+
+Targeted domain, renderer, saved-preparation, native-hit geometry, Stage/guide-view, hook and realtime suites passed. The final production Chrome fixture check passed 24 cases at desktop 1440×900, tablet 768×1024 and phone 393×852 with zero page errors and an unchanged production-build fingerprint. It uses real React components, HTTP and tutor/student WebSockets with synthetic account cookies and memory storage. Checks cover save/reload, private prepared selections, no auto-add, all eleven source-free glyphs, camera-neutral addition/duplication and visibility after panel close, shared size/duplicate/delete controls, Tools-off student keyboard movement versus Tools-on resizing, page duplication/switching, reconnect/server restart, image cleanup and Clear board. Phone/tablet creation and selections use trusted emulated touch; the continuous size alternative uses keyboard input. Settled desktop, tablet and phone screenshots were inspected. Narrow desktop palette labels retain complete words after recovering horizontal label space, with no reduced touch target; an explicit whole-word geometry assertion prevents the earlier orphaned final letter in Circumflex. Screenshots and reports are retained in the local November 24 `mpt-teaching-marks/final-chrome` artifact directory. These checks do not establish physical-device touch, screen-reader output, 200% text enlargement, live media or measured Core Web Vitals.
+
+Conservative internal review heuristics, not measured product-quality scores:
+
+| Dimension | Score | Evidence or prioritized next check |
+| --- | --- | --- |
+| Hierarchy | 9/10 | Full choices remain under Teaching marks; the guide shows only prepared choices, with no automatic board deployment. |
+| Usability | 9/10 | Explicit addition, save/reload, descriptive labels, source-free rendering and retention after panel close were exercised. |
+| Aesthetics | 9/10 | Final screenshots show consistent native ink, aligned glyph/name choices and intact whole-word labels. |
+| Interaction | 8/10 | Mouse, trusted emulated touch, keyboard Size/nudge and ownership rules pass; P2: verify corner resizing, placement and camera behavior on a physical tablet/stylus. |
+| Responsiveness | 9/10 | Phone, tablet and desktop targets remain at least 44px with no horizontal palette/page overflow; newly added work stays in the tutor's visible board. |
+| Accessibility | 8/10 | Named buttons, pressed choices, disabled states, shared keyboard controls and meaningful native labels are covered; P2: verify screen-reader announcements and 200% text enlargement. |
+| Performance | 8/10 | Native marks add no dependency or image upload; P2: measure authenticated LCP, INP and CLS on representative devices. |
+| Product coherence | 9/10 | Shared resize/selection/layer controls, private prepared choices, teacher pacing and existing student permissions are preserved. |
+
+### Teaching-marks release check — November 25, 2026
+
+The teaching-marks release was isolated from the unfinished Calendar, Invoices and Stripe integration on top of `7e147ba`. A fresh dependency install using that release's unchanged lockfile and production build passed. After the compatibility and local-development fixes below, the final complete Windows run passed **817 tests in 93 files**, including all nine development-runner regressions. The production teaching-marks browser fixture passed **24 of 24 cases** across desktop, tablet and phone, with no page errors and no changes to its tested build fingerprint (`index-DGCjXroX.js`). Existing illustrated teaching-pack and whiteboard browser checks also passed, **29 and 19 cases** respectively, covering retained native/photo pieces, Magic Select, shared placement, clear/delete behavior, Materials state, games and short-landscape controls. Desktop board controls, tablet preparation choices and phone native marks were visually inspected. Reports and screenshots are in the local November 25 `mpt-teaching-marks-release` artifact directory. This validates the isolated release candidate; hosted deployment and real-device limitations remain separate checks.
+
+A real-account follow-up caught a compatibility gap that newly published fixtures missed: adding an empty marks selection to the lesson normalizer changed the canonical bytes used to verify already published premade lessons. Their stored hashes were left untouched. Template canonicalization now omits empty selections, preserving historical v1/v2 hashes and idempotent publication, while nonempty marks remain covered by integrity verification. Frozen metadata generated with the actual pre-marks normalizer exercises catalog/plan/image reads, private marked copies, publication retries and tampering. The corrected local Included lessons endpoint returned 200 with the existing catalog, without rewriting cloud data.
+
+The reported old-layout/reconnecting local screen was served by the retired `phoneme-pop` checkout without an API listening on port 8080. The correct `my-private-teacher` checkout was verified with the real signed-in account and a clean native breve after starting its API and Vite. The combined development runner now reads optional `.env` settings only into the backend at startup and bounds Windows/macOS backend watching to `server` and `shared`; dependency changes cannot restart the classroom. Changing `.env` requires restarting development. Nine focused Windows regressions verify dependency stability, source reloads, environment precedence, missing-file startup and owned-process shutdown.
 
 ## Key references
 

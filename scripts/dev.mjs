@@ -4,6 +4,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { readFile } from 'node:fs/promises';
+import { parseEnv } from 'node:util';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 
@@ -106,7 +108,7 @@ export async function runDev({
   cwd = ROOT,
   backendPort = 8080,
   frontendPort = 3000,
-  backendArgs = ['--env-file-if-exists=.env', '--watch', 'server/index.js'],
+  backendArgs,
   frontendArgs = ['node_modules/vite/bin/vite.js'],
   env = process.env,
   stdio = ['ignore', 'inherit', 'inherit'],
@@ -114,6 +116,21 @@ export async function runDev({
 } = {}) {
   await assertPortAvailable(backendPort);
   await assertPortAvailable(frontendPort);
+  if (signal.aborted) return 0;
+  let backendEnv = env;
+  if (backendArgs === undefined) {
+    // Node 24's --env-file watch also watches its parent directory recursively
+    // on Windows. Load it only into the backend's environment so dependency
+    // updates cannot restart the classroom. Restart dev after changing .env.
+    try {
+      backendEnv = { ...parseEnv(await readFile(path.join(cwd, '.env'), 'utf8')), ...env };
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    // Custom directory watchers are supported on Windows/macOS in Node 24.
+    backendArgs = [...(['win32', 'darwin'].includes(process.platform)
+      ? ['--watch-path=server', '--watch-path=shared'] : ['--watch']), 'server/index.js'];
+  }
   if (signal.aborted) return 0;
   const controller = new AbortController();
   const aborted = new Promise((resolve) => {
@@ -124,7 +141,7 @@ export async function runDev({
   const children = [];
   try {
     // Keep this consistent with vite.config.js even if a shell or .env sets PORT.
-    const backend = launch(backendArgs, { cwd, env: { ...env, PORT: String(backendPort) }, stdio });
+    const backend = launch(backendArgs, { cwd, env: { ...backendEnv, PORT: String(backendPort) }, stdio });
     children.push(backend);
     const ready = await Promise.race([
       waitForBackend(backendPort, controller.signal).then(() => null),

@@ -61,8 +61,9 @@ export function pieceCenteredResize(origin, width) {
 export function nativePieceHit(piece, point, scale = 1, pointerType = 'mouse') {
   if (!piece?.content || !validRectangle(piece)) return false;
   const target = (pointerType === 'mouse' ? 24 : 44) / Math.max(0.01, scale);
-  const dx = piece.content.kind === 'breve' ? Math.max(0, target - piece.w) / 2 : 0;
-  const dy = piece.content.kind === 'breve' ? Math.max(0, target - piece.h) / 2 : 0;
+  const mark = ['breve', 'mark'].includes(piece.content.kind);
+  const dx = mark ? Math.max(0, target - piece.w) / 2 : 0;
+  const dy = mark ? Math.max(0, target - piece.h) / 2 : 0;
   return point.x >= piece.x - dx && point.x <= piece.x + piece.w + dx && point.y >= piece.y - dy && point.y <= piece.y + piece.h + dy;
 }
 

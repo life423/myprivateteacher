@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { assertPortAvailable, runDev } from './dev.mjs';
@@ -38,6 +38,28 @@ async function waitUntilListening(port) {
     await delay(25);
   }
   throw new Error(`Test server did not listen on ${port}`);
+}
+
+async function removeWatchFixture(folder) {
+  const resolved = path.resolve(folder);
+  if (path.dirname(resolved) !== path.resolve(os.tmpdir()) || !path.basename(resolved).startsWith('mpt-dev-watch-test-')) {
+    throw new Error(`Refusing to remove a path outside the watch fixture directory: ${resolved}`);
+  }
+  await rm(resolved, { recursive: true, force: true });
+}
+
+async function waitForBackendValue(port, check) {
+  for (let n = 0; n < 100; n++) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}`);
+      const value = await response.json();
+      if (check(value)) return value;
+    } catch {
+      // The watched child briefly closes the socket while restarting.
+    }
+    await delay(25);
+  }
+  throw new Error('The watched backend did not return the expected source version.');
 }
 
 const serverArgs = (port, extra = '') => ['-e', `require('node:net').createServer().listen(${port},'127.0.0.1');${extra}`];
@@ -135,7 +157,93 @@ describe('combined development startup', () => {
     } finally {
       controller.abort();
       await run;
-      await rm(folder, { recursive: true, force: true });
+      await removeWatchFixture(folder);
     }
   });
+
+  it('starts the default watched backend without an optional local environment file', async () => {
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'mpt-dev-watch-test-'));
+    const backendPort = await unusedPort();
+    const frontendPort = await unusedPort();
+    await Promise.all([
+      mkdir(path.join(folder, 'server'), { recursive: true }),
+      mkdir(path.join(folder, 'shared'), { recursive: true }),
+    ]);
+    await writeFile(path.join(folder, 'server', 'index.js'), "require('node:net').createServer().listen(process.env.PORT, '127.0.0.1');");
+    const { controller, run } = start({ cwd: folder, backendPort, frontendPort, frontendArgs: serverArgs(frontendPort) });
+    try {
+      await waitUntilListening(frontendPort);
+      expect(await probe(backendPort)).toBe(true);
+      controller.abort();
+      expect(await run).toBe(0);
+      expect(await probe(backendPort)).toBe(false);
+      expect(await probe(frontendPort)).toBe(false);
+    } finally {
+      controller.abort();
+      await run;
+      await removeWatchFixture(folder);
+    }
+  });
+
+  it.skipIf(!['win32', 'darwin'].includes(process.platform))('keeps dependencies out of default watch while reloading server and shared source', async () => {
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'mpt-dev-watch-test-'));
+    const backendPort = await unusedPort();
+    const frontendPort = await unusedPort();
+    const serverFile = path.join(folder, 'server', 'index.js');
+    const sharedFile = path.join(folder, 'shared', 'value.cjs');
+    const dependencyFile = path.join(folder, 'node_modules', 'fixture-dependency', 'index.cjs');
+    await Promise.all([
+      mkdir(path.dirname(serverFile), { recursive: true }),
+      mkdir(path.dirname(sharedFile), { recursive: true }),
+      mkdir(path.dirname(dependencyFile), { recursive: true }),
+    ]);
+    const serverSource = (version) => `
+      const shared = require('../shared/value.cjs');
+      const dependency = require('../node_modules/fixture-dependency/index.cjs');
+      require('node:http').createServer((req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ pid: process.pid, server: '${version}', shared, dependency,
+          localValue: process.env.MPT_WATCH_FIXTURE_LOCAL, explicitValue: process.env.MPT_WATCH_FIXTURE_EXPLICIT }));
+      }).listen(process.env.PORT, '127.0.0.1');
+    `;
+    await Promise.all([
+      writeFile(serverFile, serverSource('first')),
+      writeFile(sharedFile, "module.exports = 'first';"),
+      writeFile(dependencyFile, "module.exports = 'first';"),
+      writeFile(path.join(folder, '.env'), 'MPT_WATCH_FIXTURE_LOCAL=from-file\nMPT_WATCH_FIXTURE_EXPLICIT=from-file\n'),
+    ]);
+    const { controller, run } = start({ cwd: folder, backendPort, frontendPort,
+      env: { ...process.env, MPT_WATCH_FIXTURE_EXPLICIT: 'from-environment' }, frontendArgs: serverArgs(frontendPort) });
+    try {
+      await waitUntilListening(frontendPort);
+      const first = await waitForBackendValue(backendPort, value => value.server === 'first');
+      expect(first.localValue).toBe('from-file');
+      expect(first.explicitValue).toBe('from-environment');
+      await writeFile(dependencyFile, "module.exports = 'changed';");
+      // Node's watch debounce is 200ms. Let dependency notifications settle,
+      // then verify the original child still serves its unchanged module.
+      await delay(1000);
+      const unchanged = await waitForBackendValue(backendPort, () => true);
+      expect(unchanged).toEqual(first);
+
+      await writeFile(sharedFile, "module.exports = 'changed';");
+      const sharedReloaded = await waitForBackendValue(backendPort, value => value.shared === 'changed');
+      expect(sharedReloaded.pid).not.toBe(first.pid);
+      expect(sharedReloaded.dependency).toBe('changed');
+
+      await writeFile(serverFile, serverSource('changed'));
+      const serverReloaded = await waitForBackendValue(backendPort, value => value.server === 'changed');
+      expect(serverReloaded.pid).not.toBe(sharedReloaded.pid);
+      expect(await probe(frontendPort)).toBe(true);
+
+      controller.abort();
+      expect(await run).toBe(0);
+      expect(await probe(backendPort)).toBe(false);
+      expect(await probe(frontendPort)).toBe(false);
+    } finally {
+      controller.abort();
+      await run;
+      await removeWatchFixture(folder);
+    }
+  }, 15000);
 });

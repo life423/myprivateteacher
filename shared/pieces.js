@@ -5,6 +5,7 @@
 // crop, in the picture's own pixels, with its corner rounding) placed on the board. Magic
 // Select makes pieces; the picture itself is never changed, so it can be copied again.
 import { WORK } from './tiles.js';
+import { getTeachingMark } from './teachingMarks.js';
 
 export const MAX_PICTURES = 8; // per room
 export const MAX_PIECES = 40; // per room
@@ -14,10 +15,12 @@ export const MAX_PICTURE_SIDE = 4096;
 export const PIECE_MIN = 48; // the short side of a piece never gets smaller than this
 
 // Only deliberately selected, known teaching content becomes native board ink.
-// Source/crop authorization is still required; this is never an OCR result.
+// Source/crop authorization is still required for extracted content. The fixed
+// teaching-mark catalog can also create native ink without an image source.
 export function cleanPieceContent(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (value.kind === 'breve') return { kind: 'breve' };
+  if (value.kind === 'mark') return getTeachingMark(value.mark) ? { kind: 'mark', mark: value.mark } : null;
   if (value.kind !== 'text' || typeof value.text !== 'string' || value.text.length > 256) return null;
   const text = value.text.normalize('NFC').trim();
   if (!text || text.length > 128 || !/^[A-Za-zĀāĂăĒēĔĕĪīĬĭŌōŎŏŪūŬŭ .,!?;:'’"()\-]+$/.test(text)) return null;
@@ -30,6 +33,10 @@ export function nativePieceMetrics(value) {
   const content = cleanPieceContent(value);
   if (!content) return null;
   if (content.kind === 'breve') return { w: 64, h: 28 };
+  if (content.kind === 'mark') {
+    const { w, h } = getTeachingMark(content.mark);
+    return { w, h };
+  }
   const advance = character => {
     if (character === ' ') return 20;
     if ('ilI.,!;:\'’'.includes(character)) return 20;
@@ -81,7 +88,8 @@ export function pieceSize(crop, width, value) {
   const maxW = Math.min(WORK.right - WORK.left, (WORK.bottom - WORK.top) / ratio);
   // A floating spelling mark must fit above a letter. Its touch target is a
   // separate interaction concern, not an opaque 48px-tall photo rectangle.
-  const minW = Math.min(maxW, content?.kind === 'breve' ? 24 : Math.max(PIECE_MIN, PIECE_MIN / ratio));
+  const mark = content?.kind === 'mark' ? getTeachingMark(content.mark) : null;
+  const minW = Math.min(maxW, mark?.minWidth ?? (content?.kind === 'breve' ? 24 : Math.max(PIECE_MIN, PIECE_MIN / ratio)));
   const w = clamp(Number.isFinite(width) ? width : native?.w ?? 320, minW, maxW);
   return { w: round1(w), h: round1(w * ratio) };
 }

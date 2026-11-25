@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useWhiteboard } from './useWhiteboard.js';
+import { MAX_PIECES, pieceSize } from '../../shared/pieces.js';
+import { getTeachingMark } from '../../shared/teachingMarks.js';
+import { rectangleIntersection } from './pictureGeometry.js';
 
 // Run the production hook with retained state/refs and explicit effect replay, as in
 // StrictMode/Fast Refresh. Transport and frame clocks remain controlled by the tests.
@@ -144,6 +147,11 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const microtasks = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
 const prepared = () => ({ blob: new Blob(['encoded image'], { type: 'image/png' }), w: 200, h: 200 });
 const room = { code: '6106', key: 'test-room-key' };
+const standaloneMark = (id, mark = 'breve') => {
+  const definition = getTeachingMark(mark), content = { kind: 'mark', mark };
+  const crop = { x: 0, y: 0, w: definition.w, h: definition.h, r: 0 };
+  return { id, pic: null, crop, content, x: 400, y: 350, ...pieceSize(crop, definition.defaultWidth, content), z: 1, heldBy: null };
+};
 
 describe('native teaching piece actions', () => {
   it('preserves a small breve through move, duplicate and student offer without source-aspect distortion', () => {
@@ -165,6 +173,100 @@ describe('native teaching piece actions', () => {
     expect(hook.messages().at(-1).tiles[0]).toMatchObject({ text: 'a', x: 420, y: 320 });
     hook.value.addTiles('m a t', { at: { x: 462, y: 376 } });
     expect(hook.messages().at(-1).tiles.every(tile => tile.x === undefined && tile.y === undefined)).toBe(true);
+  });
+});
+
+describe('standalone teaching marks', () => {
+  it('places marks in the current visible area without requiring a picture or changing the board view', () => {
+    const hook = mountBoard(); hook.value.handle(snapshot('page-a', 0));
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const bounds = { x: 200, y: 250, w: 320, h: 200 }, centre = { x: 360, y: 350 };
+    const first = hook.value.pieceActions.addMark('breve', { bounds, centre });
+    const second = hook.value.pieceActions.addMark('macron', { bounds, centre });
+    expect(first).toBeTypeOf('string'); expect(second).not.toBe(first);
+    const messages = hook.messages();
+    expect(messages.map(message => message.t)).toEqual(['piece:add', 'piece:add']);
+    const placed = messages.map(({ piece }) => ({ ...piece, ...pieceSize(piece.crop, piece.w, piece.content) }));
+    expect(placed[0]).toMatchObject({ id: first, pic: null, content: { kind: 'mark', mark: 'breve' }, w: 40, h: 17.5 });
+    expect(placed[1]).toMatchObject({ id: second, pic: null, content: { kind: 'mark', mark: 'macron' }, w: 40, h: 10 });
+    for (const mark of placed) {
+      expect(mark.x).toBeGreaterThanOrEqual(bounds.x); expect(mark.y).toBeGreaterThanOrEqual(bounds.y);
+      expect(mark.x + mark.w).toBeLessThanOrEqual(bounds.x + bounds.w);
+      expect(mark.y + mark.h).toBeLessThanOrEqual(bounds.y + bounds.h);
+    }
+    expect(rectangleIntersection(placed[0], placed[1])).toBeNull();
+    expect(hook.value.pictures).toEqual([]); expect(fetcher).not.toHaveBeenCalled();
+    expect(hook.value.pageScope()).toEqual({ pageId: 'page-a', pageEpoch: 0 });
+  });
+
+  it('rejects student creation, unknown marks and callbacks from an earlier page or disconnected room', () => {
+    const student = mountBoard('student'); student.value.handle(snapshot('page-a', 0));
+    expect(student.value.pieceActions.addMark('breve')).toBeNull();
+    expect(student.value.pieceActions.add({ pic: null, content: { kind: 'mark', mark: 'breve' }, x: 400, y: 400 })).toBeNull();
+    expect(student.messages()).toEqual([]);
+    const hook = mountBoard(); hook.value.handle(snapshot('page-a', 0));
+    expect(hook.value.pieceActions.addMark('__proto__')).toBeNull();
+    const addToFirst = hook.value.pieceActions.addMark;
+    hook.value.handle(snapshot('page-b', 1));
+    expect(addToFirst('macron')).toBeNull();
+    hook.value.disconnect();
+    expect(hook.value.pieceActions.addMark('breve')).toBeNull();
+    expect(hook.messages()).toEqual([]);
+  });
+
+  it('counts pending marks toward the shared piece limit and frees a slot only after deletion', () => {
+    const hook = mountBoard(); hook.value.handle(snapshot('page-a', 0));
+    for (let n = 0; n < MAX_PIECES; n++) expect(hook.value.pieceActions.addMark('dot')).toBeTypeOf('string');
+    expect(hook.value.pieceActions.addMark('dot')).toBeNull();
+    expect(hook.messages()).toHaveLength(MAX_PIECES);
+    expect(hook.value.pieceActions.placementStatus().error).toContain(`Up to ${MAX_PIECES}`);
+    const first = hook.messages()[0].piece;
+    hook.value.handle({ t: 'piece:add', pageId: 'page-a', pageEpoch: 0, piece: { ...first, ...pieceSize(first.crop, first.w, first.content), z: 1, heldBy: null } });
+    expect(hook.value.pieceActions.addMark('dot')).toBeNull(); // acknowledgement does not create a second slot
+    hook.value.handle({ t: 'piece:delete', pageId: 'page-a', pageEpoch: 0, id: first.id });
+    expect(hook.value.pieceActions.addMark('dot')).toBeTypeOf('string');
+    expect(hook.messages()).toHaveLength(MAX_PIECES + 1);
+  });
+
+  it('moves, continuously resizes and duplicates a source-free mark using the existing piece actions', () => {
+    const hook = mountBoard(), mark = standaloneMark('mark-a');
+    hook.value.handle(snapshot('page-a', 0, { pieces: [mark] }));
+    hook.value.pieceActions.move(mark.id, 510, 380, 80);
+    expect(hook.value.pieces[0]).toMatchObject({ pic: null, content: mark.content, x: 510, y: 380, w: 80, h: 35 });
+    hook.value.pieceActions.drop(mark.id, 520, 390, 84);
+    expect(hook.messages().at(-1)).toMatchObject({ t: 'piece:drop', id: mark.id, x: 520, y: 390, w: 84 });
+    hook.value.handle({ t: 'piece:drop', pageId: 'page-a', pageEpoch: 0, piece: { ...mark, x: 520, y: 390, w: 84, h: 36.8 } });
+    const id = hook.value.pieceActions.duplicate(mark.id);
+    expect(id).toBeTypeOf('string'); expect(id).not.toBe(mark.id);
+    expect(hook.messages().at(-1)).toMatchObject({ t: 'piece:add', piece: { id, pic: null, content: mark.content, crop: mark.crop, w: 84 } });
+    expect(hook.value.pictures).toEqual([]);
+  });
+
+  it('restores marks on active and inactive pages without requesting a fabricated picture', async () => {
+    const hook = mountBoard(), first = standaloneMark('mark-a'), second = standaloneMark('mark-b', 'schwa');
+    hook.value.handle({ t: 'room', fresh: false, pageId: 'page-b', pageEpoch: 3, pages });
+    hook.value.handle(snapshot('page-b', 3, { pieces: [second] }));
+    hook.value.handle({ t: 'page:cache', pageId: 'page-b', pageEpoch: 3, board: { id: 'page-a', pieces: [first], tiles: [], strokes: [], offers: [], pictureIds: [], lines: 'big', boxes: 0, game: null } });
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    expect(await hook.value.retainPictures(room)).toBe(true);
+    hook.value.handle({ t: 'room', fresh: true, restoring: true, pageId: 'page-1', pageEpoch: 0, pages: [{ id: 'page-1', title: 'Board 1' }] });
+    hook.send.mockClear();
+    expect(await hook.value.restore(false, room)).toBe(true);
+    expect(fetcher).not.toHaveBeenCalled(); expect(hook.value.pageError).toBeNull();
+    const restored = hook.messages().filter(message => message.t === 'rs-piece');
+    expect(restored.map(message => [message.pageId, message.piece.id, message.piece.content])).toEqual([
+      ['page-a', first.id, first.content], ['page-b', second.id, second.content],
+    ]);
+    expect(restored.every(message => message.piece.pic === null)).toBe(true);
+    expect(hook.messages().at(-1)).toMatchObject({ t: 'restored', activePageId: 'page-b', tools: false });
+  });
+
+  it('retains independent marks when image cleanup returns its authoritative snapshot', () => {
+    const hook = mountBoard(), mark = standaloneMark('mark-a', 'underline');
+    hook.value.handle(snapshot('page-a', 0, { pieces: [piece, mark], pictures: [image], pictureIds: [image.id] }));
+    hook.value.handle({ t: 'pieces', pageId: 'page-a', pageEpoch: 0, pieces: [mark], pictures: [], offers: [], pictureIds: [] });
+    expect(hook.value.pieces).toEqual([mark]); expect(hook.value.pictures).toEqual([]);
+    expect(hook.value.pieceActions.addMark('stress')).toBeTypeOf('string');
   });
 });
 
