@@ -76,7 +76,7 @@ async function instrument(page){
   });
 }
 async function check(room,name,action){
-  const item={viewport:room.mobile?'phone':'desktop',name};report.cases.push(item);
+  const item={viewport:room.viewportName||(room.mobile?'phone':'desktop'),name};report.cases.push(item);
   try{Object.assign(item,await action());item.passed=true;return true;}
   catch(error){item.passed=false;item.error=error.stack;await room.tutor.locator('body').innerText().then(value=>writeFileSync(join(out,`failure-${report.cases.length}.txt`),value)).catch(()=>{});await room.tutor.screenshot({path:join(out,`failure-${report.cases.length}.png`)}).catch(()=>{});return false;}
   finally{writeFileSync(join(out,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({viewport:item.viewport,name,passed:item.passed}));}
@@ -396,7 +396,66 @@ async function run(base,mobile){
     });
   }finally{await context.close();await other.close();await studentContext.close();}
 }
-try{const base=await start();for(const mobile of[false,true])await run(base,mobile);}
+async function checkBuilder(base, config) {
+  const context=await browser.newContext({viewport:{width:config.width,height:config.height},hasTouch:config.touch,isMobile:config.touch});
+  await context.addCookies([{name:'mpt_session',value:'fixture-cookie-a',url:base,httpOnly:true,sameSite:'Lax'}]);
+  const tutor=await context.newPage();tutor.on('pageerror',error=>report.pageErrors.push(error.message));
+  const room={context,tutor,base,mobile:config.touch,viewportName:config.name};
+  try {
+    await check(room,'Builder explains activity choices, previews public materials and saves private guide choices',async()=>{
+      await tutor.goto(`${base}/lessons`);
+      await tutor.getByRole('textbox',{name:'Lesson name',exact:true}).fill('Sound practice');
+      await activate(room,tutor.getByRole('button',{name:'Prepare lesson',exact:true}));
+      await tutor.waitForURL(/\/lessons\/[A-Za-z0-9_-]+$/);room.id=new URL(tutor.url()).pathname.split('/').at(-1);
+      await tutor.getByRole('heading',{name:'Start with one activity',exact:true}).waitFor();
+      const add=tutor.getByRole('group',{name:'Add activity',exact:true});
+      for(const name of['Review','Build words','Dictation','Read'])assert(await add.getByRole('button',{name,exact:true}).isVisible());
+      await tutor.screenshot({path:join(out,`builder-empty-${config.name}.png`),fullPage:true});
+      await activate(room,add.getByRole('button',{name:'Build words',exact:true}));
+      const editor=prep(tutor),preview=editor.getByRole('region',{name:'Starting board preview',exact:true});
+      await editor.getByRole('textbox',{name:'Starting letter tiles',exact:true}).fill('sh i p');
+      await editor.getByRole('combobox',{name:'Sound boxes',exact:true}).selectOption('3');
+      assert.deepEqual(await preview.getByRole('listitem').allTextContents(),['sh','i','p']);
+      assert(await preview.getByRole('img',{name:'3 empty sound boxes',exact:true}).isVisible());
+      await editor.getByRole('textbox',{name:'Word list (private)',exact:true}).fill('ship\nshop');
+      await editor.getByRole('textbox',{name:/^Directions for you/}).fill('Model the word, then change one sound.');
+      const marks=editor.locator('summary').filter({hasText:/^Teaching marks/});
+      assert.equal(await editor.getByRole('button',{name:'Breve',exact:true}).isVisible(),false);
+      await marks.focus();await tutor.keyboard.press('Enter');
+      const breve=editor.getByRole('button',{name:'Breve',exact:true});await breve.focus();await tutor.keyboard.press('Space');
+      assert.equal(await breve.getAttribute('aria-pressed'),'true');
+      await activate(room,editor.getByRole('button',{name:'Macron',exact:true}));
+      assert.match(await marks.innerText(),/2 selected/);
+      await tutor.screenshot({path:join(out,`builder-guide-${config.name}.png`),fullPage:true});
+      await marks.press('Enter');
+      await activate(room,tutor.getByRole('button',{name:'Save lesson',exact:true}));
+      await tutor.getByRole('status').filter({hasText:/^Lesson saved\.$/}).waitFor();
+      const saved=await documentFor(room);assert.deepEqual(saved.activities[0].marks,['breve','macron']);assert.equal(saved.activities[0].targets,'ship\nshop');
+      await editor.getByRole('textbox',{name:/^Directions for you/}).scrollIntoViewIfNeeded();
+      const action=tutor.getByRole('button',{name:'Save lesson',exact:true}),actionBox=await action.boundingBox();
+      assert(actionBox.y>=0&&actionBox.y+actionBox.height<=config.height,'Save stays reachable while editing the guide');
+      assert(await action.evaluate(element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'Save must not be covered');
+      await tutor.reload();await editor.getByRole('textbox',{name:'Starting letter tiles',exact:true}).waitFor();
+      assert.match(await marks.innerText(),/2 selected/);assert.equal(await breve.isVisible(),false);
+      assert.equal(await editor.getByRole('textbox',{name:'Word list (private)',exact:true}).inputValue(),'ship\nshop');
+      assert(!await preview.innerText().then(text=>/ship|shop|Model|Breve|Macron/.test(text)),'Private guide content must stay out of the board preview');
+      await preview.scrollIntoViewIfNeeded();
+      await tutor.screenshot({path:join(out,`builder-board-${config.name}.png`),fullPage:true});
+      await tutor.screenshot({path:join(out,`builder-viewport-${config.name}.png`)});
+      assert(await tutor.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Builder must fit its viewport');
+      for(const locator of[marks,tutor.getByRole('button',{name:'Save lesson',exact:true}),tutor.getByRole('button',{name:/^Teach this lesson/})]){
+        const bounds=await locator.boundingBox();assert(bounds.width>=44&&bounds.height>=44,'Builder actions need touch targets');
+      }
+      if(config.name==='tablet') {
+        await tutor.evaluate(()=>document.documentElement.style.fontSize='200%');
+        assert(await tutor.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Enlarged builder must fit');
+        await tutor.screenshot({path:join(out,'builder-tablet-enlarged.png'),fullPage:true});
+      }
+      return{previewTiles:['sh','i','p'],boxes:3,privateGuideRetained:true,preparedMarksOnly:true,keyboardSelection:true,noHorizontalOverflow:true};
+    });
+  } finally {await context.close();}
+}
+try{const base=await start();for(const config of[{name:'desktop',width:1440,height:900,touch:false},{name:'tablet',width:768,height:1024,touch:true},{name:'phone',width:393,height:852,touch:true},{name:'narrow-phone',width:320,height:852,touch:true}])await checkBuilder(base,config);for(const mobile of[false,true])await run(base,mobile);}
 catch(error){report.fatal=error.stack;}
 finally{
   await browser?.close();realtime?.close();await vite?.close();

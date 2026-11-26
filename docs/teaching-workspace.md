@@ -329,6 +329,31 @@ Conservative internal review heuristics, not measured product-quality scores:
 | Performance | 8/10 | No new dependency or observer; next measure production Core Web Vitals rather than infer them from a build. |
 | Product coherence | 9/10 | Same teacher navigation throughout idle and active lessons; no new persistent instruction or control. |
 
+## Lesson builder clarity — November 25, 2026
+
+The owner found the teaching-mark choices and the wider custom-lesson builder vague. Preparation now distinguishes **Student board** from **Tutor guide · Only you see this**, instead of presenting public materials, private prompts and optional marks as an undifferentiated form. Activity choices describe what the learner will do; the empty editor explains choose, prepare, save/teach. Examples explain space-separated tiles and sound boxes, including `sh i p` as three tiles/sounds. A changing starting-materials preview shows the configured tiles and empty boxes, or explains why dictation/reading starts empty. It is a materials preview, not a live classroom or saved board composition.
+
+Teaching marks are an optional disclosure with a selected count, explicit selection instructions and a named selection summary. The explanation gives the actual path: save the choices with the activity, then click a prepared mark in the Tutor guide while teaching to place it. Read materials explain selecting worksheet parts rather than automatic whole-page deployment. Review notes are collapsed when empty and open when an existing note/flag needs attention. Save and Teach stay in the existing action bar as it follows scrolling; no duplicate action row or new setup wizard was added. Private target lists, notes, live deployment rules, saved document formats and published template integrity remain governed by the existing implementation.
+
+Validation: production build, 91 focused lesson tests in ten files, 30 saved-preparation/browser cases and 24 teaching-mark/browser cases passed with no page errors. The isolated Chrome fixtures use memory storage and synthetic tutor cookies, not customer records. Builder checks cover desktop 1440×900, tablet 768×1024, phone 393×852 and narrow phone 320×852, with trusted emulated touch, keyboard disclosure/mark selection, separate accessible names/help, saved-choice reload, private preview exclusions, reachable/hit-tested scrolling Save and no horizontal overflow. The tablet builder also fits at 200% root text. Retained end-to-end cases exercise all four activity types, tutor/student privacy, explicit material placement, prepared mark persistence, permissions, reconnects and board cleanup. Rendered desktop, tablet, phone, narrow-phone and enlarged-text screenshots were inspected. Nonsecret artifacts are in the local November 25 `mpt-lesson-builder-release` and `mpt-lesson-builder-marks` directories. The correct local Vite server returns the updated preparation module; these changes have not been published by this work.
+
+Conservative review heuristics, not measured product-quality scores:
+
+| Dimension | Score | Evidence or prioritized follow-up |
+| --- | --- | --- |
+| Hierarchy | 9/10 | Board setup and private guide are distinct; optional palettes/notes are disclosed when needed. |
+| Usability | 8/10 | Choices, examples and preview are concrete; P1: observe a novice tutor prepare and teach an activity without coaching, then reduce any remaining wrong turns. |
+| Aesthetics | 9/10 | Existing brand, spacing, typography and surfaces retained; settled rendered states inspected. |
+| Interaction | 9/10 | Keyboard selection, emulated touch, saved feedback, disclosure and scroll action reachability checked. |
+| Responsiveness | 9/10 | Four widths and enlarged tablet text fit; full primary labels remain readable. |
+| Accessibility | 8/10 | Descriptive names/help, pressed states, visible focus and 44px actions; P2: verify screen-reader announcements and physical touch/keyboard behavior. |
+| Performance | 8/10 | No added dependency or live classroom in the preview; P2: measure authenticated production LCP/INP/CLS after release. |
+| Product coherence | 9/10 | Preparation explains the existing teacher-controlled live flow and preserves privacy boundaries. |
+
+## Teaching navigation
+
+Lesson plans and Games are primary teaching destinations. Before a lesson is open, Lesson plans shows **Create or open** and leads to saved lessons and preparation. During a prepared lesson the shortcut opens the Tutor guide and shows the current lesson. Games uses a game controller icon. Put them above the Materials tabs, outside the materials scroller, where teachers can find them when entering the workspace. The desktop sidebar groups them under Teaching tools. The compact sheet shows the two named actions directly to preserve room for scrolling materials. Keep the current lesson and game details with their respective destinations.
+
 ## Key references
 
 - [NN/g Tabs, Used Right](https://www.nngroup.com/articles/tabs-used-right/)

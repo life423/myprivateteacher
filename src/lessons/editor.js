@@ -1,9 +1,9 @@
 import { MAX_LESSON_ACTIVITIES, MAX_LESSON_ASSETS } from '../../shared/lessons.js';
 export const ACTIVITY_TYPES = {
-  review: { title: 'Review', description: 'Review selected letters and articulation cards.' },
-  build: { title: 'Build words', description: 'Prepare a word list, starting tiles, and sound boxes.' },
-  dictation: { title: 'Dictation', description: 'Keep words or sentences private while your student writes.' },
-  read: { title: 'Read', description: 'Choose a worksheet or a page from a PDF.' },
+  review: { title: 'Review', description: 'Practise familiar sounds with letter tiles and optional mouth pictures.' },
+  build: { title: 'Build words', description: 'Let your student move letter tiles into sound boxes to build words you say.' },
+  dictation: { title: 'Dictation', description: 'Read a word or sentence aloud while your student writes it on the board.' },
+  read: { title: 'Read', description: 'Choose words or pictures from your worksheet to share on the board.' },
 };
 export const MAX_ACTIVITIES = MAX_LESSON_ACTIVITIES;
 export const MAX_ASSETS = MAX_LESSON_ASSETS;

@@ -191,12 +191,14 @@ async function run(base, config) {
       const editor = tutor.getByRole('region', { name: 'Activity editor', exact: true });
       await editor.getByRole('textbox', { name: /^Starting letter tiles/ }).fill('a m');
       await editor.getByRole('textbox', { name: /^Directions for you/ }).fill(room.privateDirections);
+      await activate(room, editor.locator('summary').filter({ hasText: /^Teaching marks/ }));
       const palette = editor.getByRole('group', { name: 'Teaching marks', exact: true });
       for (const mark of TEACHING_MARKS) await activate(room, palette.getByRole('button', { name: mark.label, exact: true }));
       await activate(room, tutor.getByRole('button', { name: 'Save lesson', exact: true }));
       await tutor.getByRole('status').filter({ hasText: /^Lesson saved\.$/ }).waitFor();
       const saved = await documentFor(room); assert.deepEqual(saved.activities[0].marks, TEACHING_MARKS.map(mark => mark.id));
-      await tutor.reload(); await palette.waitFor();
+      await tutor.reload(); await editor.getByRole('textbox', { name: /^Starting letter tiles/ }).waitFor();
+      await activate(room, editor.locator('summary').filter({ hasText: /^Teaching marks/ })); await palette.waitFor();
       for (const mark of TEACHING_MARKS) assert.equal(await palette.getByRole('button', { name: mark.label, exact: true }).getAttribute('aria-pressed'), 'true');
       const measured = await geometry(palette); assertGeometry(measured);
       await palette.screenshot({ path: join(out, `preparation-marks-${config.name}.png`), animations: 'disabled' });
