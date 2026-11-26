@@ -213,6 +213,30 @@ try {
       assert(final.y > 0.2); assert.equal(final.by, null);
       return { final: { x: final.x, y: final.y }, sharedRelease: true };
     });
+    if (mobile) await check(room, 'Alphabet glove fits one row as the strip changes width', async () => {
+      const sizes = [];
+      try {
+        for (const viewport of [{ width: 820, height: 1180 }, { width: 740, height: 390 }, { width: 393, height: 852 }]) {
+          await tutor.setViewportSize(viewport);
+          const letter = tutor.getByRole('group', { name: 'Alphabet', exact: true }).locator('[data-letter="R"]');
+          await letter.waitFor();
+          const hand = tutor.locator('[data-hand="r"]:visible').first();
+          const start = await hand.boundingBox();
+          const cell = await letter.boundingBox();
+          await drag(room, { x: start.x + start.width / 2, y: start.y + start.height / 2 },
+            { x: cell.x + cell.width / 2, y: cell.y + cell.height / 2 });
+          const glove = tutor.locator('[data-bar-hand="r"]');
+          await glove.waitFor();
+          const bounds = await glove.boundingBox();
+          assert(Math.abs(bounds.height - cell.height) <= 1, 'The glove should be one letter row tall');
+          const tip = await glove.evaluate(svg => new DOMPoint(0, 0).matrixTransform(svg.getScreenCTM()).toJSON());
+          assert(Math.abs(tip.x - cell.x - cell.width / 2) <= 2 && Math.abs(tip.y - cell.y - cell.height / 2) <= 2, 'Fingertip should point where released');
+          await tutor.screenshot({ path: join(out, `alphabet-glove-${viewport.width}.png`) });
+          sizes.push({ ...viewport, gloveHeight: bounds.height });
+        }
+      } finally { await tutor.setViewportSize({ width: 393, height: 852 }); }
+      return { sizes };
+    });
     if (!mobile) {
       await check(room, 'Materials adds c a t and an existing tile can be moved', async () => {
         await materials(tutor, 'Letters');

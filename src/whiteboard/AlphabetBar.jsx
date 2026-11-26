@@ -22,7 +22,7 @@ function barSpot(hand) {
   return { row, across: (i - row * PER_ROW) / PER_ROW, down: clamp((hand.y - STRIP.y) / STRIP.height, 0, 1) };
 }
 
-// A glove at the same size next to the letters as on the board, fingertip exactly on its spot.
+// Keep the glove one letter-row tall, with its fingertip exactly on the shared spot.
 // It hangs below the letters, over the board, so when it can be held it catches taps itself,
 // anywhere on it; otherwise taps pass through it to the board.
 function Glove({ hand, grabbable }) {
@@ -34,7 +34,8 @@ function Glove({ hand, grabbable }) {
       data-bar-hand={hand.side}
       className={`hand-${hand.side} absolute z-10 overflow-visible ${grabbable ? 'cursor-grab touch-none' : 'pointer-events-none'}`}
       style={{
-        width: `${(box.width / CELL_WIDTH) * (100 / PER_ROW)}%`,
+        height: '100%',
+        width: 'auto',
         left: `${across * 100}%`,
         top: `${down * 100}%`,
         aspectRatio: `${box.width} / ${box.height}`,
