@@ -42,7 +42,7 @@ export default function LessonPanel({ runner, library = [], loadLibraryImage, on
   const activity = lesson?.activities[selected];
   return <section aria-label='Prepared lesson' className='flex h-full min-h-0 min-w-0 flex-col'>
     <header className='shrink-0 border-b border-slate-200 px-5 py-3'>
-      <h3 className='text-lg font-bold leading-7 text-slate-900 [overflow-wrap:anywhere]'>{lesson?.title || 'Lesson'}</h3>
+      <h3 className='text-lg font-bold leading-7 text-slate-900 [overflow-wrap:anywhere]'>{lesson?.title || 'Choose a lesson'}</h3>
       <p className='mt-1 flex items-center gap-1.5 text-xs text-slate-500'><EyeOff className='h-3.5 w-3.5' aria-hidden='true' />Your plan and notes stay private</p>
     </header>
     <div className='min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-4'>
@@ -51,7 +51,7 @@ export default function LessonPanel({ runner, library = [], loadLibraryImage, on
         <p className='text-sm leading-6 text-slate-600'>Open a lesson you prepared, or make one before your student arrives.</p>
         <button type='button' disabled={loading} onClick={runner.refreshChoices} className={`${button} w-full border border-violet-200 bg-violet-50 text-violet-800`}>{loading ? 'Loading…' : 'Choose a saved lesson'}</button>
         <ul className='space-y-2'>{runner.choices.map(item => <li key={item.id}><button type='button' disabled={loading} onClick={() => runner.choose(item.id)} className={`${button} w-full justify-start border border-slate-200 text-left text-slate-800 hover:bg-slate-50`}><BookOpen className='h-4 w-4 shrink-0' aria-hidden='true' /><span className='min-w-0 truncate'>{item.title}</span></button></li>)}</ul>
-        <Link to='/lessons' className={`${button} w-full text-violet-800 underline underline-offset-4`}>Prepare lesson</Link>
+        <Link to='/lessons' className={`${button} w-full text-violet-800 underline underline-offset-4`}>Prepare a new lesson</Link>
       </> : <>
         <label className='block text-sm font-semibold text-slate-600'>Activity<select aria-label='Lesson activity' disabled={busy || loading || !runner.ready} value={selected} onChange={event => { const next = Number(event.target.value); setSelected(next); void runner.activate(next); }} className='mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-800'>{lesson.activities.map((item, number) => <option key={item.id} value={number}>{number + 1}. {item.title || names[item.type]}</option>)}</select></label>
         {activity ? <>

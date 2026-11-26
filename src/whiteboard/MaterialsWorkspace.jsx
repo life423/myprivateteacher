@@ -1,8 +1,45 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Milestone, Search, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Gamepad2, Search, X } from 'lucide-react';
 import { cleanMaterialsView, loadMaterialsView, saveMaterialsView } from './materials.js';
 
-const shortcut = 'flex min-h-11 w-full flex-1 flex-wrap content-center items-center justify-center gap-x-2 gap-y-1 rounded-xl px-2 py-2 text-left text-sm font-bold leading-5 text-slate-700 transition-colors duration-150 motion-reduce:transition-none hover:bg-violet-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-violet-500';
+const destination = 'flex min-h-11 w-full min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-2 text-sm font-bold leading-5 text-violet-900 hover:bg-violet-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-600';
+
+function TeachingNavigation({ lesson, activity, lessonTrigger, activityTrigger, onOpenGames, uid }) {
+  const gameDetail = [activity?.current, activity?.detail].filter(Boolean).join(' · ');
+  return (
+    <nav data-workspace-shortcuts aria-labelledby={uid + '-tools-heading'} className="shrink-0 rounded-2xl border border-slate-200 bg-white p-2 max-md:border-0 max-md:bg-transparent max-md:p-0 [@media(max-height:540px)]:border-0 [@media(max-height:540px)]:p-0">
+      <h2 id={uid + '-tools-heading'} className="mb-2 px-1 text-sm font-bold text-slate-800 max-md:sr-only [@media(max-height:540px)]:sr-only">Teaching tools</h2>
+      <div className={lesson && activity ? 'grid grid-cols-2 gap-2' : 'grid'}>
+        {lesson && (
+          <section aria-label="Lesson shortcuts" className="flex min-w-0">
+            <button type="button" ref={lessonTrigger} aria-label={lesson.title} aria-describedby={uid + '-lesson-detail'} aria-expanded={false} onClick={lesson.onOpen} className={destination + ' !py-1'}>
+              {lesson.detail ? <>
+                <BookOpen className="h-4 w-4 shrink-0 text-violet-700" aria-hidden="true" />
+                <span className="min-w-min flex-1 text-left">{lesson.title}
+                  <span id={uid + '-lesson-detail'} className="block w-0 min-w-full truncate text-xs font-medium text-slate-600">{lesson.detail}</span>
+                </span>
+              </> : <span className="min-w-0 text-center">
+                <span className="block">{lesson.title}</span>
+                <span id={uid + '-lesson-detail'} className="block text-xs font-medium leading-4 text-slate-600">Create or open</span>
+              </span>}
+            </button>
+          </section>
+        )}
+        {activity && (
+          <section aria-label="Game shortcuts" className="flex min-w-0">
+            <button type="button" ref={activityTrigger} aria-label="Games" aria-expanded={false} aria-controls={uid + '-games'} aria-describedby={gameDetail ? uid + '-current-game' : undefined} onClick={onOpenGames} className={destination}>
+              <Gamepad2 className="h-5 w-5 shrink-0 text-violet-700" aria-hidden="true" />
+              <span className={gameDetail ? 'min-w-min flex-1 text-left' : 'min-w-min'}>Games
+                {gameDetail && <span id={uid + '-current-game'} className="block w-0 min-w-full truncate text-xs font-medium text-slate-600">{gameDetail}</span>}
+              </span>
+            </button>
+          </section>
+        )}
+      </div>
+      {activity?.quickAction}
+    </nav>
+  );
+}
 
 // Search and scroll belong to each materials tab. The content can unmount safely;
 // changing a tab never overwrites another tab's saved browsing position.
@@ -84,6 +121,16 @@ export default function MaterialsWorkspace({ scope, tabs, activity, lesson }) {
   };
   return (
     <div data-materials-workspace data-workspace-view={activityOpen ? 'games' : 'materials'} className='flex h-full min-h-0 flex-1 flex-col gap-2'>
+      {!lessonOpen && !activityOpen && (lesson || activity) && (
+        <TeachingNavigation
+          lesson={lesson}
+          activity={activity}
+          lessonTrigger={lessonTrigger}
+          activityTrigger={activityTrigger}
+          onOpenGames={openActivity}
+          uid={uid}
+        />
+      )}
       {/* Keep materials mounted while game controls are open, including unsent tile text. */}
       <section ref={frame} aria-label='Materials' hidden={activityOpen || lessonOpen} data-materials-scroll={constrained || undefined} onWheel={stopRestoring} onPointerDown={stopRestoring} onKeyDownCapture={stopRestoring} onScroll={rememberScroll} className={`${activityOpen || lessonOpen ? 'hidden' : 'flex'} ${constrained ? 'overflow-y-auto' : 'overflow-hidden'} min-h-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white`}>
         <header className={`shrink-0 border-b border-slate-200 px-3 ${constrained ? 'py-2' : 'pb-3 pt-3'}`}>
@@ -123,17 +170,7 @@ export default function MaterialsWorkspace({ scope, tabs, activity, lesson }) {
         </section>
 
       </>}
-      {/* Primary words set wrapping; long secondary context must not widen a shortcut. */}
-      {!lessonOpen && !activityOpen && (lesson || activity) && <div data-workspace-shortcuts className={`grid shrink-0 divide-x divide-slate-200 rounded-xl border border-slate-200 bg-white ${lesson && activity ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {lesson && <section aria-label='Lesson shortcuts' className='flex min-w-0 flex-col'><button ref={lessonTrigger} type='button' aria-label={lesson.title || 'Lesson'} aria-describedby={lesson.detail ? `${uid}-lesson-detail` : undefined} aria-expanded={false} onClick={lesson.onOpen} className={shortcut}><BookOpen className='h-4 w-4 shrink-0' aria-hidden='true' /><span className='min-w-min flex-1'>{lesson.title || 'Lesson'}{lesson.detail && <span id={`${uid}-lesson-detail`} className='mt-0.5 block w-0 min-w-full truncate text-xs font-medium leading-4 text-slate-500'>{lesson.detail}</span>}</span></button></section>}
-        {activity && <section aria-label='Game shortcuts' className='flex min-w-0 flex-col'>
-          <button ref={activityTrigger} type='button' aria-label='Games' aria-describedby={activity.current ? `${uid}-current-game` : undefined} aria-expanded={activityOpen} aria-controls={`${uid}-games`} onClick={openActivity} className={shortcut}>
-            <Milestone className='h-4 w-4 shrink-0' aria-hidden='true' />
-            <span className='min-w-min flex-1'>Games{activity.current && <span id={`${uid}-current-game`} className='mt-0.5 block w-0 min-w-full truncate text-xs font-medium leading-4 text-slate-500'>{activity.current}{activity.detail ? ` · ${activity.detail}` : ''}</span>}</span>
-          </button>
-          {activity.quickAction && <div className='border-t border-slate-100 px-2 pb-2'>{activity.quickAction}</div>}
-        </section>}
-      </div>}
+
     </div>
   );
 }
